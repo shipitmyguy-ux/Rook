@@ -79,5 +79,92 @@ export const properties = [
     contactedAt: "2026-09-23T22:23:33Z",
     contactOutcome: "showing-requested",
     note: "Unit will not be ready to tour until after Sep 28; property contact asked for availability next week."
+  },
+  {
+    id: "720-city-park",
+    label: "720 City Park Ave",
+    address: "720 City Park Ave, Fort Collins, CO",
+    type: "Apartment",
+    listingType: "rent",
+    price: 1475,
+    beds: 2,
+    baths: 2,
+    saved: true,
+    status: "shortlisted",
+    note: "Rental visit shortlist; recently listed around $1,475 when added."
+  },
+  {
+    id: "prospect-station",
+    label: "Prospect Station",
+    address: "303 W Prospect Rd, Fort Collins, CO",
+    type: "Apartment",
+    listingType: "rent",
+    beds: 2,
+    saved: true,
+    status: "shortlisted",
+    note: "Rental visit shortlist."
+  },
+  {
+    id: "aspenleaf",
+    label: "Aspenleaf Apartments",
+    address: "3501 S Stover St, Fort Collins, CO",
+    type: "Apartment",
+    listingType: "rent",
+    beds: 2,
+    saved: true,
+    status: "shortlisted",
+    note: "Rental visit shortlist."
+  },
+  {
+    id: "the-hewing",
+    label: "The Hewing",
+    address: "Fort Collins, CO",
+    type: "Apartment",
+    listingType: "rent",
+    beds: 2,
+    saved: true,
+    status: "shortlisted",
+    note: "Rental visit shortlist."
+  },
+  {
+    id: "301-edwards",
+    label: "301 Edwards St",
+    address: "301 Edwards St, Fort Collins, CO",
+    type: "House",
+    listingType: "rent",
+    saved: false,
+    status: "visited",
+    note: "House is okay, but nothing remarkable about the house or surrounding area."
+  },
+  {
+    id: "3051-sage-creek-f34",
+    label: "3051 Sage Creek Rd Unit F34",
+    address: "3051 Sage Creek Rd Unit F34, Fort Collins, CO",
+    type: "Townhome",
+    listingType: "rent",
+    beds: 2,
+    saved: true,
+    status: "shortlisted",
+    note: "Townhome shortlist."
+  },
+  {
+    id: "5126-harvest-moon",
+    label: "5126 Harvest Moon Way",
+    address: "5126 Harvest Moon Way, Fort Collins, CO",
+    type: "Rental",
+    listingType: "rent",
+    saved: false,
+    status: "rejected",
+    note: "Removed from shortlist: inconsistent/dead rental links and stale pricing."
+  },
+  {
+    id: "3902-precision-d",
+    label: "3902 Precision Dr Unit D",
+    address: "3902 Precision Dr Unit D, Fort Collins, CO",
+    type: "Rental",
+    listingType: "rent",
+    saved: false,
+    status: "rejected",
+    note: "Explicitly removed from shortlist."
   }
 ];
