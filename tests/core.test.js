@@ -9,6 +9,7 @@ import { nextFollowUp, markShowingRequested } from "../src/core/followup.js";
 import { rankProperty } from "../src/core/ranking.js";
 import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
+import { normalizePreferences } from "../src/core/preferences.js";
 import { googleMapsEmbedUrl } from "../src/integrations/maps.js";
 import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing } from "../src/integrations/providers.js";
 
@@ -201,4 +202,18 @@ test("Google Calendar showing handoff contains property and time", () => {
 test("active feeds hide rejected properties", () => {
   const rows = [normalizeProperty({ id:"keep", status:PROPERTY_STATUS.NEW }), normalizeProperty({ id:"drop", status:PROPERTY_STATUS.REJECTED })];
   assert.deepEqual(filterProperties(rows, "all").map(p => p.id), ["keep"]);
+});
+
+
+test("search preferences normalize location radius types and exclusions", () => {
+  const prefs = normalizePreferences({ location:"  Fort Collins, CO  ", radiusMiles:20, minBeds:2, maxPrice:1800, propertyTypes:["townhome","house"], excludeIncomeRestricted:true, excludeMobileHomes:true });
+  assert.equal(prefs.location, "Fort Collins, CO");
+  assert.equal(prefs.radiusMiles, 20);
+  assert.deepEqual(prefs.propertyTypes, ["townhome","house"]);
+  assert.equal(prefs.maxPrice, 1800);
+});
+
+test("provider type filter honors selected rental property types", () => {
+  assert.equal(matchesSearchDefaults({ address:"1 Main St", beds:2, type:"Townhouse", label:"Home", listingType:"rent" }, { minBeds:2, propertyTypes:["townhome"] }), true);
+  assert.equal(matchesSearchDefaults({ address:"2 Main St", beds:2, type:"Apartment", label:"Apartment", listingType:"rent" }, { minBeds:2, propertyTypes:["house"] }), false);
 });
