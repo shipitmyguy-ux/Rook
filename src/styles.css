@@ -37,3 +37,11 @@ h2 { margin: 0; }
   .property-card { margin-top: 14px; }
   .map-placeholder { height: 340px; }
 }
+
+.quick-actions { display:flex; gap:8px; margin-top:12px; }
+.quick-actions button { flex:1; border:1px solid #303641; background:#171a20; color:#eef1f5; border-radius:10px; padding:10px 12px; }
+dialog { width:min(calc(100% - 32px),520px); border:1px solid #303641; border-radius:18px; background:#12151a; color:#f5f7fa; padding:20px; }
+dialog::backdrop { background:rgba(0,0,0,.7); }
+dialog input { width:100%; margin:16px 0; border:1px solid #303641; background:#0d0f13; color:white; padding:12px; border-radius:12px; }
+.dialog-actions { display:flex; justify-content:flex-end; gap:8px; }
+.dialog-actions button { border:1px solid #303641; background:#1b1f26; color:#eef1f5; border-radius:10px; padding:10px 14px; }
