@@ -7,6 +7,7 @@ import { nextFollowUp, markShowingRequested } from "../src/core/followup.js";
 import { rankProperty } from "../src/core/ranking.js";
 import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
+import { googleMapsEmbedUrl } from "../src/integrations/maps.js";
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
   const property = normalizeProperty({
@@ -82,4 +83,12 @@ test("backup parser accepts current Rook backup format", () => {
 
 test("backup parser rejects unsupported formats", () => {
   assert.throws(() => parseRookBackup('{"version":2,"properties":[]}'), /Unsupported Rook backup version/);
+});
+
+
+test("embedded map centers on saved property addresses", () => {
+  const url = googleMapsEmbedUrl([{ address: "702 E Myrtle St, Fort Collins, CO" }]);
+  assert.match(url, /^https:\/\/www\.google\.com\/maps\?q=/);
+  assert.match(decodeURIComponent(url), /702 E Myrtle St, Fort Collins, CO/);
+  assert.match(url, /output=embed$/);
 });
