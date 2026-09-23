@@ -10,6 +10,18 @@ export const PROPERTY_STATUS = Object.freeze({
   ARCHIVED: "archived"
 });
 
+export function classifyPropertyKind(property = {}) {
+  const haystack = [property.type, property.label, property.metadata?.description]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (/\btown\s*home\b|\btownhouse\b/.test(haystack)) return "townhome";
+  if (/\bapartment\b|\bapt\b|\bcondo(?:minium)?\b|\bflats?\b|\bapartment complex\b/.test(haystack)) return "apartment";
+  if (/\bsingle[-\s]?family\b|\bdetached\b|\bhouse\b|\bsingle family home\b/.test(haystack)) return "house";
+  return "rental";
+}
+
 export function normalizeProperty(input = {}) {
   return {
     id: String(input.id || crypto.randomUUID()),
