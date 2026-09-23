@@ -1,4 +1,4 @@
-function clean(value=""){return value.toLowerCase().replace(/[^a-z0-9]/g,"");}
+function clean(value=""){return value.toLowerCase().replace(/\b(street)\b/g,"st").replace(/\b(avenue)\b/g,"ave").replace(/\b(road)\b/g,"rd").replace(/\b(drive)\b/g,"dr").replace(/[^a-z0-9]/g,"");}
 export function propertyIdentity(property) {
   if (property.address) return "address:" + clean(property.address);
   if (property.sourceUrl) {
@@ -11,7 +11,27 @@ export function dedupeProperties(properties) {
   for(const property of properties){
     const key=propertyIdentity(property);
     const prior=seen.get(key);
-    seen.set(key, prior ? { ...prior, ...property, saved: prior.saved || property.saved } : property);
+    if (!prior) { seen.set(key, property); continue; }
+    // Incoming discovery data may refresh factual listing fields, but must never
+    // erase user-owned lifecycle state, notes or shortlist decisions.
+    seen.set(key, {
+      ...property,
+      ...prior,
+      price: property.price ?? prior.price,
+      beds: property.beds ?? prior.beds,
+      baths: property.baths ?? prior.baths,
+      lat: property.lat ?? prior.lat,
+      lng: property.lng ?? prior.lng,
+      source: property.source || prior.source,
+      sourceUrl: property.sourceUrl || prior.sourceUrl,
+      metadata: { ...(property.metadata || {}), ...(prior.metadata || {}) },
+      saved: Boolean(prior.saved || property.saved),
+      status: prior.status || property.status,
+      note: prior.note || property.note || "",
+      contactedAt: prior.contactedAt || property.contactedAt || null,
+      contactOutcome: prior.contactOutcome || property.contactOutcome || null,
+      showingAt: prior.showingAt || property.showingAt || null
+    });
   }
   return [...seen.values()];
 }
