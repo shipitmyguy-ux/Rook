@@ -42,6 +42,11 @@ export function createPropertyStore(seed = []) {
       if (!Array.isArray(incoming) || !incoming.length) return;
       properties = dedupeProperties([...incoming.map(normalizeProperty), ...properties]).map(normalizeProperty);
       persist();
+    },
+    replaceAll(incoming = []) {
+      if (!Array.isArray(incoming)) throw new TypeError("Property backup must contain an array");
+      properties = dedupeProperties(incoming.map(normalizeProperty));
+      persist();
     }
   };
 }
