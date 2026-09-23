@@ -3,7 +3,7 @@ import { isShowingEvent, matchCalendarEventToProperty } from "../src/integration
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { normalizeProperty, filterProperties, PROPERTY_STATUS } from "../src/core/property.js";
+import { normalizeProperty, filterProperties, PROPERTY_STATUS, applyEvidence } from "../src/core/property.js";
 import { propertyIdentity, dedupeProperties } from "../src/core/dedupe.js";
 import { nextFollowUp, markShowingRequested } from "../src/core/followup.js";
 import { rankProperty } from "../src/core/ranking.js";
