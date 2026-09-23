@@ -137,3 +137,11 @@ test("provider dedupe merges the same address across sources", () => {
   assert.equal(merged[0].beds, 2);
   assert.deepEqual(merged[0].metadata.sources.sort(), ["Source A", "Source B"]);
 });
+
+
+test("ranking rewards more monthly rent cushion under the same cap", () => {
+  const preferences = { minBeds: 2, maxPrice: 2000 };
+  const cheaper = rankProperty({ beds: 2, price: 1500, listingType: "rent" }, preferences);
+  const pricier = rankProperty({ beds: 2, price: 1900, listingType: "rent" }, preferences);
+  assert.ok(cheaper > pricier);
+});
