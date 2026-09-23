@@ -127,3 +127,17 @@ dialog .check-row input { width: auto; margin: 0; }
 @media (min-width: 700px) {
   .map-shell { grid-template-columns: 22px minmax(0, 1fr) 22px; }
 }
+
+.type-options { margin:14px 0 4px; padding:12px; border:1px solid #303641; border-radius:12px; }
+.type-options legend { padding:0 6px; color:#c8ced8; font-size:.85rem; }
+.type-options .check-row { margin-top:8px; }
+.property-card h2, .property-card .muted, .note { overflow-wrap:anywhere; }
+.property-card__top > div { min-width:0; }
+.property-card__actions button { min-height:44px; }
+@media (max-width: 380px) {
+  .shell { padding:10px; }
+  h1 { font-size:1.65rem; }
+  .property-card { padding:13px; border-radius:15px; }
+  .property-card__facts { gap:9px; }
+  dialog { width:calc(100% - 20px); padding:16px; }
+}
