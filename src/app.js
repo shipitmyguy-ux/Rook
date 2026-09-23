@@ -55,6 +55,8 @@ function propertyCard(property) {
       <button data-action="visited">Visited</button>
       <button data-action="contact">Contacted</button>
       <button data-action="showing">Request showing</button>
+      <button data-action="note">Notes</button>
+      <button data-action="reject">Not interested</button>
       <button data-action="archive">Archive</button>
     </div>
   </article>`;
@@ -173,6 +175,17 @@ document.querySelector("#property-list").addEventListener("click", e => {
   if (action === "showing") {
     store.upsert(markShowingRequested(p));
     recordActivity("showing-requested", p);
+  }
+  if (action === "note") {
+    const note = window.prompt("Property notes", p.note || "");
+    if (note !== null) {
+      store.update(p.id, { note });
+      recordActivity("note-updated", p);
+    }
+  }
+  if (action === "reject") {
+    store.update(p.id, { status: PROPERTY_STATUS.REJECTED, saved: false });
+    recordActivity("rejected", p);
   }
   if (action === "archive") {
     store.update(p.id, { status: PROPERTY_STATUS.ARCHIVED, saved: false });
