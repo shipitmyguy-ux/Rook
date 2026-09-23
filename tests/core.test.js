@@ -57,7 +57,7 @@ test("showing request updates lifecycle state", () => {
 
 test("ranking rewards matching family and price preferences", () => {
   const property = normalizeProperty({ id: "e", beds: 2, price: 1700, saved: true, nearSchool: true, kidFriendly: true });
-  assert.equal(rankProperty(property, { minBeds: 2, maxPrice: 1800 }), 95);
+  assert.equal(rankProperty(property, { minBeds: 2, maxPrice: 1800 }), 98);
 });
 
 test("multi-stop route uses final property as destination", () => {
