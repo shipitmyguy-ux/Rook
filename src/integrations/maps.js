@@ -6,11 +6,11 @@ export function googleMapsDirectionsUrl(property) {
 
 export function googleMapsEmbedUrl(properties = []) {
   const usable = properties.filter(property => property.address || (property.lat != null && property.lng != null));
-  if (!usable.length) return "https://www.google.com/maps?q=Fort%20Collins%2C%20CO&output=embed";
+  if (!usable.length) return "https://www.google.com/maps?q=Fort%20Collins%2C%20CO&z=13&output=embed";
   const query = usable.length === 1
     ? usable[0].address || `${usable[0].lat},${usable[0].lng}`
     : usable.map(property => property.address || `${property.lat},${property.lng}`).join(" | ");
-  return "https://www.google.com/maps?q=" + encodeURIComponent(query) + "&output=embed";
+  return "https://www.google.com/maps?q=" + encodeURIComponent(query) + "&z=13&output=embed";
 }
 
 export function renderPropertyMap(frame, properties = []) {
