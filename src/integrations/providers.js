@@ -73,6 +73,7 @@ export function matchesSearchDefaults(property, criteria = {}) {
   if (!isUsableListing(property)) return false;
   const minBeds = criteria.minBeds ?? config.search.minBeds;
   const propertyTypes = Array.isArray(criteria.propertyTypes) ? criteria.propertyTypes.map(v => String(v).toLowerCase()) : [];
+  if (Array.isArray(criteria.propertyTypes) && propertyTypes.length === 0) return false;
   if (propertyTypes.length) {
     const typeText = [property.type, property.label, property.metadata?.description].filter(Boolean).join(" ").toLowerCase();
     const aliases = { apartment:/apartment|apt|condo/, townhome:/townhome|townhouse/, house:/house|home|single.family/ };
