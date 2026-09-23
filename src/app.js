@@ -220,8 +220,9 @@ document.querySelector("#property-list").addEventListener("click", e => {
     recordActivity(p.saved ? "removed-shortlist" : "saved", p);
   }
   if (action === "map") {
-    recordActivity("opened-map", p);
-    openDirections(p);
+    recordActivity("focused-map", p);
+    renderPropertyMap(document.querySelector("#property-map"), [p]);
+    document.querySelector(".map-shell")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   if (action === "visited") {
     store.update(p.id, { status: PROPERTY_STATUS.VISITED });
