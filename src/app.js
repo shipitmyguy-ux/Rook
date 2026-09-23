@@ -308,6 +308,7 @@ document.querySelector("#save-settings").addEventListener("click", e => {
   recordActivity("preferences-updated", null);
   document.querySelector("#settings-dialog").close();
   renderList();
+  refreshListings("preferences");
 });
 
 document.querySelector("#restore-button").addEventListener("click", () => document.querySelector("#restore-data").click());
