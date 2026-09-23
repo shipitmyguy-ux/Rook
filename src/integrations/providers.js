@@ -17,12 +17,29 @@ export function clearProviders() {
   providers.clear();
 }
 
+export function canonicalAddress(value = "") {
+  return String(value).toLowerCase()
+    .replace(/\b(street)\b/g, "st").replace(/\b(avenue)\b/g, "ave")
+    .replace(/\b(road)\b/g, "rd").replace(/\b(drive)\b/g, "dr")
+    .replace(/\b(lane)\b/g, "ln").replace(/\b(court)\b/g, "ct")
+    .replace(/\b(boulevard)\b/g, "blvd")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+export function listingIdentity(input = {}) {
+  const address = canonicalAddress(input.address);
+  if (address) return `address:${address}`;
+  const lat = Number(input.lat), lng = Number(input.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) return `geo:${lat.toFixed(4)},${lng.toFixed(4)}`;
+  return input.sourceUrl || input.url || input.id || input.label || null;
+}
+
 export function normalizeProviderResult(input = {}, provider = {}) {
   const price = Number(input.price);
   const beds = Number(input.beds);
   const baths = Number(input.baths);
   const sourceUrl = input.sourceUrl || input.url || null;
-  const stableKey = input.id || sourceUrl || input.address || input.label;
+  const stableKey = listingIdentity(input);
   return {
     ...input,
     id: stableKey ? `${provider.id || "provider"}:${String(stableKey).trim().toLowerCase()}` : undefined,
@@ -53,6 +70,28 @@ export function matchesSearchDefaults(property, criteria = {}) {
   return true;
 }
 
+export function dedupeProviderResults(rows = []) {
+  const merged = new Map();
+  for (const row of rows) {
+    const key = listingIdentity(row);
+    if (!key) continue;
+    const prior = merged.get(key);
+    if (!prior) {
+      merged.set(key, { ...row, metadata: { ...(row.metadata || {}), sources: row.source ? [row.source] : [] } });
+      continue;
+    }
+    const sources = [...new Set([...(prior.metadata?.sources || []), ...(row.metadata?.sources || []), row.source].filter(Boolean))];
+    merged.set(key, {
+      ...prior,
+      ...Object.fromEntries(Object.entries(row).filter(([, value]) => value !== null && value !== undefined && value !== "")),
+      id: prior.id,
+      sourceUrl: prior.sourceUrl || row.sourceUrl,
+      metadata: { ...(prior.metadata || {}), ...(row.metadata || {}), sources }
+    });
+  }
+  return [...merged.values()];
+}
+
 export async function searchProviders(criteria = {}) {
   const active = [...providers.values()].filter(provider => provider.enabled !== false);
   const settled = await Promise.allSettled(active.map(async provider => {
@@ -61,7 +100,7 @@ export async function searchProviders(criteria = {}) {
     return rows.map(row => normalizeProviderResult(row, provider))
       .filter(property => matchesSearchDefaults(property, criteria));
   }));
-  return settled.flatMap(result => result.status === "fulfilled" ? result.value : []);
+  return dedupeProviderResults(settled.flatMap(result => result.status === "fulfilled" ? result.value : []));
 }
 
 // Generic JSON endpoint adapter. This keeps Rook source-agnostic: a future
