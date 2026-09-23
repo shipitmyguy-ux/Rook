@@ -21,7 +21,7 @@ export function normalizePreferences(value = {}) {
     radiusMiles: Math.max(1, Number(value.radiusMiles) || defaultPreferences.radiusMiles),
     minBeds: Math.max(0, Number(value.minBeds) || 0),
     maxPrice: Number(value.maxPrice) > 0 ? Number(value.maxPrice) : null,
-    propertyTypes: types.length ? [...new Set(types)] : [...defaultPreferences.propertyTypes],
+    propertyTypes: Array.isArray(value.propertyTypes) ? [...new Set(types)] : [...defaultPreferences.propertyTypes],
     excludeIncomeRestricted: value.excludeIncomeRestricted !== false,
     excludeMobileHomes: value.excludeMobileHomes !== false,
     kidFriendlyPriority: value.kidFriendlyPriority !== false,
