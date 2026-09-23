@@ -109,7 +109,7 @@ function renderList() {
 app.innerHTML = `<main class="shell">
 <header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></header>
 <div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div>
-<section class="map-panel" aria-label="Property map"><iframe id="property-map" class="property-map" loading="eager" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe><div class="map-caption"><strong>Map</strong><span id="map-summary">Saved properties</span></div></section>
+<section class="map-shell" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><iframe id="property-map" class="property-map" loading="eager" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe><div class="map-caption"><strong>Map</strong><span id="map-summary">Saved properties</span></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
 <section class="results"><div class="section-heading"><h2>Properties</h2><span id="property-count"></span></div><div id="property-list"></div></section>
 <section class="activity-panel"><div class="section-heading"><h2>Recent activity</h2></div><ul id="activity-list"></ul></section>
 
@@ -259,6 +259,7 @@ document.querySelector("#export-data").addEventListener("click", () => {
 });
 
 document.addEventListener("touchstart", e => {
+  if (e.target.closest(".map-panel")) return;
   if (window.scrollY > 0 || document.querySelector("dialog[open]")) return;
   pullStartY = e.touches[0]?.clientY ?? null;
   pullDistance = 0;
