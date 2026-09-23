@@ -23,3 +23,18 @@ export function matchCalendarEventToProperty(event = {}, properties = []) {
 export function isShowingEvent(event = {}) {
   return /\b(showing|property tour|apartment tour|home tour|walkthrough)\b/i.test([event.title,event.summary,event.description].filter(Boolean).join(" "));
 }
+
+export function googleCalendarShowingUrl(property, startsAt, durationMinutes = 30) {
+  const start = new Date(startsAt);
+  if (Number.isNaN(start.getTime())) return null;
+  const end = new Date(start.getTime() + durationMinutes * 60000);
+  const stamp = value => value.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: `Property showing · ${property.label || property.address || "Rental"}`,
+    dates: `${stamp(start)}/${stamp(end)}`,
+    location: property.address || "",
+    details: property.sourceUrl ? `Listing: ${property.sourceUrl}` : "Rook property showing"
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
