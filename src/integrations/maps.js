@@ -4,19 +4,24 @@ export function googleMapsDirectionsUrl(property) {
   return "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(destination);
 }
 
-export function googleMapsEmbedUrl(properties = []) {
+function mapTarget(properties = []) {
   const usable = properties.filter(property => property.address || (property.lat != null && property.lng != null));
-  if (!usable.length) return "https://www.google.com/maps?q=Fort%20Collins%2C%20CO&z=13&output=embed";
-  const query = usable.length === 1
-    ? usable[0].address || `${usable[0].lat},${usable[0].lng}`
-    : usable.map(property => property.address || `${property.lat},${property.lng}`).join(" | ");
-  return "https://www.google.com/maps?q=" + encodeURIComponent(query) + "&z=13&output=embed";
+  const preferred = usable.find(property => property.saved && property.address) || usable.find(property => property.address) || usable[0];
+  return preferred?.address || (preferred ? `${preferred.lat},${preferred.lng}` : "Fort Collins, CO");
+}
+
+export function googleMapsEmbedUrl(properties = []) {
+  // Google Maps' simple embed search ignores z= when the query contains a
+  // multi-address string. Center on one relevant property instead so the
+  // initial viewport is genuinely neighborhood-level.
+  const target = mapTarget(properties);
+  return "https://www.google.com/maps?q=" + encodeURIComponent(target) + "&z=15&output=embed";
 }
 
 export function renderPropertyMap(frame, properties = []) {
   if (!frame) return;
   frame.src = googleMapsEmbedUrl(properties);
-  frame.title = properties.length ? `Map showing ${properties.length} saved properties` : "Rook property map";
+  frame.title = properties.length ? `Map centered near saved properties` : "Rook property map";
 }
 
 export function openDirections(property) {
