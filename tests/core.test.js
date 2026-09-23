@@ -160,3 +160,13 @@ test("calendar showing detection and property matching use shared property ident
   assert.equal(isShowingEvent(event), true);
   assert.equal(matchCalendarEventToProperty(event, [{ id: "myrtle", address: "702 E Myrtle St, Fort Collins, CO" }]).id, "myrtle");
 });
+
+
+test("email/calendar evidence advances lifecycle without erasing property state", () => {
+  const property = normalizeProperty({ id: "evidence", address: "5225 White Willow Dr", saved: true, note: "Interested" });
+  const scheduled = applyEvidence(property, { kind: "showing-scheduled", occurredAt: "2026-09-23T22:23:33Z" });
+  assert.equal(scheduled.status, PROPERTY_STATUS.SHOWING_SCHEDULED);
+  assert.equal(scheduled.saved, true);
+  assert.equal(scheduled.note, "Interested");
+  assert.equal(scheduled.metadata.evidence.length, 1);
+});
