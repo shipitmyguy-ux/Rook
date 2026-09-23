@@ -84,3 +84,14 @@ export function createJsonProvider({ id, label, endpoint, mapResult = value => v
     }
   };
 }
+
+
+export function registerConfiguredProviders() {
+  if (config.listings?.endpoint && !providers.has("rook-live")) {
+    registerProvider(createJsonProvider({
+      id: "rook-live",
+      label: "Rook live listings",
+      endpoint: config.listings.endpoint
+    }));
+  }
+}
