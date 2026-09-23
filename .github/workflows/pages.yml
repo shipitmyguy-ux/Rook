@@ -3,6 +3,7 @@ name: Deploy Rook
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -27,7 +28,9 @@ jobs:
           test -f index.html
           test -f src/app.js
           test -f src/styles.css
+          test -f supabase/migrations/20260923000000_create_rook_data.sql
   deploy:
+    if: github.event_name != 'pull_request'
     needs: validate
     environment:
       name: github-pages
