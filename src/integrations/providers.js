@@ -1,4 +1,5 @@
 import { config } from "../config.js";
+import { classifyPropertyKind } from "../core/property.js";
 
 // Provider adapters normalize every source into the same Rook property shape.
 // Network-specific scraping/API logic belongs in adapters, never in the UI.
@@ -75,9 +76,8 @@ export function matchesSearchDefaults(property, criteria = {}) {
   const propertyTypes = Array.isArray(criteria.propertyTypes) ? criteria.propertyTypes.map(v => String(v).toLowerCase()) : [];
   if (Array.isArray(criteria.propertyTypes) && propertyTypes.length === 0) return false;
   if (propertyTypes.length) {
-    const typeText = [property.type, property.label, property.metadata?.description].filter(Boolean).join(" ").toLowerCase();
-    const aliases = { apartment:/apartment|apt|condo/, townhome:/townhome|townhouse/, house:/house|home|single.family/ };
-    if (!propertyTypes.some(type => aliases[type]?.test(typeText))) return false;
+    const kind = classifyPropertyKind(property);
+    if (!propertyTypes.includes(kind)) return false;
   }
   if (minBeds && property.beds != null && property.beds < minBeds) return false;
   const maxPrice = criteria.maxPrice;
