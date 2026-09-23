@@ -1,6 +1,6 @@
 import { properties as seedProperties } from "./data/properties.js";
 import { createPropertyStore } from "./core/store.js";
-import { filterProperties, searchProperties, PROPERTY_STATUS, applyEvidence } from "./core/property.js";
+import { filterProperties, searchProperties, PROPERTY_STATUS, applyEvidence, classifyPropertyKind } from "./core/property.js";
 import { housingEvidence } from "./data/evidence.js";
 import { propertyFromUrl } from "./core/import.js";
 import { googleMapsMultiStopUrl } from "./core/route.js";
@@ -58,14 +58,6 @@ function primaryAction(property) {
   return ["note", "✎", "Notes"];
 }
 
-function propertyKind(property) {
-  const haystack = [property.type, property.label, property.metadata?.description].filter(Boolean).join(" ").toLowerCase();
-  if (/townhome|townhouse/.test(haystack)) return "townhome";
-  if (/apartment|\bapt\b|complex|flats/.test(haystack)) return "apartment";
-  if (/house|single.?family|\bhome\b/.test(haystack)) return "house";
-  return "rental";
-}
-
 function propertyKindIcon(kind) {
   return kind === "apartment" ? "▦" : kind === "townhome" ? "▥" : kind === "house" ? "⌂" : "◇";
 }
@@ -73,7 +65,7 @@ function propertyKindIcon(kind) {
 function propertyCard(property) {
   const saved = property.saved || property.status === PROPERTY_STATUS.SHORTLISTED;
   const score = Math.max(0, Math.min(100, rankProperty(property, preferences)));
-  const kind = propertyKind(property);
+  const kind = classifyPropertyKind(property);
   const image = property.image || property.imageUrl || property.metadata?.image || "";
   const [nextAction, nextIcon, nextLabel] = primaryAction(property);
   return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" style="--score:${score}">
