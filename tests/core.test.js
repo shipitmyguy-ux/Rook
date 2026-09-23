@@ -8,7 +8,7 @@ import { rankProperty } from "../src/core/ranking.js";
 import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
 import { googleMapsEmbedUrl } from "../src/integrations/maps.js";
-import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider } from "../src/integrations/providers.js";
+import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults } from "../src/integrations/providers.js";
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
   const property = normalizeProperty({
@@ -123,4 +123,17 @@ test("generic JSON provider passes search criteria and reads listings payload", 
   assert.equal(rows.length, 1);
   assert.match(requested, /minBeds=2/);
   assert.match(requested, /maxPrice=2000/);
+});
+
+
+test("provider dedupe merges the same address across sources", () => {
+  const rows = [
+    normalizeProviderResult({ address: "123 Main Street, Fort Collins, CO", price: 1800, sourceUrl: "https://a.test/1" }, { id: "a", label: "Source A" }),
+    normalizeProviderResult({ address: "123 Main St., Fort Collins, CO", beds: 2, sourceUrl: "https://b.test/2" }, { id: "b", label: "Source B" })
+  ];
+  const merged = dedupeProviderResults(rows);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].price, 1800);
+  assert.equal(merged[0].beds, 2);
+  assert.deepEqual(merged[0].metadata.sources.sort(), ["Source A", "Source B"]);
 });
