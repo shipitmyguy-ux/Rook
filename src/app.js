@@ -18,7 +18,7 @@ const app = document.querySelector("#app");
 const store = createPropertyStore(seedProperties);
 let activeFilter = "all";
 let query = "";
-let preferences = loadPreferences();
+let preferences = loadPreferences();\ndocument.documentElement.dataset.theme = preferences.visualTheme || "default";
 let refreshInFlight = false;
 let pullStartY = null;
 let pullDistance = 0;
@@ -51,41 +51,50 @@ function followUpBadge(property) {
 }
 
 function primaryAction(property) {
-  if ([PROPERTY_STATUS.NEW, PROPERTY_STATUS.VIEWED, PROPERTY_STATUS.SHORTLISTED].includes(property.status)) return ["contact", "Contact"];
-  if (property.status === PROPERTY_STATUS.CONTACTED) return ["showing", "Showing"];
-  if ([PROPERTY_STATUS.SHOWING_REQUESTED, PROPERTY_STATUS.SHOWING_SCHEDULED].includes(property.status)) return ["visited", "Visited"];
-  return ["note", "Notes"];
+  if ([PROPERTY_STATUS.NEW, PROPERTY_STATUS.VIEWED, PROPERTY_STATUS.SHORTLISTED].includes(property.status)) return ["contact", "☎", "Contact"];
+  if (property.status === PROPERTY_STATUS.CONTACTED) return ["showing", "◫", "Request showing"];
+  if ([PROPERTY_STATUS.SHOWING_REQUESTED, PROPERTY_STATUS.SHOWING_SCHEDULED].includes(property.status)) return ["visited", "✓", "Mark visited"];
+  return ["note", "✎", "Notes"];
+}
+
+function propertyKind(property) {
+  const haystack = [property.type, property.label, property.metadata?.description].filter(Boolean).join(" ").toLowerCase();
+  if (/townhome|townhouse/.test(haystack)) return "townhome";
+  if (/apartment|\bapt\b|complex|flats/.test(haystack)) return "apartment";
+  if (/house|single.?family|\bhome\b/.test(haystack)) return "house";
+  return "rental";
+}
+
+function propertyKindIcon(kind) {
+  return kind === "apartment" ? "▦" : kind === "townhome" ? "▥" : kind === "house" ? "⌂" : "◇";
 }
 
 function propertyCard(property) {
   const saved = property.saved || property.status === PROPERTY_STATUS.SHORTLISTED;
-  const score = rankProperty(property, preferences);
-  const source = property.sourceUrl
-    ? `<a class="source-link" href="${esc(property.sourceUrl)}" target="_blank" rel="noopener noreferrer">${esc(property.source || "Listing")}</a>`
-    : esc(property.source || "");
-  const [nextAction, nextLabel] = primaryAction(property);
-  return `<article class="property-card compact" data-id="${esc(property.id)}">
-    <div class="property-card__top"><div class="property-card__identity">
-      <h2>${esc(property.label)}</h2>
-      <p class="muted">${esc(property.address || "")}${source ? ` · ${source}` : ""}</p>
-    </div><button class="save-button" data-action="save" aria-label="Save ${esc(property.label)}">${saved ? "★" : "☆"}</button></div>
-    <div class="property-card__facts"><strong>${property.price ? "$"+property.price.toLocaleString()+(property.listingType==="rent"?"/mo":"") : "Price TBD"}</strong><span>${property.beds ?? "—"} bd</span><span>${property.baths ?? "—"} ba</span><span class="score">Fit ${score}</span></div>
-    <div class="status-row"><span class="status-chip lifecycle">${esc(property.status.replaceAll("_"," "))}</span>${property.nearSchool ? '<span class="status-chip">Near school</span>' : ""}${property.kidFriendly ? '<span class="status-chip">Kid-friendly</span>' : ""}</div>
-    <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
-    <div class="property-card__actions compact-actions">
-      <button data-action="map">Map</button>
-      <button data-action="${nextAction}">${nextLabel}</button>
-      <button class="more-card-actions" data-action="expand" aria-expanded="false">•••</button>
+  const score = Math.max(0, Math.min(100, rankProperty(property, preferences)));
+  const kind = propertyKind(property);
+  const image = property.image || property.imageUrl || property.metadata?.image || "";
+  const [nextAction, nextIcon, nextLabel] = primaryAction(property);
+  return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" style="--score:${score}">
+    <div class="property-visual" ${image ? `style="--property-image:url('${esc(image)}')"` : ""} aria-hidden="true"></div>
+    <div class="property-card__content">
+      <div class="property-type-mark" title="${kind}"><span>${propertyKindIcon(kind)}</span><small>${kind}</small></div>
+      <div class="property-card__identity"><h2>${esc(property.label)}</h2><p class="muted">⌖ ${esc(property.address || "")}</p></div>
+      <div class="property-card__facts"><strong>${property.price ? "$"+property.price.toLocaleString()+(property.listingType==="rent"?"/mo":"") : "Price TBD"}</strong><span>▰ ${property.beds ?? "—"} bd</span><span>♨ ${property.baths ?? "—"} ba</span></div>
+      <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
+      <div class="property-card__actions compact-actions">
+        <button class="status-action" data-action="${nextAction}" aria-label="${nextLabel}" title="${nextLabel}"><span>${nextIcon}</span><b>${esc(property.status.replaceAll("_"," "))}</b></button>
+        <button class="icon-action" data-action="map" aria-label="Focus on map" title="Focus on map">●</button>
+        <button class="icon-action" data-action="contact" aria-label="Contact" title="Contact">☎</button>
+        <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">•••</button>
+      </div>
+      <div class="property-card__more" hidden>
+        <button data-action="visited">Visited</button><button data-action="contact">Contacted</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Not interested</button><button data-action="archive">Archive</button>
+      </div>
     </div>
-    <div class="property-card__more" hidden>
-      <button data-action="visited">Visited</button>
-      <button data-action="contact">Contacted</button>
-      <button data-action="showing">Request showing</button>
-      <button data-action="schedule">Schedule</button>
-      <button data-action="note">Notes</button>
-      <button data-action="reject">Not interested</button>
-      <button data-action="archive">Archive</button>
-    </div>
+    <div class="fit-ring" aria-label="Match score ${score}"><span>${score}</span></div>
+    <button class="save-button" data-action="save" aria-label="Save ${esc(property.label)}">${saved ? "★" : "☆"}</button>
+    <div class="card-map-art" aria-hidden="true"><i class="map-road r1"></i><i class="map-road r2"></i><i class="map-road r3"></i><span class="poi property-pin">⌂</span><span class="poi family-pin">⌂</span><span class="poi park-pin">♠</span><span class="poi school-pin">◆</span></div>
   </article>`;
 }
 
@@ -173,7 +182,7 @@ app.innerHTML = `<main class="shell">
 <label class="check-row"><input id="pref-exclude-income" type="checkbox"> Exclude income-restricted housing</label>
 <label class="check-row"><input id="pref-exclude-mobile" type="checkbox"> Exclude mobile/manufactured homes</label>
 <label class="check-row"><input id="pref-kid-friendly" type="checkbox"> Prioritize kid-friendly areas</label>
-<label class="check-row"><input id="pref-school" type="checkbox"> Prioritize nearby schools</label>
+<label class="check-row"><input id="pref-school" type="checkbox"> Prioritize nearby schools</label>\n<label>Visual theme<select id="pref-theme"><option value="default">Default · Twilight</option><option value="warm">Warm</option><option value="night">Night</option><option value="mono">Monochrome</option></select></label>
 <input id="restore-data" type="file" accept="application/json,.json" hidden><div class="dialog-actions"><button id="restore-button" type="button">Restore backup</button><button id="export-data" type="button">Export backup</button><button value="cancel">Cancel</button><button id="save-settings" value="default">Save</button></div></form></dialog>
 </main>`;
 
@@ -307,7 +316,7 @@ function openSettings() {
   document.querySelector("#pref-exclude-income").checked = preferences.excludeIncomeRestricted !== false;
   document.querySelector("#pref-exclude-mobile").checked = preferences.excludeMobileHomes !== false;
   document.querySelector("#pref-kid-friendly").checked = Boolean(preferences.kidFriendlyPriority);
-  document.querySelector("#pref-school").checked = Boolean(preferences.schoolPriority);
+  document.querySelector("#pref-school").checked = Boolean(preferences.schoolPriority);\n  document.querySelector("#pref-theme").value = preferences.visualTheme || "default";
   document.querySelector("#settings-dialog").showModal();
 }
 document.querySelector("#settings-button").addEventListener("click", openSettings);
@@ -335,9 +344,9 @@ document.querySelector("#save-settings").addEventListener("click", e => {
     excludeIncomeRestricted: document.querySelector("#pref-exclude-income").checked,
     excludeMobileHomes: document.querySelector("#pref-exclude-mobile").checked,
     kidFriendlyPriority: document.querySelector("#pref-kid-friendly").checked,
-    schoolPriority: document.querySelector("#pref-school").checked
+    schoolPriority: document.querySelector("#pref-school").checked,\n    visualTheme: document.querySelector("#pref-theme").value || "default"
   };
-  savePreferences(preferences);
+  savePreferences(preferences);\n  document.documentElement.dataset.theme = preferences.visualTheme || "default";
   recordActivity("preferences-updated", null);
   document.querySelector("#settings-dialog").close();
   renderList();
