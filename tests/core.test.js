@@ -1,5 +1,5 @@
 import { classifyHousingEmail, matchEmailToProperty } from "../src/integrations/email.js";
-import { isShowingEvent, matchCalendarEventToProperty } from "../src/integrations/calendar.js";
+import { isShowingEvent, matchCalendarEventToProperty, googleCalendarShowingUrl } from "../src/integrations/calendar.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -187,4 +187,12 @@ test("listing quality gate rejects malformed prices and unsafe source URLs", () 
   assert.equal(isUsableListing({ address:"1 Main St", price:-1 }), false);
   assert.equal(isUsableListing({ address:"1 Main St", price:1800, sourceUrl:"javascript:alert(1)" }), false);
   assert.equal(isUsableListing({ address:"1 Main St", price:1800, sourceUrl:"https://example.test/home" }), true);
+});
+
+
+test("Google Calendar showing handoff contains property and time", () => {
+  const url = new URL(googleCalendarShowingUrl({ label:"Test Home", address:"123 Main St, Fort Collins, CO" }, "2026-09-29T20:30:00.000Z"));
+  assert.equal(url.hostname, "calendar.google.com");
+  assert.match(url.searchParams.get("text"), /Test Home/);
+  assert.match(url.searchParams.get("location"), /123 Main St/);
 });
