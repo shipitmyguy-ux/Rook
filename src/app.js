@@ -84,6 +84,8 @@ async function refreshListings(trigger = "manual") {
     const found = await searchProviders({ ...preferences, location: config.search.location, query });
     store.upsertMany(found);
     recordActivity("provider-refresh", null, { count: found.length, trigger });
+    const indicator = document.querySelector("#pull-indicator");
+    if (indicator) indicator.textContent = found.length ? `Found ${found.length} listings` : "No new listings found";
   } finally {
     refreshInFlight = false;
     buttons.forEach(button => { button.disabled = false; button.textContent = "Refresh listings"; });
@@ -91,7 +93,10 @@ async function refreshListings(trigger = "manual") {
     if (indicator) {
       indicator.classList.remove("refreshing", "ready");
       indicator.style.setProperty("--pull", "0px");
-      indicator.textContent = "Pull to refresh";
+      const resultText = indicator.textContent;
+      window.setTimeout(() => {
+        if (!refreshInFlight && indicator.textContent === resultText) indicator.textContent = "Pull to refresh";
+      }, 2200);
     }
     renderList();
   }
