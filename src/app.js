@@ -104,6 +104,10 @@ async function refreshListings(trigger = "manual") {
     recordActivity("provider-refresh", null, { count: found.length, trigger });
     const indicator = document.querySelector("#pull-indicator");
     if (indicator) indicator.textContent = found.length ? `Found ${found.length} listings` : "No new listings found";
+  } catch (error) {
+    recordActivity("provider-refresh-error", null, { trigger, message: String(error?.message || error) });
+    const indicator = document.querySelector("#pull-indicator");
+    if (indicator) indicator.textContent = "Refresh failed · saved listings kept";
   } finally {
     refreshInFlight = false;
     buttons.forEach(button => { button.disabled = false; button.textContent = "Refresh listings"; });
