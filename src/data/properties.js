@@ -118,7 +118,7 @@ export const properties = [
   {
     id: "the-hewing",
     label: "The Hewing",
-    address: "Fort Collins, CO",
+    address: "",
     type: "Apartment",
     listingType: "rent",
     beds: 2,
