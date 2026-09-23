@@ -27,8 +27,13 @@ h2 { margin: 0; }
 .search-row button, .filters button, .property-card__actions button { border: 1px solid #303641; background: #1b1f26; color: #eef1f5; border-radius: 10px; padding: 10px 12px; }
 .filters { gap: 8px; margin-top: 12px; overflow-x: auto; }
 .filters .active { background: #e7b84b; color: #111; border-color: #e7b84b; }
-.map-panel { width: 100%; aspect-ratio: 1 / 1; margin-top: 12px; position: relative; overflow: hidden; border: 1px solid #303641; border-radius: 18px; background: #11151a; }
-.property-map { display: block; width: 100%; height: 100%; border: 0; }
+.map-shell { width: 100%; aspect-ratio: 1 / 1; margin-top: 12px; display: grid; grid-template-columns: clamp(14px, 4vw, 28px) minmax(0, 1fr) clamp(14px, 4vw, 28px); align-items: stretch; }
+.map-panel { min-width: 0; position: relative; overflow: hidden; border: 1px solid #303641; border-radius: 18px; background: #11151a; touch-action: none; }
+.property-map { display: block; width: 100%; height: 100%; border: 0; touch-action: none; }
+.map-scroll-gutter { position: relative; touch-action: pan-y; overscroll-behavior-x: contain; }
+.map-scroll-gutter::after { content: ""; position: absolute; top: 12%; bottom: 12%; width: 2px; border-radius: 2px; background: rgba(169,176,188,.18); }
+.map-scroll-gutter--left::after { left: 5px; }
+.map-scroll-gutter--right::after { right: 5px; }
 .map-caption { position: absolute; left: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 20px); padding: 7px 10px; border: 1px solid rgba(48,54,65,.9); border-radius: 10px; background: rgba(11,13,17,.88); color: #f5f7fa; pointer-events: none; }
 .map-caption span { color: #c4cad3; font-size: .78rem; }
 .results { margin-top: 22px; }
@@ -117,4 +122,8 @@ dialog .check-row input { width: auto; margin: 0; }
 .pull-indicator.refreshing { height: 34px; color: #e7b84b; }
 @media (prefers-reduced-motion: reduce) {
   .pull-indicator { transition: none; }
+}
+
+@media (min-width: 700px) {
+  .map-shell { grid-template-columns: 22px minmax(0, 1fr) 22px; }
 }
