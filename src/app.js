@@ -99,7 +99,7 @@ async function refreshListings(trigger = "manual") {
   buttons.forEach(button => { button.disabled = true; button.textContent = "Refreshing…"; });
   document.querySelector("#pull-indicator")?.classList.add("refreshing");
   try {
-    const found = await searchProviders({ ...preferences, location: config.search.location, query });
+    const found = await searchProviders({ ...preferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query });
     store.upsertMany(found);
     recordActivity("provider-refresh", null, { count: found.length, trigger });
     const indicator = document.querySelector("#pull-indicator");
@@ -147,8 +147,16 @@ app.innerHTML = `<main class="shell">
 <dialog id="import-dialog"><form method="dialog"><h2>Add listing</h2><p class="muted">Paste a listing URL. Rook keeps the source and routes it through the shared property model.</p><input id="listing-url" type="url" placeholder="https://…" required /><div class="dialog-actions"><button value="cancel">Cancel</button><button id="import-confirm" value="default">Add</button></div></form></dialog>
 
 <dialog id="settings-dialog"><form method="dialog"><h2>Search preferences</h2>
+<label>Search location<input id="pref-location" type="text" autocomplete="address-level2" placeholder="Fort Collins, CO"></label>
+<label>Search radius (miles)<input id="pref-radius" type="number" min="1" max="100" step="1"></label>
 <label>Minimum bedrooms<input id="pref-min-beds" type="number" min="0" step="1"></label>
 <label>Maximum monthly rent<input id="pref-max-price" type="number" min="0" step="50"></label>
+<fieldset class="type-options"><legend>Property types</legend>
+<label class="check-row"><input id="pref-type-apartment" type="checkbox"> Apartments</label>
+<label class="check-row"><input id="pref-type-townhome" type="checkbox"> Townhomes</label>
+<label class="check-row"><input id="pref-type-house" type="checkbox"> Houses</label></fieldset>
+<label class="check-row"><input id="pref-exclude-income" type="checkbox"> Exclude income-restricted housing</label>
+<label class="check-row"><input id="pref-exclude-mobile" type="checkbox"> Exclude mobile/manufactured homes</label>
 <label class="check-row"><input id="pref-kid-friendly" type="checkbox"> Prioritize kid-friendly areas</label>
 <label class="check-row"><input id="pref-school" type="checkbox"> Prioritize nearby schools</label>
 <input id="restore-data" type="file" accept="application/json,.json" hidden><div class="dialog-actions"><button id="restore-button" type="button">Restore backup</button><button id="export-data" type="button">Export backup</button><button value="cancel">Cancel</button><button id="save-settings" value="default">Save</button></div></form></dialog>
@@ -262,8 +270,16 @@ document.querySelector("#route-shortlist").addEventListener("click", () => {
 document.querySelectorAll("[data-refresh-listings]").forEach(button => button.addEventListener("click", () => refreshListings("manual")));
 
 function openSettings() {
+  document.querySelector("#pref-location").value = preferences.location || config.search.location;
+  document.querySelector("#pref-radius").value = preferences.radiusMiles ?? 15;
   document.querySelector("#pref-min-beds").value = preferences.minBeds ?? 2;
   document.querySelector("#pref-max-price").value = preferences.maxPrice ?? "";
+  const types = preferences.propertyTypes || ["apartment","townhome","house"];
+  document.querySelector("#pref-type-apartment").checked = types.includes("apartment");
+  document.querySelector("#pref-type-townhome").checked = types.includes("townhome");
+  document.querySelector("#pref-type-house").checked = types.includes("house");
+  document.querySelector("#pref-exclude-income").checked = preferences.excludeIncomeRestricted !== false;
+  document.querySelector("#pref-exclude-mobile").checked = preferences.excludeMobileHomes !== false;
   document.querySelector("#pref-kid-friendly").checked = Boolean(preferences.kidFriendlyPriority);
   document.querySelector("#pref-school").checked = Boolean(preferences.schoolPriority);
   document.querySelector("#settings-dialog").showModal();
@@ -278,8 +294,13 @@ document.querySelector("#save-settings").addEventListener("click", e => {
   e.preventDefault();
   preferences = {
     ...preferences,
+    location: document.querySelector("#pref-location").value.trim() || config.search.location,
+    radiusMiles: Math.max(1, Number(document.querySelector("#pref-radius").value) || 15),
     minBeds: Number(document.querySelector("#pref-min-beds").value) || 0,
     maxPrice: Number(document.querySelector("#pref-max-price").value) || null,
+    propertyTypes: [["apartment","#pref-type-apartment"],["townhome","#pref-type-townhome"],["house","#pref-type-house"]].filter(([,selector]) => document.querySelector(selector).checked).map(([type]) => type),
+    excludeIncomeRestricted: document.querySelector("#pref-exclude-income").checked,
+    excludeMobileHomes: document.querySelector("#pref-exclude-mobile").checked,
     kidFriendlyPriority: document.querySelector("#pref-kid-friendly").checked,
     schoolPriority: document.querySelector("#pref-school").checked
   };
