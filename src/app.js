@@ -9,7 +9,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders } from "./integrations/providers.js";
-import { openDirections } from "./integrations/maps.js";
+import { openDirections, renderPropertyMap } from "./integrations/maps.js";
 import { config } from "./config.js";
 
 const app = document.querySelector("#app");
@@ -74,17 +74,18 @@ function renderList() {
   const visible = visibleProperties();
   document.querySelector("#property-count").textContent = `${visible.length} shown`;
   document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("");
-  const saved = store.getAll().filter(p => p.saved && p.status !== PROPERTY_STATUS.ARCHIVED).length;
-  document.querySelector("#map-summary").textContent = `${saved} saved properties ready to route`;
+  const savedProperties = store.getAll().filter(p => p.saved && p.status !== PROPERTY_STATUS.ARCHIVED);
+  document.querySelector("#map-summary").textContent = `${savedProperties.length} saved properties`;
+  renderPropertyMap(document.querySelector("#property-map"), savedProperties);
   renderActivity();
 }
 
 app.innerHTML = `<main class="shell">
 <header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></header>
+<section class="map-panel" aria-label="Property map"><iframe id="property-map" class="property-map" loading="eager" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe><div class="map-caption"><strong>Map</strong><span id="map-summary">Saved properties</span></div></section>
 <section class="search-panel"><label for="property-search">Search properties</label><div class="search-row"><input id="property-search" type="search" placeholder="Address, neighborhood, property…" /><button id="refresh">Refresh</button></div>
 <nav class="filters" aria-label="Property filters"><button class="active" data-filter="all">All</button><button data-filter="rent">Rent</button><button data-filter="buy">Buy</button><button data-filter="shortlist">Shortlist</button></nav>
 <div class="quick-actions"><button id="add-listing">＋ Add listing</button><button id="route-shortlist">Route shortlist</button></div></section>
-<section class="map-placeholder" aria-label="Map"><div><strong>Map</strong><span id="map-summary">Saved properties ready to route</span></div></section>
 <section class="results"><div class="section-heading"><h2>Properties</h2><span id="property-count"></span></div><div id="property-list"></div></section>
 <section class="activity-panel"><div class="section-heading"><h2>Recent activity</h2></div><ul id="activity-list"></ul></section>
 
