@@ -30,7 +30,7 @@ function applySyncedEvidence() {
     const property = store.getAll().find(item => {
       const address = String(item.address || "").toLowerCase().replace(/[^a-z0-9]/g, "");
       const label = String(item.label || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      return hint && (address.includes(hint) || hint.includes(address) || label.includes(hint) || hint.includes(label));
+      return hint && ((address.length > 6 && (address.includes(hint) || hint.includes(address))) || (label.length > 6 && (label.includes(hint) || hint.includes(label))));
     });
     if (property) store.upsert(applyEvidence(property, evidence));
   }
