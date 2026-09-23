@@ -7,7 +7,7 @@ import { loadPreferences, savePreferences } from "./core/preferences.js";
 import { rankProperties, rankProperty } from "./core/ranking.js";
 import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
-import { exportRookData } from "./core/export.js";
+import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders } from "./integrations/providers.js";
 import { openDirections } from "./integrations/maps.js";
 import { config } from "./config.js";
@@ -95,7 +95,7 @@ app.innerHTML = `<main class="shell">
 <label>Maximum monthly rent<input id="pref-max-price" type="number" min="0" step="50"></label>
 <label class="check-row"><input id="pref-kid-friendly" type="checkbox"> Prioritize kid-friendly areas</label>
 <label class="check-row"><input id="pref-school" type="checkbox"> Prioritize nearby schools</label>
-<div class="dialog-actions"><button id="export-data" type="button">Export backup</button><button value="cancel">Cancel</button><button id="save-settings" value="default">Save</button></div></form></dialog>
+<input id="restore-data" type="file" accept="application/json,.json" hidden><div class="dialog-actions"><button id="restore-button" type="button">Restore backup</button><button id="export-data" type="button">Export backup</button><button value="cancel">Cancel</button><button id="save-settings" value="default">Save</button></div></form></dialog>
 </main>`;
 
 document.querySelector("#property-search").addEventListener("input", e => { query = e.target.value; renderList(); });
@@ -205,6 +205,26 @@ document.querySelector("#save-settings").addEventListener("click", e => {
   recordActivity("preferences-updated", null);
   document.querySelector("#settings-dialog").close();
   renderList();
+});
+
+document.querySelector("#restore-button").addEventListener("click", () => document.querySelector("#restore-data").click());
+
+document.querySelector("#restore-data").addEventListener("change", async e => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  try {
+    const backup = parseRookBackup(await file.text());
+    store.replaceAll(backup.properties);
+    preferences = { ...preferences, ...backup.preferences };
+    savePreferences(preferences);
+    recordActivity("backup-restored", null, { propertyCount: backup.properties.length });
+    document.querySelector("#settings-dialog").close();
+    renderList();
+  } catch (error) {
+    window.alert(error?.message || "Could not restore this Rook backup.");
+  } finally {
+    e.target.value = "";
+  }
 });
 
 document.querySelector("#export-data").addEventListener("click", () => {
