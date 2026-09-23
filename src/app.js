@@ -18,7 +18,8 @@ const app = document.querySelector("#app");
 const store = createPropertyStore(seedProperties);
 let activeFilter = "all";
 let query = "";
-let preferences = loadPreferences();\ndocument.documentElement.dataset.theme = preferences.visualTheme || "default";
+let preferences = loadPreferences();
+document.documentElement.dataset.theme = preferences.visualTheme || "default";
 let refreshInFlight = false;
 let pullStartY = null;
 let pullDistance = 0;
@@ -182,7 +183,8 @@ app.innerHTML = `<main class="shell">
 <label class="check-row"><input id="pref-exclude-income" type="checkbox"> Exclude income-restricted housing</label>
 <label class="check-row"><input id="pref-exclude-mobile" type="checkbox"> Exclude mobile/manufactured homes</label>
 <label class="check-row"><input id="pref-kid-friendly" type="checkbox"> Prioritize kid-friendly areas</label>
-<label class="check-row"><input id="pref-school" type="checkbox"> Prioritize nearby schools</label>\n<label>Visual theme<select id="pref-theme"><option value="default">Default · Twilight</option><option value="warm">Warm</option><option value="night">Night</option><option value="mono">Monochrome</option></select></label>
+<label class="check-row"><input id="pref-school" type="checkbox"> Prioritize nearby schools</label>
+<label>Visual theme<select id="pref-theme"><option value="default">Default · Twilight</option><option value="warm">Warm</option><option value="night">Night</option><option value="mono">Monochrome</option></select></label>
 <input id="restore-data" type="file" accept="application/json,.json" hidden><div class="dialog-actions"><button id="restore-button" type="button">Restore backup</button><button id="export-data" type="button">Export backup</button><button value="cancel">Cancel</button><button id="save-settings" value="default">Save</button></div></form></dialog>
 </main>`;
 
@@ -316,7 +318,8 @@ function openSettings() {
   document.querySelector("#pref-exclude-income").checked = preferences.excludeIncomeRestricted !== false;
   document.querySelector("#pref-exclude-mobile").checked = preferences.excludeMobileHomes !== false;
   document.querySelector("#pref-kid-friendly").checked = Boolean(preferences.kidFriendlyPriority);
-  document.querySelector("#pref-school").checked = Boolean(preferences.schoolPriority);\n  document.querySelector("#pref-theme").value = preferences.visualTheme || "default";
+  document.querySelector("#pref-school").checked = Boolean(preferences.schoolPriority);
+  document.querySelector("#pref-theme").value = preferences.visualTheme || "default";
   document.querySelector("#settings-dialog").showModal();
 }
 document.querySelector("#settings-button").addEventListener("click", openSettings);
@@ -344,9 +347,11 @@ document.querySelector("#save-settings").addEventListener("click", e => {
     excludeIncomeRestricted: document.querySelector("#pref-exclude-income").checked,
     excludeMobileHomes: document.querySelector("#pref-exclude-mobile").checked,
     kidFriendlyPriority: document.querySelector("#pref-kid-friendly").checked,
-    schoolPriority: document.querySelector("#pref-school").checked,\n    visualTheme: document.querySelector("#pref-theme").value || "default"
+    schoolPriority: document.querySelector("#pref-school").checked,
+    visualTheme: document.querySelector("#pref-theme").value || "default"
   };
-  savePreferences(preferences);\n  document.documentElement.dataset.theme = preferences.visualTheme || "default";
+  savePreferences(preferences);
+  document.documentElement.dataset.theme = preferences.visualTheme || "default";
   recordActivity("preferences-updated", null);
   document.querySelector("#settings-dialog").close();
   renderList();
