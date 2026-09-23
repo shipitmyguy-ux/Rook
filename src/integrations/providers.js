@@ -111,7 +111,8 @@ export function createJsonProvider({ id, label, endpoint, mapResult = value => v
     id,
     label: label || id,
     async search(criteria = {}) {
-      const url = new URL(endpoint, window.location.href);
+      const baseUrl = typeof window !== "undefined" ? window.location.href : "http://localhost/";
+      const url = new URL(endpoint, baseUrl);
       Object.entries(criteria).forEach(([key, value]) => {
         if (value !== null && value !== undefined && value !== "") url.searchParams.set(key, String(value));
       });
