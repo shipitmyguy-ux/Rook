@@ -35,7 +35,7 @@ jobs:
       - name: Smoke test live Fort Collins listing backend
         run: |
           curl --fail --retry 2 --max-time 30 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?location=Fort%20Collins%2C%20CO&minBeds=2" -o /tmp/rook-listings.json
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-listings.json","utf8"));if(!Array.isArray(p.listings)||!Array.isArray(p.meta?.adapters)||p.listings.length<1||!p.meta.adapters.some(a=>a.ok&&a.count>0))process.exit(1);console.log(JSON.stringify({count:p.listings.length,adapters:p.meta.adapters}))'
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-listings.json","utf8"));console.log(JSON.stringify({count:p.listings?.length,adapters:p.meta?.adapters}));if(!Array.isArray(p.listings)||!Array.isArray(p.meta?.adapters)||p.listings.length<1||!p.meta.adapters.some(a=>a.ok&&a.count>0))process.exit(1)'
   deploy:
     needs: validate
     environment:
