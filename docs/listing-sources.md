@@ -48,3 +48,8 @@ The public Rook listing endpoint returns:
 ```
 
 Each adapter should emit enough information to populate the normalized Rook property model: source ID/URL, address/label, listing type, price, beds, baths, coordinates when available, property type, description/metadata, and source attribution.
+
+
+## Current production adapters
+
+The Supabase `rook-listings` boundary currently probes Realtor.com, Rent.com, and Apartment List independently. CI requires the backend to return at least one real Fort Collins listing before a Pages deployment is allowed. Adapter health is returned in `meta.adapters`; rate limiting or failure from one portal does not suppress healthy sources.
