@@ -48,9 +48,10 @@ export function searchProperties(properties, query) {
 }
 
 export function filterProperties(properties, filter) {
-  if (filter === "all") return properties.filter(p => p.status !== PROPERTY_STATUS.ARCHIVED);
-  if (filter === "shortlist") return properties.filter(p => (p.saved || p.status === PROPERTY_STATUS.SHORTLISTED) && p.status !== PROPERTY_STATUS.ARCHIVED);
-  return properties.filter(p => p.listingType === filter && p.status !== PROPERTY_STATUS.ARCHIVED);
+  const active = p => ![PROPERTY_STATUS.ARCHIVED, PROPERTY_STATUS.REJECTED].includes(p.status);
+  if (filter === "all") return properties.filter(active);
+  if (filter === "shortlist") return properties.filter(p => (p.saved || p.status === PROPERTY_STATUS.SHORTLISTED) && active(p));
+  return properties.filter(p => p.listingType === filter && active(p));
 }
 
 export function applyEvidence(property, evidence = {}) {
