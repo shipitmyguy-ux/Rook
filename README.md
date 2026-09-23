@@ -24,3 +24,9 @@ The initial configuration targets 2+ bedroom housing and supports excluding inco
 Google Maps visualization should be added behind `src/integrations/maps.js`. Listing sources should register adapters through `src/integrations/providers.js`. Gmail synchronization should translate matching threads into the event schema in `src/integrations/email.js`.
 
 No source-specific behavior should be added directly to property cards or tabs.
+
+
+### Live listing backend
+Rook's browser refresh calls the `rook-listings` Supabase Edge Function. Source-specific discovery/extraction remains server-side. The first live adapters use structured listing data from rental search pages and fail independently; the client continues to consume the stable normalized JSON contract. Cross-source deduplication happens both at the backend boundary and in the client provider layer.
+
+The source boundary is intentionally replaceable: maintained open-source discovery/extraction projects or hosted providers can be added without changing property cards, filters, ranking, shortlist state, or follow-up behavior.
