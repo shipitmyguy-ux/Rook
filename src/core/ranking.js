@@ -2,7 +2,11 @@ export function rankProperty(property, preferences = {}) {
   let score = 0;
   if (property.saved) score += 30;
   if ((property.beds ?? 0) >= (preferences.minBeds ?? 0)) score += 15;
-  if (property.price && preferences.maxPrice && property.price <= preferences.maxPrice) score += 20;
+  if (property.price && preferences.maxPrice && property.price <= preferences.maxPrice) {
+    score += 20;
+    const cushion = preferences.maxPrice - property.price;
+    score += Math.min(10, Math.max(0, Math.floor(cushion / 100)));
+  }
   if (property.nearSchool) score += preferences.schoolPriority === false ? 5 : 15;
   if (property.kidFriendly) score += preferences.kidFriendlyPriority === false ? 5 : 15;
   if (property.status === "visited") score += 5;
