@@ -1,3 +1,5 @@
+import { classifyHousingEmail, matchEmailToProperty } from "../src/integrations/email.js";
+import { isShowingEvent, matchCalendarEventToProperty } from "../src/integrations/calendar.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -144,4 +146,17 @@ test("ranking rewards more monthly rent cushion under the same cap", () => {
   const cheaper = rankProperty({ beds: 2, price: 1500, listingType: "rent" }, preferences);
   const pricier = rankProperty({ beds: 2, price: 1900, listingType: "rent" }, preferences);
   assert.ok(cheaper > pricier);
+});
+
+
+test("housing email evidence recognizes showing confirmations and matches address", () => {
+  const email = { subject: "Showing confirmed", body: "Your tour at 702 E Myrtle St, Fort Collins is scheduled." };
+  assert.equal(classifyHousingEmail(email), "showing-scheduled");
+  assert.equal(matchEmailToProperty(email, [{ id: "myrtle", address: "702 E Myrtle St, Fort Collins, CO" }]).id, "myrtle");
+});
+
+test("calendar showing detection and property matching use shared property identity text", () => {
+  const event = { title: "Apartment tour", location: "702 E Myrtle St, Fort Collins, CO" };
+  assert.equal(isShowingEvent(event), true);
+  assert.equal(matchCalendarEventToProperty(event, [{ id: "myrtle", address: "702 E Myrtle St, Fort Collins, CO" }]).id, "myrtle");
 });
