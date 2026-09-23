@@ -9,7 +9,8 @@ export const defaultPreferences = Object.freeze({
   excludeIncomeRestricted: true,
   excludeMobileHomes: true,
   kidFriendlyPriority: true,
-  schoolPriority: true
+  schoolPriority: true,
+  visualTheme: "default"
 });
 
 export function normalizePreferences(value = {}) {
