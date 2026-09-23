@@ -6,6 +6,7 @@ import { propertyIdentity, dedupeProperties } from "../src/core/dedupe.js";
 import { nextFollowUp, markShowingRequested } from "../src/core/followup.js";
 import { rankProperty } from "../src/core/ranking.js";
 import { googleMapsMultiStopUrl } from "../src/core/route.js";
+import { parseRookBackup } from "../src/core/export.js";
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
   const property = normalizeProperty({
@@ -66,4 +67,19 @@ test("multi-stop route uses final property as destination", () => {
   const parsed = new URL(url);
   assert.equal(parsed.searchParams.get("destination"), "300 C St, Fort Collins, CO");
   assert.equal(parsed.searchParams.get("waypoints"), "100 A St, Fort Collins, CO|200 B St, Fort Collins, CO");
+});
+
+
+test("backup parser accepts current Rook backup format", () => {
+  const parsed = parseRookBackup(JSON.stringify({
+    version: 1,
+    properties: [{ id: "z", label: "Restored property" }],
+    preferences: { minBeds: 3 }
+  }));
+  assert.equal(parsed.properties.length, 1);
+  assert.equal(parsed.preferences.minBeds, 3);
+});
+
+test("backup parser rejects unsupported formats", () => {
+  assert.throws(() => parseRookBackup('{"version":2,"properties":[]}'), /Unsupported Rook backup version/);
 });
