@@ -1,4 +1,4 @@
-import { normalizeProperty } from "./property.js";
+import { normalizeProperty, PROPERTY_STATUS } from "./property.js";
 import { dedupeProperties } from "./dedupe.js";
 
 const STORAGE_KEY = "rook.properties.v1";
@@ -33,7 +33,9 @@ export function createPropertyStore(seed = []) {
     },
     toggleSaved(id) {
       const target = properties.find(p => p.id === id);
-      if (target) this.update(id, { saved: !target.saved });
+      if (!target) return;
+      const saved = !target.saved;
+      this.update(id, { saved, status: saved && target.status === PROPERTY_STATUS.NEW ? PROPERTY_STATUS.SHORTLISTED : target.status });
     },
     upsert(property) {
       this.upsertMany([property]);
