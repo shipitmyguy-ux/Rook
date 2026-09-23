@@ -27,8 +27,10 @@ h2 { margin: 0; }
 .search-row button, .filters button, .property-card__actions button { border: 1px solid #303641; background: #1b1f26; color: #eef1f5; border-radius: 10px; padding: 10px 12px; }
 .filters { gap: 8px; margin-top: 12px; overflow-x: auto; }
 .filters .active { background: #e7b84b; color: #111; border-color: #e7b84b; }
-.map-placeholder { min-height: 220px; margin-top: 18px; border: 1px solid #303641; border-radius: 18px; background: radial-gradient(circle at 30% 20%, #26313b, #11151a 65%); display: grid; place-items: center; text-align: center; }
-.map-placeholder span { display: block; color: #a9b0bc; margin-top: 5px; font-size: .85rem; }
+.map-panel { width: 100%; aspect-ratio: 1 / 1; margin-top: 12px; position: relative; overflow: hidden; border: 1px solid #303641; border-radius: 18px; background: #11151a; }
+.property-map { display: block; width: 100%; height: 100%; border: 0; }
+.map-caption { position: absolute; left: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 20px); padding: 7px 10px; border: 1px solid rgba(48,54,65,.9); border-radius: 10px; background: rgba(11,13,17,.88); color: #f5f7fa; pointer-events: none; }
+.map-caption span { color: #c4cad3; font-size: .78rem; }
 .results { margin-top: 22px; }
 .property-card__facts { gap: 14px; margin: 14px 0; flex-wrap: wrap; }
 .property-card__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -74,5 +76,4 @@ dialog .check-row input { width: auto; margin: 0; }
 @media (min-width: 700px) {
   #property-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   .property-card { margin-top: 14px; }
-  .map-placeholder { min-height: 300px; }
 }
