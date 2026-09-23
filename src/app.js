@@ -17,6 +17,9 @@ const store = createPropertyStore(seedProperties);
 let activeFilter = "all";
 let query = "";
 let preferences = loadPreferences();
+let refreshInFlight = false;
+let pullStartY = null;
+let pullDistance = 0;
 
 function esc(value = "") {
   return String(value).replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
@@ -70,6 +73,29 @@ function renderActivity() {
     : '<li class="muted">No activity yet.</li>';
 }
 
+async function refreshListings(trigger = "manual") {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
+  const buttons = document.querySelectorAll("[data-refresh-listings]");
+  buttons.forEach(button => { button.disabled = true; button.textContent = "Refreshing…"; });
+  document.querySelector("#pull-indicator")?.classList.add("refreshing");
+  try {
+    const found = await searchProviders({ ...preferences, query });
+    store.upsertMany(found);
+    recordActivity("provider-refresh", null, { count: found.length, trigger });
+  } finally {
+    refreshInFlight = false;
+    buttons.forEach(button => { button.disabled = false; button.textContent = "Refresh listings"; });
+    const indicator = document.querySelector("#pull-indicator");
+    if (indicator) {
+      indicator.classList.remove("refreshing", "ready");
+      indicator.style.setProperty("--pull", "0px");
+      indicator.textContent = "Pull to refresh";
+    }
+    renderList();
+  }
+}
+
 function renderList() {
   const visible = visibleProperties();
   document.querySelector("#property-count").textContent = `${visible.length} shown`;
@@ -82,12 +108,17 @@ function renderList() {
 
 app.innerHTML = `<main class="shell">
 <header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></header>
+<div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div>
 <section class="map-panel" aria-label="Property map"><iframe id="property-map" class="property-map" loading="eager" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe><div class="map-caption"><strong>Map</strong><span id="map-summary">Saved properties</span></div></section>
-<section class="search-panel"><label for="property-search">Search properties</label><div class="search-row"><input id="property-search" type="search" placeholder="Address, neighborhood, property…" /><button id="refresh">Refresh</button></div>
-<nav class="filters" aria-label="Property filters"><button class="active" data-filter="all">All</button><button data-filter="rent">Rent</button><button data-filter="buy">Buy</button><button data-filter="shortlist">Shortlist</button></nav>
-<div class="quick-actions"><button id="add-listing">＋ Add listing</button><button id="route-shortlist">Route shortlist</button></div></section>
 <section class="results"><div class="section-heading"><h2>Properties</h2><span id="property-count"></span></div><div id="property-list"></div></section>
 <section class="activity-panel"><div class="section-heading"><h2>Recent activity</h2></div><ul id="activity-list"></ul></section>
+
+<button id="more-button" class="more-button" aria-label="Open Rook actions" aria-haspopup="dialog">•••</button>
+<dialog id="actions-dialog" class="actions-dialog"><form method="dialog"><div class="dialog-heading"><div><p class="eyebrow">ROOK</p><h2>Actions</h2></div><button class="dialog-close" value="cancel" aria-label="Close">×</button></div>
+<label for="property-search">Search properties</label><input id="property-search" type="search" placeholder="Address, neighborhood, property…">
+<nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Shortlist</button></nav>
+<div class="action-menu"><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route shortlist</button><button type="button" data-refresh-listings>Refresh listings</button><button id="open-settings" type="button">Search preferences</button></div>
+</form></dialog>
 
 <dialog id="import-dialog"><form method="dialog"><h2>Add listing</h2><p class="muted">Paste a listing URL. Rook keeps the source and routes it through the shared property model.</p><input id="listing-url" type="url" placeholder="https://…" required /><div class="dialog-actions"><button value="cancel">Cancel</button><button id="import-confirm" value="default">Add</button></div></form></dialog>
 
@@ -99,6 +130,7 @@ app.innerHTML = `<main class="shell">
 <input id="restore-data" type="file" accept="application/json,.json" hidden><div class="dialog-actions"><button id="restore-button" type="button">Restore backup</button><button id="export-data" type="button">Export backup</button><button value="cancel">Cancel</button><button id="save-settings" value="default">Save</button></div></form></dialog>
 </main>`;
 
+document.querySelector("#more-button").addEventListener("click", () => document.querySelector("#actions-dialog").showModal());
 document.querySelector("#property-search").addEventListener("input", e => { query = e.target.value; renderList(); });
 
 document.querySelector(".filters").addEventListener("click", e => {
@@ -170,27 +202,19 @@ document.querySelector("#route-shortlist").addEventListener("click", () => {
   }
 });
 
-document.querySelector("#refresh").addEventListener("click", async e => {
-  const button = e.currentTarget;
-  button.disabled = true;
-  button.textContent = "Refreshing…";
-  try {
-    const found = await searchProviders({ ...preferences, query });
-    store.upsertMany(found);
-    if (found.length) recordActivity("provider-refresh", null, { count: found.length });
-  } finally {
-    button.disabled = false;
-    button.textContent = "Refresh";
-    renderList();
-  }
-});
+document.querySelectorAll("[data-refresh-listings]").forEach(button => button.addEventListener("click", () => refreshListings("manual")));
 
-document.querySelector("#settings-button").addEventListener("click", () => {
+function openSettings() {
   document.querySelector("#pref-min-beds").value = preferences.minBeds ?? 2;
   document.querySelector("#pref-max-price").value = preferences.maxPrice ?? "";
   document.querySelector("#pref-kid-friendly").checked = Boolean(preferences.kidFriendlyPriority);
   document.querySelector("#pref-school").checked = Boolean(preferences.schoolPriority);
   document.querySelector("#settings-dialog").showModal();
+}
+document.querySelector("#settings-button").addEventListener("click", openSettings);
+document.querySelector("#open-settings").addEventListener("click", () => {
+  document.querySelector("#actions-dialog").close();
+  openSettings();
 });
 
 document.querySelector("#save-settings").addEventListener("click", e => {
@@ -233,6 +257,38 @@ document.querySelector("#export-data").addEventListener("click", () => {
   recordActivity("backup-exported", null);
   renderActivity();
 });
+
+document.addEventListener("touchstart", e => {
+  if (window.scrollY > 0 || document.querySelector("dialog[open]")) return;
+  pullStartY = e.touches[0]?.clientY ?? null;
+  pullDistance = 0;
+}, { passive: true });
+
+document.addEventListener("touchmove", e => {
+  if (pullStartY == null || window.scrollY > 0 || refreshInFlight) return;
+  pullDistance = Math.max(0, Math.min(110, (e.touches[0]?.clientY ?? pullStartY) - pullStartY));
+  const indicator = document.querySelector("#pull-indicator");
+  if (!indicator) return;
+  indicator.style.setProperty("--pull", pullDistance + "px");
+  const ready = pullDistance >= 72;
+  indicator.classList.toggle("ready", ready);
+  indicator.textContent = ready ? "Release to refresh" : "Pull to refresh";
+}, { passive: true });
+
+document.addEventListener("touchend", () => {
+  const shouldRefresh = pullStartY != null && pullDistance >= 72 && window.scrollY === 0;
+  pullStartY = null;
+  pullDistance = 0;
+  if (shouldRefresh) refreshListings("pull");
+  else {
+    const indicator = document.querySelector("#pull-indicator");
+    if (indicator) {
+      indicator.classList.remove("ready");
+      indicator.style.setProperty("--pull", "0px");
+      indicator.textContent = "Pull to refresh";
+    }
+  }
+}, { passive: true });
 
 store.subscribe(renderList);
 renderList();
