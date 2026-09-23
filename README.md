@@ -30,3 +30,8 @@ No source-specific behavior should be added directly to property cards or tabs.
 Rook's browser refresh calls the `rook-listings` Supabase Edge Function. Source-specific discovery/extraction remains server-side. The first live adapters use structured listing data from rental search pages and fail independently; the client continues to consume the stable normalized JSON contract. Cross-source deduplication happens both at the backend boundary and in the client provider layer.
 
 The source boundary is intentionally replaceable: maintained open-source discovery/extraction projects or hosted providers can be added without changing property cards, filters, ranking, shortlist state, or follow-up behavior.
+
+
+### Search and lifecycle completion
+
+Rook persists location, radius, bedroom and rent limits, property-type selections, housing exclusions, and family-priority preferences. Existing shortlist/visit/rejection history is migrated into local state without overwriting newer browser changes. Production CI checks the live listing backend, regression suite, required mobile viewport, and search controls before Pages deployment.
