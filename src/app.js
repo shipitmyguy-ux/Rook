@@ -8,7 +8,7 @@ import { rankProperties, rankProperty } from "./core/ranking.js";
 import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
-import { searchProviders } from "./integrations/providers.js";
+import { searchProviders, registerConfiguredProviders } from "./integrations/providers.js";
 import { openDirections, renderPropertyMap } from "./integrations/maps.js";
 import { config } from "./config.js";
 
@@ -20,6 +20,7 @@ let preferences = loadPreferences();
 let refreshInFlight = false;
 let pullStartY = null;
 let pullDistance = 0;
+registerConfiguredProviders();
 
 function esc(value = "") {
   return String(value).replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
@@ -80,7 +81,7 @@ async function refreshListings(trigger = "manual") {
   buttons.forEach(button => { button.disabled = true; button.textContent = "Refreshing…"; });
   document.querySelector("#pull-indicator")?.classList.add("refreshing");
   try {
-    const found = await searchProviders({ ...preferences, query });
+    const found = await searchProviders({ ...preferences, location: config.search.location, query });
     store.upsertMany(found);
     recordActivity("provider-refresh", null, { count: found.length, trigger });
   } finally {
