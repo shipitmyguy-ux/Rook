@@ -1,4 +1,5 @@
 import { normalizeProperty } from "./property.js";
+import { dedupeProperties } from "./dedupe.js";
 
 const STORAGE_KEY = "rook.properties.v1";
 
@@ -9,7 +10,7 @@ export function createPropertyStore(seed = []) {
   function load(fallback) {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      return Array.isArray(saved) ? saved.map(normalizeProperty) : fallback.map(normalizeProperty);
+      return Array.isArray(saved) ? dedupeProperties(saved.map(normalizeProperty)) : fallback.map(normalizeProperty);
     } catch {
       return fallback.map(normalizeProperty);
     }
@@ -35,10 +36,11 @@ export function createPropertyStore(seed = []) {
       if (target) this.update(id, { saved: !target.saved });
     },
     upsert(property) {
-      const normalized = normalizeProperty(property);
-      const index = properties.findIndex(p => p.id === normalized.id);
-      if (index >= 0) properties[index] = normalized;
-      else properties.unshift(normalized);
+      this.upsertMany([property]);
+    },
+    upsertMany(incoming = []) {
+      if (!Array.isArray(incoming) || !incoming.length) return;
+      properties = dedupeProperties([...incoming.map(normalizeProperty), ...properties]).map(normalizeProperty);
       persist();
     }
   };
