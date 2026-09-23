@@ -56,7 +56,21 @@ export function normalizeProviderResult(input = {}, provider = {}) {
   };
 }
 
+export function isUsableListing(property) {
+  if (!property || (!property.address && !property.sourceUrl)) return false;
+  if (property.price != null && (!Number.isFinite(property.price) || property.price <= 0)) return false;
+  if (property.beds != null && (!Number.isFinite(property.beds) || property.beds < 0)) return false;
+  if (property.sourceUrl) {
+    try {
+      const url = new URL(property.sourceUrl);
+      if (!["http:", "https:"].includes(url.protocol)) return false;
+    } catch { return false; }
+  }
+  return true;
+}
+
 export function matchesSearchDefaults(property, criteria = {}) {
+  if (!isUsableListing(property)) return false;
   const minBeds = criteria.minBeds ?? config.search.minBeds;
   if (minBeds && property.beds != null && property.beds < minBeds) return false;
   const maxPrice = criteria.maxPrice;
