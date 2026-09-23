@@ -28,7 +28,11 @@ export function normalizeProperty(input = {}) {
     source: input.source || null,
     sourceUrl: input.sourceUrl || null,
     contactedAt: input.contactedAt || null,
+    contactOutcome: input.contactOutcome || null,
     showingAt: input.showingAt || null,
+    nearSchool: Boolean(input.nearSchool),
+    kidFriendly: Boolean(input.kidFriendly),
+    metadata: input.metadata && typeof input.metadata === "object" ? input.metadata : {},
     updatedAt: input.updatedAt || new Date().toISOString()
   };
 }
@@ -37,14 +41,14 @@ export function searchProperties(properties, query) {
   const q = query.trim().toLowerCase();
   if (!q) return properties;
   return properties.filter(property =>
-    [property.label, property.address, property.type, property.note]
+    [property.label, property.address, property.type, property.note, property.source]
       .filter(Boolean)
       .some(value => String(value).toLowerCase().includes(q))
   );
 }
 
 export function filterProperties(properties, filter) {
-  if (filter === "all") return properties;
-  if (filter === "shortlist") return properties.filter(p => p.saved || p.status === PROPERTY_STATUS.SHORTLISTED);
-  return properties.filter(p => p.listingType === filter);
+  if (filter === "all") return properties.filter(p => p.status !== PROPERTY_STATUS.ARCHIVED);
+  if (filter === "shortlist") return properties.filter(p => (p.saved || p.status === PROPERTY_STATUS.SHORTLISTED) && p.status !== PROPERTY_STATUS.ARCHIVED);
+  return properties.filter(p => p.listingType === filter && p.status !== PROPERTY_STATUS.ARCHIVED);
 }
