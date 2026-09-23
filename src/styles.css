@@ -141,3 +141,27 @@ dialog .check-row input { width: auto; margin: 0; }
   .property-card__facts { gap:9px; }
   dialog { width:calc(100% - 20px); padding:16px; }
 }
+
+
+/* Compact property cards */
+.property-card.compact { padding: 12px 13px; }
+.property-card.compact .property-card__top { gap: 8px; align-items: start; }
+.property-card__identity { min-width: 0; flex: 1; }
+.property-card.compact h2 { margin: 0; font-size: 1rem; line-height: 1.2; }
+.property-card.compact .muted { margin: 3px 0 0; font-size: .76rem; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.property-card.compact .save-button { min-width: 38px; min-height: 38px; padding: 4px; }
+.property-card.compact .property-card__facts { margin-top: 8px; gap: 10px; font-size: .86rem; display: flex; align-items: baseline; flex-wrap: wrap; }
+.property-card.compact .status-row { margin-top: 7px; gap: 5px; }
+.property-card.compact .status-chip { padding: 3px 7px; font-size: .68rem; }
+.lifecycle { text-transform: capitalize; }
+.compact-note { margin: 7px 0 8px; font-size: .78rem; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.compact-actions { display: grid; grid-template-columns: 1fr 1fr 44px; gap: 7px; }
+.property-card.compact .compact-actions button { min-height: 38px; padding: 6px 8px; }
+.property-card__more { margin-top: 8px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
+.property-card__more[hidden] { display: none; }
+.property-card__more button { min-height: 40px; }
+.property-card.expanded .compact-note { white-space: normal; overflow: visible; }
+@media (max-width: 380px) {
+  .property-card.compact { padding: 10px 11px; }
+  .property-card.compact .property-card__facts { gap: 8px; }
+}
