@@ -1,8 +1,8 @@
 export const properties = [
   {
-    id: "timberwood",
-    label: "Timberwood",
-    address: "Fort Collins, CO",
+    id: "timberwood-area",
+    label: "Timberwood area",
+    address: "",
     type: "Rental area",
     listingType: "rent",
     price: null,
@@ -10,17 +10,19 @@ export const properties = [
     baths: null,
     saved: true,
     status: "shortlisted",
+    nearSchool: true,
+    kidFriendly: true,
     note: "Very good area near a school; high interest. Research surrounding apartments and townhomes."
   },
   {
     id: "landing-lemay",
     label: "The Landing at Lemay",
-    address: "Fort Collins, CO",
+    address: "1200 Duff Dr, Fort Collins, CO 80524",
     type: "Apartment",
     listingType: "rent",
-    price: null,
+    price: 1798,
     beds: 2,
-    baths: null,
+    baths: 2,
     saved: true,
     status: "shortlisted",
     note: "Shortlisted for follow-up."
@@ -36,6 +38,46 @@ export const properties = [
     baths: null,
     saved: true,
     status: "shortlisted",
+    nearSchool: true,
     note: "Very high interest. Very close to an elementary school."
+  },
+  {
+    id: "2502-timberwood-k56",
+    label: "2502 Timberwood Dr Unit K56",
+    address: "2502 Timberwood Dr Unit K56, Fort Collins, CO 80528",
+    type: "Rental",
+    listingType: "rent",
+    beds: 2,
+    saved: true,
+    status: "contacted",
+    contactedAt: "2026-09-22T21:09:37Z",
+    contactOutcome: "application",
+    note: "Inquiry sent; rental application started. Property manager indicated showings follow pre-approval."
+  },
+  {
+    id: "3051-sage-creek-g38",
+    label: "3051 Sage Creek Rd Unit G38",
+    address: "3051 Sage Creek Rd Unit G38, Fort Collins, CO",
+    type: "Rental",
+    listingType: "rent",
+    price: 2100,
+    beds: 2,
+    baths: 1.5,
+    saved: true,
+    status: "contacted",
+    contactedAt: "2026-09-22T21:11:55Z",
+    note: "Property manager was notified of interest."
+  },
+  {
+    id: "5225-white-willow",
+    label: "5225 White Willow Dr #C220-1-1",
+    address: "5225 White Willow Dr #C220-1-1, Fort Collins, CO",
+    type: "Rental",
+    listingType: "rent",
+    saved: false,
+    status: "showing-requested",
+    contactedAt: "2026-09-23T22:23:33Z",
+    contactOutcome: "showing-requested",
+    note: "Unit will not be ready to tour until after Sep 28; property contact asked for availability next week."
   }
 ];
