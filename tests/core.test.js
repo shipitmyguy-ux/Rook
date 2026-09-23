@@ -170,3 +170,14 @@ test("email/calendar evidence advances lifecycle without erasing property state"
   assert.equal(scheduled.note, "Interested");
   assert.equal(scheduled.metadata.evidence.length, 1);
 });
+
+
+test("live refresh cannot erase manual lifecycle state or notes", () => {
+  const manual = normalizeProperty({ id:"manual", address:"123 Main St, Fort Collins, CO", saved:true, status:PROPERTY_STATUS.VISITED, note:"Great area", price:1800 });
+  const refreshed = normalizeProperty({ id:"live", address:"123 Main Street, Fort Collins, CO", source:"Live", sourceUrl:"https://example.test/123", price:1750 });
+  const [merged] = dedupeProperties([refreshed, manual]);
+  assert.equal(merged.status, PROPERTY_STATUS.VISITED);
+  assert.equal(merged.saved, true);
+  assert.equal(merged.note, "Great area");
+  assert.equal(merged.price, 1750);
+});
