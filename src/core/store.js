@@ -10,7 +10,7 @@ export function createPropertyStore(seed = []) {
   function load(fallback) {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      return Array.isArray(saved) ? dedupeProperties(saved.map(normalizeProperty)) : fallback.map(normalizeProperty);
+      return Array.isArray(saved) ? dedupeProperties([...fallback.map(normalizeProperty), ...saved.map(normalizeProperty)]) : fallback.map(normalizeProperty);
     } catch {
       return fallback.map(normalizeProperty);
     }
