@@ -72,6 +72,6 @@ export function applyEvidence(property, evidence = {}) {
   }
   if (evidence.occurredAt) patch.contactedAt = property.contactedAt || evidence.occurredAt;
   const prior = Array.isArray(patch.metadata.evidence) ? patch.metadata.evidence : [];
-  patch.metadata.evidence = [...prior, evidence].slice(-20);
+  patch.metadata.evidence = [...prior.filter(item => !evidence.id || item.id !== evidence.id), evidence].slice(-20);
   return normalizeProperty({ ...property, ...patch, id: property.id, updatedAt: new Date().toISOString() });
 }
