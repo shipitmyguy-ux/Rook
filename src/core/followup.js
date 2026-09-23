@@ -9,11 +9,12 @@ export const CONTACT_OUTCOME = Object.freeze({
   CLOSED: "closed"
 });
 
-export function nextFollowUp(property, now = new Date()) {
+export function nextFollowUp(property, now = new Date(), defaultHours = 24) {
   if (!property.contactedAt || [PROPERTY_STATUS.ARCHIVED, PROPERTY_STATUS.REJECTED].includes(property.status)) return null;
   if (property.showingAt) return { kind: "showing", at: property.showingAt };
   const contacted = new Date(property.contactedAt);
-  const due = new Date(contacted.getTime() + 24 * 60 * 60 * 1000);
+  if (Number.isNaN(contacted.getTime())) return null;
+  const due = new Date(contacted.getTime() + defaultHours * 60 * 60 * 1000);
   return { kind: due <= now ? "follow-up-due" : "waiting", at: due.toISOString() };
 }
 
