@@ -50,23 +50,34 @@ function followUpBadge(property) {
   return `<span class="status-chip ${next.kind}">${esc(label)}${detail ? " · " + esc(detail) : ""}</span>`;
 }
 
+function primaryAction(property) {
+  if ([PROPERTY_STATUS.NEW, PROPERTY_STATUS.VIEWED, PROPERTY_STATUS.SHORTLISTED].includes(property.status)) return ["contact", "Contact"];
+  if (property.status === PROPERTY_STATUS.CONTACTED) return ["showing", "Showing"];
+  if ([PROPERTY_STATUS.SHOWING_REQUESTED, PROPERTY_STATUS.SHOWING_SCHEDULED].includes(property.status)) return ["visited", "Visited"];
+  return ["note", "Notes"];
+}
+
 function propertyCard(property) {
   const saved = property.saved || property.status === PROPERTY_STATUS.SHORTLISTED;
   const score = rankProperty(property, preferences);
   const source = property.sourceUrl
     ? `<a class="source-link" href="${esc(property.sourceUrl)}" target="_blank" rel="noopener noreferrer">${esc(property.source || "Listing")}</a>`
     : esc(property.source || "");
-  return `<article class="property-card" data-id="${esc(property.id)}">
-    <div class="property-card__top"><div>
-      <p class="eyebrow">${esc(property.type)} · ${esc(property.status)}</p>
+  const [nextAction, nextLabel] = primaryAction(property);
+  return `<article class="property-card compact" data-id="${esc(property.id)}">
+    <div class="property-card__top"><div class="property-card__identity">
       <h2>${esc(property.label)}</h2>
-      <p class="muted">${esc(property.address || "")}${source ? ` ${source}` : ""}</p>
+      <p class="muted">${esc(property.address || "")}${source ? ` · ${source}` : ""}</p>
     </div><button class="save-button" data-action="save" aria-label="Save ${esc(property.label)}">${saved ? "★" : "☆"}</button></div>
     <div class="property-card__facts"><strong>${property.price ? "$"+property.price.toLocaleString()+(property.listingType==="rent"?"/mo":"") : "Price TBD"}</strong><span>${property.beds ?? "—"} bd</span><span>${property.baths ?? "—"} ba</span><span class="score">Fit ${score}</span></div>
-    <div class="status-row">${followUpBadge(property)}${property.nearSchool ? '<span class="status-chip">Near school</span>' : ""}${property.kidFriendly ? '<span class="status-chip">Kid-friendly</span>' : ""}</div>
-    <p class="note">${esc(property.note || "No visit notes yet.")}</p>
-    <div class="property-card__actions">
+    <div class="status-row"><span class="status-chip lifecycle">${esc(property.status.replaceAll("_"," "))}</span>${property.nearSchool ? '<span class="status-chip">Near school</span>' : ""}${property.kidFriendly ? '<span class="status-chip">Kid-friendly</span>' : ""}</div>
+    <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
+    <div class="property-card__actions compact-actions">
       <button data-action="map">Map</button>
+      <button data-action="${nextAction}">${nextLabel}</button>
+      <button class="more-card-actions" data-action="expand" aria-expanded="false">•••</button>
+    </div>
+    <div class="property-card__more" hidden>
       <button data-action="visited">Visited</button>
       <button data-action="contact">Contacted</button>
       <button data-action="showing">Request showing</button>
@@ -193,6 +204,16 @@ document.querySelector("#property-list").addEventListener("click", e => {
   if (!action || !card) return;
   const p = store.getAll().find(x => x.id === card.dataset.id);
   if (!p) return;
+
+  if (action === "expand") {
+    const more = card.querySelector(".property-card__more");
+    const button = card.querySelector(".more-card-actions");
+    const opening = more.hidden;
+    more.hidden = !opening;
+    card.classList.toggle("expanded", opening);
+    button.setAttribute("aria-expanded", String(opening));
+    return;
+  }
 
   if (action === "save") {
     store.toggleSaved(p.id);
