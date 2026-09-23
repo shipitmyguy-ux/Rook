@@ -10,7 +10,7 @@ import { rankProperty } from "../src/core/ranking.js";
 import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
 import { googleMapsEmbedUrl } from "../src/integrations/maps.js";
-import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults } from "../src/integrations/providers.js";
+import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing } from "../src/integrations/providers.js";
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
   const property = normalizeProperty({
@@ -180,4 +180,11 @@ test("live refresh cannot erase manual lifecycle state or notes", () => {
   assert.equal(merged.saved, true);
   assert.equal(merged.note, "Great area");
   assert.equal(merged.price, 1750);
+});
+
+
+test("listing quality gate rejects malformed prices and unsafe source URLs", () => {
+  assert.equal(isUsableListing({ address:"1 Main St", price:-1 }), false);
+  assert.equal(isUsableListing({ address:"1 Main St", price:1800, sourceUrl:"javascript:alert(1)" }), false);
+  assert.equal(isUsableListing({ address:"1 Main St", price:1800, sourceUrl:"https://example.test/home" }), true);
 });
