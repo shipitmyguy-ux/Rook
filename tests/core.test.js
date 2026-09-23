@@ -196,3 +196,9 @@ test("Google Calendar showing handoff contains property and time", () => {
   assert.match(url.searchParams.get("text"), /Test Home/);
   assert.match(url.searchParams.get("location"), /123 Main St/);
 });
+
+
+test("active feeds hide rejected properties", () => {
+  const rows = [normalizeProperty({ id:"keep", status:PROPERTY_STATUS.NEW }), normalizeProperty({ id:"drop", status:PROPERTY_STATUS.REJECTED })];
+  assert.deepEqual(filterProperties(rows, "all").map(p => p.id), ["keep"]);
+});
