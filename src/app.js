@@ -292,13 +292,20 @@ document.querySelector("#open-settings").addEventListener("click", () => {
 
 document.querySelector("#save-settings").addEventListener("click", e => {
   e.preventDefault();
+  const selectedTypes = [["apartment","#pref-type-apartment"],["townhome","#pref-type-townhome"],["house","#pref-type-house"]].filter(([,selector]) => document.querySelector(selector).checked).map(([type]) => type);
+  if (!selectedTypes.length) {
+    document.querySelector("#pref-type-apartment").setCustomValidity("Select at least one property type");
+    document.querySelector("#pref-type-apartment").reportValidity();
+    return;
+  }
+  document.querySelector("#pref-type-apartment").setCustomValidity("");
   preferences = {
     ...preferences,
     location: document.querySelector("#pref-location").value.trim() || config.search.location,
     radiusMiles: Math.max(1, Number(document.querySelector("#pref-radius").value) || 15),
     minBeds: Number(document.querySelector("#pref-min-beds").value) || 0,
     maxPrice: Number(document.querySelector("#pref-max-price").value) || null,
-    propertyTypes: [["apartment","#pref-type-apartment"],["townhome","#pref-type-townhome"],["house","#pref-type-house"]].filter(([,selector]) => document.querySelector(selector).checked).map(([type]) => type),
+    propertyTypes: selectedTypes,
     excludeIncomeRestricted: document.querySelector("#pref-exclude-income").checked,
     excludeMobileHomes: document.querySelector("#pref-exclude-mobile").checked,
     kidFriendlyPriority: document.querySelector("#pref-kid-friendly").checked,
