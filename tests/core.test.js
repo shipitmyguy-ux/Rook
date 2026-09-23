@@ -106,9 +106,9 @@ test("provider results normalize into the shared property model", () => {
 });
 
 test("provider defaults exclude undersized and restricted housing", () => {
-  assert.equal(matchesSearchDefaults({ beds: 1, listingType: "rent", metadata: {} }, { minBeds: 2 }), false);
-  assert.equal(matchesSearchDefaults({ beds: 2, listingType: "rent", label: "Income restricted apartment", metadata: {} }), false);
-  assert.equal(matchesSearchDefaults({ beds: 2, listingType: "rent", label: "Regular apartment", metadata: {} }), true);
+  assert.equal(matchesSearchDefaults({ address:"1 A St", beds: 1, listingType: "rent", metadata: {} }, { minBeds: 2 }), false);
+  assert.equal(matchesSearchDefaults({ address:"2 A St", beds: 2, listingType: "rent", label: "Income restricted apartment", metadata: {} }), false);
+  assert.equal(matchesSearchDefaults({ address:"3 A St", beds: 2, listingType: "rent", label: "Regular apartment", metadata: {} }), true);
 });
 
 test("generic JSON provider passes search criteria and reads listings payload", async () => {
