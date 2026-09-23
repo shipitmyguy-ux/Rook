@@ -1,6 +1,7 @@
 import { properties as seedProperties } from "./data/properties.js";
 import { createPropertyStore } from "./core/store.js";
-import { filterProperties, searchProperties, PROPERTY_STATUS } from "./core/property.js";
+import { filterProperties, searchProperties, PROPERTY_STATUS, applyEvidence } from "./core/property.js";
+import { housingEvidence } from "./data/evidence.js";
 import { propertyFromUrl } from "./core/import.js";
 import { googleMapsMultiStopUrl } from "./core/route.js";
 import { loadPreferences, savePreferences } from "./core/preferences.js";
@@ -22,6 +23,19 @@ let refreshInFlight = false;
 let pullStartY = null;
 let pullDistance = 0;
 registerConfiguredProviders();
+
+function applySyncedEvidence() {
+  for (const evidence of housingEvidence) {
+    const hint = String(evidence.propertyHint || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const property = store.getAll().find(item => {
+      const address = String(item.address || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const label = String(item.label || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return hint && (address.includes(hint) || hint.includes(address) || label.includes(hint) || hint.includes(label));
+    });
+    if (property) store.upsert(applyEvidence(property, evidence));
+  }
+}
+applySyncedEvidence();
 
 function esc(value = "") {
   return String(value).replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
