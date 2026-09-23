@@ -52,3 +52,25 @@ export function filterProperties(properties, filter) {
   if (filter === "shortlist") return properties.filter(p => (p.saved || p.status === PROPERTY_STATUS.SHORTLISTED) && p.status !== PROPERTY_STATUS.ARCHIVED);
   return properties.filter(p => p.listingType === filter && p.status !== PROPERTY_STATUS.ARCHIVED);
 }
+
+export function applyEvidence(property, evidence = {}) {
+  const patch = { metadata: { ...(property.metadata || {}) } };
+  if (evidence.kind === "showing-scheduled") {
+    patch.status = PROPERTY_STATUS.SHOWING_SCHEDULED;
+    patch.contactOutcome = "showing-scheduled";
+    if (evidence.startsAt || evidence.occurredAt) patch.showingAt = evidence.startsAt || evidence.occurredAt;
+  } else if (evidence.kind === "showing-requested" && ![PROPERTY_STATUS.SHOWING_SCHEDULED, PROPERTY_STATUS.VISITED].includes(property.status)) {
+    patch.status = PROPERTY_STATUS.SHOWING_REQUESTED;
+    patch.contactOutcome = "showing-requested";
+  } else if (evidence.kind === "unavailable") {
+    patch.status = PROPERTY_STATUS.REJECTED;
+    patch.contactOutcome = "unavailable";
+  } else if (["response", "application"].includes(evidence.kind) && property.status === PROPERTY_STATUS.NEW) {
+    patch.status = PROPERTY_STATUS.CONTACTED;
+    patch.contactOutcome = evidence.kind;
+  }
+  if (evidence.occurredAt) patch.contactedAt = property.contactedAt || evidence.occurredAt;
+  const prior = Array.isArray(patch.metadata.evidence) ? patch.metadata.evidence : [];
+  patch.metadata.evidence = [...prior, evidence].slice(-20);
+  return normalizeProperty({ ...property, ...patch, id: property.id, updatedAt: new Date().toISOString() });
+}
