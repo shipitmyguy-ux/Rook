@@ -122,7 +122,7 @@ async function refreshListings(trigger = "manual") {
 
 function renderList() {
   const visible = visibleProperties();
-  document.querySelector("#property-count").textContent = `${visible.length} shown`;
+  document.querySelector("#property-count").textContent = `${visible.length} shown · ${esc(preferences.location || config.search.location)} · ${preferences.radiusMiles || 15} mi`;
   document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("");
   const savedProperties = store.getAll().filter(p => p.saved && p.status !== PROPERTY_STATUS.ARCHIVED);
   document.querySelector("#map-summary").textContent = `${savedProperties.length} saved properties`;
