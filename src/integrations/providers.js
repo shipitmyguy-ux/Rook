@@ -72,6 +72,12 @@ export function isUsableListing(property) {
 export function matchesSearchDefaults(property, criteria = {}) {
   if (!isUsableListing(property)) return false;
   const minBeds = criteria.minBeds ?? config.search.minBeds;
+  const propertyTypes = Array.isArray(criteria.propertyTypes) ? criteria.propertyTypes.map(v => String(v).toLowerCase()) : [];
+  if (propertyTypes.length) {
+    const typeText = [property.type, property.label, property.metadata?.description].filter(Boolean).join(" ").toLowerCase();
+    const aliases = { apartment:/apartment|apt|condo/, townhome:/townhome|townhouse/, house:/house|home|single.family/ };
+    if (!propertyTypes.some(type => aliases[type]?.test(typeText))) return false;
+  }
   if (minBeds && property.beds != null && property.beds < minBeds) return false;
   const maxPrice = criteria.maxPrice;
   if (maxPrice && property.listingType === "rent" && property.price != null && property.price > maxPrice) return false;
