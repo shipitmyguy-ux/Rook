@@ -10,6 +10,7 @@ import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders } from "./integrations/providers.js";
 import { openDirections, renderPropertyMap } from "./integrations/maps.js";
+import { googleCalendarShowingUrl } from "./integrations/calendar.js";
 import { config } from "./config.js";
 
 const app = document.querySelector("#app");
@@ -55,6 +56,7 @@ function propertyCard(property) {
       <button data-action="visited">Visited</button>
       <button data-action="contact">Contacted</button>
       <button data-action="showing">Request showing</button>
+      <button data-action="schedule">Schedule</button>
       <button data-action="note">Notes</button>
       <button data-action="reject">Not interested</button>
       <button data-action="archive">Archive</button>
@@ -186,6 +188,18 @@ document.querySelector("#property-list").addEventListener("click", e => {
   if (action === "reject") {
     store.update(p.id, { status: PROPERTY_STATUS.REJECTED, saved: false });
     recordActivity("rejected", p);
+  }
+  if (action === "schedule") {
+    const value = window.prompt("Showing date/time (example: 2026-09-29 14:30)", "");
+    if (value) {
+      const startsAt = new Date(value);
+      if (!Number.isNaN(startsAt.getTime())) {
+        store.update(p.id, { status: PROPERTY_STATUS.SHOWING_SCHEDULED, showingAt: startsAt.toISOString(), contactOutcome: "showing-scheduled" });
+        recordActivity("showing-scheduled", p, { startsAt: startsAt.toISOString() });
+        const calendarUrl = googleCalendarShowingUrl(p, startsAt);
+        if (calendarUrl) window.open(calendarUrl, "_blank", "noopener,noreferrer");
+      }
+    }
   }
   if (action === "archive") {
     store.update(p.id, { status: PROPERTY_STATUS.ARCHIVED, saved: false });
