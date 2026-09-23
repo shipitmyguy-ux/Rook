@@ -8,6 +8,7 @@ import { rankProperty } from "../src/core/ranking.js";
 import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
 import { googleMapsEmbedUrl } from "../src/integrations/maps.js";
+import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider } from "../src/integrations/providers.js";
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
   const property = normalizeProperty({
@@ -91,4 +92,35 @@ test("embedded map centers on saved property addresses", () => {
   assert.match(url, /^https:\/\/www\.google\.com\/maps\?q=/);
   assert.match(decodeURIComponent(url), /702 E Myrtle St, Fort Collins, CO/);
   assert.match(url, /output=embed$/);
+});
+
+
+test("provider results normalize into the shared property model", () => {
+  const property = normalizeProviderResult({ address: "1 Main St", price: "1800", beds: "2", url: "https://example.com/1" }, { id: "demo", label: "Demo" });
+  assert.equal(property.price, 1800);
+  assert.equal(property.beds, 2);
+  assert.equal(property.source, "Demo");
+  assert.equal(property.metadata.providerId, "demo");
+});
+
+test("provider defaults exclude undersized and restricted housing", () => {
+  assert.equal(matchesSearchDefaults({ beds: 1, listingType: "rent", metadata: {} }, { minBeds: 2 }), false);
+  assert.equal(matchesSearchDefaults({ beds: 2, listingType: "rent", label: "Income restricted apartment", metadata: {} }), false);
+  assert.equal(matchesSearchDefaults({ beds: 2, listingType: "rent", label: "Regular apartment", metadata: {} }), true);
+});
+
+test("generic JSON provider passes search criteria and reads listings payload", async () => {
+  let requested;
+  const provider = createJsonProvider({
+    id: "demo",
+    endpoint: "https://example.com/search",
+    fetchImpl: async url => {
+      requested = String(url);
+      return { ok: true, json: async () => ({ listings: [{ address: "2 Main St" }] }) };
+    }
+  });
+  const rows = await provider.search({ minBeds: 2, maxPrice: 2000 });
+  assert.equal(rows.length, 1);
+  assert.match(requested, /minBeds=2/);
+  assert.match(requested, /maxPrice=2000/);
 });
