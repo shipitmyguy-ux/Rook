@@ -32,6 +32,9 @@ jobs:
           test -f index.html
           test -f src/app.js
           test -f src/styles.css
+          grep -q 'viewport' index.html
+          grep -q 'pref-location' src/app.js
+          grep -q 'pref-type-townhome' src/app.js
       - name: Smoke test live Fort Collins listing backend
         run: |
           curl --fail --retry 2 --max-time 30 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?location=Fort%20Collins%2C%20CO&minBeds=2" -o /tmp/rook-listings.json
