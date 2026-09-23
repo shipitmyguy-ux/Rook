@@ -152,6 +152,16 @@ document.querySelector(".filters").addEventListener("click", e => {
 });
 
 document.querySelector("#property-list").addEventListener("click", e => {
+  const sourceLink = e.target.closest(".source-link");
+  if (sourceLink) {
+    const sourceCard = e.target.closest("[data-id]");
+    const sourceProperty = sourceCard && store.getAll().find(x => x.id === sourceCard.dataset.id);
+    if (sourceProperty?.status === PROPERTY_STATUS.NEW) {
+      store.update(sourceProperty.id, { status: PROPERTY_STATUS.VIEWED });
+      recordActivity("viewed", sourceProperty);
+    }
+    return;
+  }
   const action = e.target.closest("[data-action]")?.dataset.action;
   const card = e.target.closest("[data-id]");
   if (!action || !card) return;
