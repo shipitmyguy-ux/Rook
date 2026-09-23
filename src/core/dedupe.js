@@ -15,22 +15,22 @@ export function dedupeProperties(properties) {
     // Incoming discovery data may refresh factual listing fields, but must never
     // erase user-owned lifecycle state, notes or shortlist decisions.
     seen.set(key, {
-      ...property,
       ...prior,
-      price: property.price ?? prior.price,
-      beds: property.beds ?? prior.beds,
-      baths: property.baths ?? prior.baths,
-      lat: property.lat ?? prior.lat,
-      lng: property.lng ?? prior.lng,
-      source: property.source || prior.source,
-      sourceUrl: property.sourceUrl || prior.sourceUrl,
-      metadata: { ...(property.metadata || {}), ...(prior.metadata || {}) },
+      ...property,
+      price: prior.price ?? property.price,
+      beds: prior.beds ?? property.beds,
+      baths: prior.baths ?? property.baths,
+      lat: prior.lat ?? property.lat,
+      lng: prior.lng ?? property.lng,
+      source: prior.source || property.source,
+      sourceUrl: prior.sourceUrl || property.sourceUrl,
+      metadata: { ...(prior.metadata || {}), ...(property.metadata || {}) },
       saved: Boolean(prior.saved || property.saved),
-      status: prior.status || property.status,
-      note: prior.note || property.note || "",
-      contactedAt: prior.contactedAt || property.contactedAt || null,
-      contactOutcome: prior.contactOutcome || property.contactOutcome || null,
-      showingAt: prior.showingAt || property.showingAt || null
+      status: property.status || prior.status,
+      note: property.note || prior.note || "",
+      contactedAt: property.contactedAt || prior.contactedAt || null,
+      contactOutcome: property.contactOutcome || prior.contactOutcome || null,
+      showingAt: property.showingAt || prior.showingAt || null
     });
   }
   return [...seen.values()];
