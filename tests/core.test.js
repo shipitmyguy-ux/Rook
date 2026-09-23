@@ -3,7 +3,7 @@ import { isShowingEvent, matchCalendarEventToProperty, googleCalendarShowingUrl 
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { normalizeProperty, filterProperties, PROPERTY_STATUS, applyEvidence } from "../src/core/property.js";
+import { normalizeProperty, filterProperties, PROPERTY_STATUS, applyEvidence, classifyPropertyKind } from "../src/core/property.js";
 import { propertyIdentity, dedupeProperties } from "../src/core/dedupe.js";
 import { nextFollowUp, markShowingRequested } from "../src/core/followup.js";
 import { rankProperty } from "../src/core/ranking.js";
@@ -216,4 +216,16 @@ test("search preferences normalize location radius types and exclusions", () => 
 test("provider type filter honors selected rental property types", () => {
   assert.equal(matchesSearchDefaults({ address:"1 Main St", beds:2, type:"Townhouse", label:"Home", listingType:"rent" }, { minBeds:2, propertyTypes:["townhome"] }), true);
   assert.equal(matchesSearchDefaults({ address:"2 Main St", beds:2, type:"Apartment", label:"Apartment", listingType:"rent" }, { minBeds:2, propertyTypes:["house"] }), false);
+});
+
+
+test("shared property kind classifier distinguishes apartments townhomes and houses", () => {
+  assert.equal(classifyPropertyKind({ type:"Apartment" }), "apartment");
+  assert.equal(classifyPropertyKind({ label:"Oak Street Townhouse" }), "townhome");
+  assert.equal(classifyPropertyKind({ metadata:{ description:"Detached single-family home" } }), "house");
+  assert.equal(classifyPropertyKind({ label:"Unknown rental" }), "rental");
+});
+
+test("property kind classifier does not misclassify generic home wording as a house", () => {
+  assert.equal(classifyPropertyKind({ label:"Welcome Home Apartments" }), "apartment");
 });
