@@ -67,7 +67,7 @@ function showPropertyDetails(id, pinned = false) {
   pinnedDetails = pinnedDetails || pinned;
   panel.hidden = false;
   overviewState.container?.dispatchEvent(new CustomEvent("rook:map-select", {
-    detail: { id: String(property.id) }
+    detail: { id: String(property.id), selectionOnly: true }
   }));
 }
 
