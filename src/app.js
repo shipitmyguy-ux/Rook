@@ -86,7 +86,7 @@ function propertyCard(property) {
   const kind = classifyPropertyKind(property);
   const image = firstImageUrl(property) || "";
   const [nextAction, nextIcon, nextLabel] = primaryAction(property);
-  return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" style="--score:${score}">
+  return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" tabindex="0" aria-label="View summary for ${esc(property.label)}" aria-haspopup="dialog" style="--score:${score}">
       <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
     <section class="property-card__media" aria-label="Listing image">
       <div class="property-visual ${image ? "" : "property-visual--fallback"}" ${image ? `style="--property-image:url(\'${esc(image)}\')"` : ""} aria-hidden="true">${!image ? `<span class="property-placeholder-icon">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span>` : ""}</div>
@@ -211,6 +211,7 @@ app.innerHTML = `<main class="shell">
 
 <div id="ignore-toast" class="ignore-toast" role="status" hidden><span id="ignore-message"></span><button id="undo-ignore" type="button">Undo</button><button id="dismiss-ignore" type="button" aria-label="Dismiss">×</button></div>
 <dialog id="ignored-dialog"><div class="dialog-heading"><h2>Ignored properties</h2><button id="close-ignored" class="dialog-close" aria-label="Close ignored properties">×</button></div><p>Restore a property to put it back in your results.</p><div id="ignored-list"></div></dialog>
+<dialog id="property-summary-dialog" aria-labelledby="property-summary-title"><div class="dialog-heading"><h2 id="property-summary-title">Property summary</h2><button id="close-property-summary" class="dialog-close" aria-label="Close property summary">×</button></div><div id="property-summary-content"></div></dialog>
 <dialog id="import-dialog"><form method="dialog"><h2>Add listing</h2><p class="muted">Paste a listing URL. Rook keeps the source and routes it through the shared property model.</p><input id="listing-url" type="url" placeholder="https://…" required /><div class="dialog-actions"><button value="cancel">Cancel</button><button id="import-confirm" value="default">Add</button></div></form></dialog>
 
 <dialog id="settings-dialog"><form method="dialog"><h2>Search preferences</h2>
@@ -288,7 +289,45 @@ document.querySelector(".filters").addEventListener("click", e => {
   renderList();
 });
 
+
+function safeListingUrl(value) {
+  try {
+    const url = new URL(value);
+    return ["https:", "http:"].includes(url.protocol) ? url.href : null;
+  } catch { return null; }
+}
+function openPropertySummary(id) {
+  const property = store.getAll().find(p => p.id === id);
+  if (!property) return;
+  const url = safeListingUrl(property.sourceUrl);
+  const price = property.price ? "$" + Number(property.price).toLocaleString() + (property.listingType === "buy" ? "" : "/mo") : "Price TBD";
+  const searchUrl = "https://www.google.com/search?q=" + encodeURIComponent([property.label, property.address, preferences.location, "rental listing"].filter(Boolean).join(" "));
+  document.querySelector("#property-summary-title").textContent = property.label || "Property summary";
+  document.querySelector("#property-summary-content").innerHTML = `
+    <p>${esc(property.address || "Address unavailable")}</p>
+    <p><strong>${esc(price)}</strong> · ${esc(property.beds ?? "—")} bedrooms · ${esc(property.baths ?? "—")} bathrooms</p>
+    <p>${esc(property.type || "Property")} · ${esc((property.status || "new").replaceAll("-", " "))} · Match ${rankProperty(property, preferences)}</p>
+    ${property.metadata?.description ? `<p>${esc(property.metadata.description)}</p>` : ""}
+    <h3>Notes</h3><p>${esc(property.note || "No notes yet.")}</p>
+    ${url ? "" : "<p class='listing-unavailable'>No original listing link is saved for this property.</p>"}
+    <div class="map-detail-actions"><a href="${esc(url || searchUrl)}" target="_blank" rel="noopener noreferrer">${url ? "Open listing" : "Find listing"}</a><button type="button" id="summary-directions">Directions</button></div>`;
+  document.querySelector("#summary-directions").addEventListener("click", () => openDirections(property));
+  document.querySelector("#property-summary-dialog").showModal();
+}
+document.querySelector("#close-property-summary").addEventListener("click", () => document.querySelector("#property-summary-dialog").close());
+document.querySelector("#property-list").addEventListener("keydown", event => {
+  if (event.target.matches(".property-card") && ["Enter", " "].includes(event.key)) {
+    event.preventDefault();
+    openPropertySummary(event.target.dataset.id);
+  }
+});
+
 document.querySelector("#property-list").addEventListener("click", e => {
+  const summaryCard = e.target.closest(".property-card");
+  if (summaryCard && !e.target.closest("button,a,input,select,textarea")) {
+    openPropertySummary(summaryCard.dataset.id);
+    return;
+  }
   const sourceLink = e.target.closest(".source-link");
   if (sourceLink) {
     const sourceCard = e.target.closest("[data-id]");
