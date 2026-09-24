@@ -11,6 +11,7 @@ import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
 import { normalizePreferences } from "../src/core/preferences.js";
 import { config } from "../src/config.js";
+import { normalizePointStyles, resolvePoiStyle, poiGlyph, poiColorHex } from "../src/core/poi-style.js";
 import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, canonicalAddress } from "../src/integrations/providers.js";
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
@@ -89,6 +90,18 @@ test("backup parser rejects unsupported formats", () => {
   assert.throws(() => parseRookBackup('{"version":2,"properties":[]}'), /Unsupported Rook backup version/);
 });
 
+
+test("address marker styles normalize to predefined icons and colors", () => {
+  const styles = normalizePointStyles({
+    "address-2": { icon:"diamond", color:"blue" },
+    "address-3": { icon:"not-real", color:"not-real" }
+  });
+  assert.deepEqual(styles["address-2"], { icon:"diamond", color:"blue" });
+  assert.equal(styles["address-3"].color, "slate");
+  assert.ok(poiGlyph(styles["address-2"].icon));
+  assert.match(poiColorHex(styles["address-2"].color), /^#/);
+  assert.deepEqual(resolvePoiStyle({ id:"address-2" }, 0, styles), { icon:"diamond", color:"blue" });
+});
 
 test("overview map uses MapLibre with OpenFreeMap", () => {
   assert.equal(config.maps.provider, "maplibre");
