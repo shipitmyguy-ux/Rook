@@ -10,7 +10,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl } from "./integrations/providers.js";
-import { openDirections, renderPropertyMap, renderCardMap, focusPropertyOnMap } from "./integrations/maps.js?v=poi-v2";
+import { openDirections, renderPropertyMap, renderCardMap, focusPropertyOnMap } from "./integrations/maps.js?v=detail-labels-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js";
 import { config } from "./config.js";
 
