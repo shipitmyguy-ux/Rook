@@ -682,7 +682,8 @@ function writeDistanceCache(cache) {
 }
 
 function distanceKey(property, poi, fallbackLocation = "Fort Collins, CO") {
-  const propertyQuery = mapLocationQuery(property, fallbackLocation);
+  const propertyPoint = validCoordinates(property);
+  const propertyQuery = propertyPoint ? `${propertyPoint.lat},${propertyPoint.lng}` : mapLocationQuery(property, fallbackLocation);
   const poiPoint = validCoordinates(poi);
   const poiQuery = poiPoint ? `${poiPoint.lat},${poiPoint.lng}` : (poi.address || poi.query || poi.location || poi.label || poi.id || "");
   return `${normalizeQuery(propertyQuery)}|${normalizeQuery(poiQuery)}`;
