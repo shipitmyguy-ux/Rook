@@ -11,7 +11,7 @@ import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
 import { normalizePreferences } from "../src/core/preferences.js";
 import { config } from "../src/config.js";
-import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing } from "../src/integrations/providers.js";
+import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, canonicalAddress } from "../src/integrations/providers.js";
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
   const property = normalizeProperty({
@@ -97,6 +97,12 @@ test("overview map uses MapLibre with OpenFreeMap", () => {
 });
 
 
+
+test("listing address normalization treats unit designators as the same address", () => {
+  const canonical = canonicalAddress("3051 Sage Creek Road Unit G38, Fort Collins, CO 80528");
+  assert.equal(canonical, canonicalAddress("3051 Sage Creek Rd #G38, Fort Collins, CO 80528"));
+  assert.equal(canonical, canonicalAddress("3051 Sage Creek Rd Apt G-38, Fort Collins, CO 80528"));
+});
 
 test("missing listing resolver distinguishes recovered closed and unknown states", async () => {
   const recovered = await resolveMissingListing(
