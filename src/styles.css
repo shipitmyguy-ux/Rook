@@ -299,7 +299,7 @@ dialog .check-row input { width: auto; margin: 0; }
 
 
 /* Exact composition pass: supplied reference is the layout specification. */
-.overview-map { display:none; }
+.overview-map { display:grid; }
 .results { margin-top:26px; }
 #property-list { display:grid;grid-template-columns:1fr;gap:24px; }
 .property-card.visual-card {
