@@ -442,12 +442,11 @@ function renderList() {
   const visible = visibleProperties();
   document.querySelector("#property-count").textContent = `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`;
   document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("");
-  const mappedProperties = store.getAll().filter(p => ![PROPERTY_STATUS.ARCHIVED, PROPERTY_STATUS.REJECTED].includes(p.status));
-  renderPropertyMap(document.querySelector("#property-map"), mappedProperties, {
+  // Map exactly the same property set the user can currently see.
+  // This keeps list/map completeness as a hard invariant.
+  renderPropertyMap(document.querySelector("#property-map"), visible, {
     activeFilter,
-    propertyTypes: preferences.propertyTypes,
-    minBeds: preferences.minBeds,
-    maxPrice: preferences.maxPrice,
+    dataAlreadyFiltered: true,
     location: preferences.location || config.search.location,
     pointsOfInterest: cardPointsOfInterest(),
     onPropertyAction(action, id) {
