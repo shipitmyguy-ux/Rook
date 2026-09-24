@@ -28,6 +28,7 @@ export function renderPropertyMap(frame, properties = []) {
   frame.title = properties.length > 1 ? `Map centered on ${properties.length} active properties` : properties.length ? "Property map" : "Rook property map";
 }
 
+// Card maps intentionally use label-free raster tiles; interactive overview remains Google Maps.
 const GEOCODE_CACHE_KEY = "rook.geocode-cache.v1";
 let geocodeQueue = Promise.resolve();
 
