@@ -51,7 +51,7 @@ function finish(){
       noHorizontalOverflow:doc.documentElement.scrollWidth<=viewport+2
     };
     const pass=Object.values(checks).every(Boolean);
-    result.textContent=JSON.stringify({pass,viewport,checks,card:{w:Math.round(cardRect.width),h:Math.round(cardRect.height)}});
+    result.textContent=JSON.stringify({pass,viewport,checks,card:{w:Math.round(cardRect.width),h:Math.round(cardRect.height)},map:{status:map.dataset.mapStatus||"",baseLayers:Number(map.dataset.baseLayerCount||0),baseSources:Number(map.dataset.baseSourceCount||0),lastError:map.dataset.mapLastError||""}});
     document.body.dataset.qa=pass?"pass":"fail";
   }catch(error){
     result.textContent=JSON.stringify({pass:false,error:String(error&&error.message||error)});
