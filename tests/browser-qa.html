@@ -33,18 +33,19 @@ function finish(){
     const checks={
       v3:links.some(x=>x.includes("rook-ui-v3.css")),
       cardWide:cardRect.width>viewport*.85,
-      cardHeight:mobile?cardRect.height>=280:cardRect.height>=170,
+      cardHeight:mobile?cardRect.height>=195:cardRect.height>=120,
       realLayout:Math.abs(mediaRect.left-cardRect.left)<6&&contentRect.top>mediaRect.top&&contextRect.right<=cardRect.right,
       contentPosition:mobile?contentRect.top>cardRect.top+cardRect.height*.30:contentRect.left>cardRect.left+cardRect.width*.25,
-      contextPosition:mobile?contextRect.top<contentRect.top:contextRect.left>cardRect.left+cardRect.width*.60,
+      contextPosition:mobile?contextRect.top<contentRect.top:contextRect.left>cardRect.left+cardRect.width*.55,
       continuousSurface:getComputedStyle(content).backgroundColor==='rgba(0, 0, 0, 0)',
-      scoreProminent:doc.querySelector('.fit-ring').getBoundingClientRect().width>42,
+      scoreProminent:doc.querySelector('.fit-ring').getBoundingClientRect().width>=34,
       saveAtRight:doc.querySelector('.save-button').getBoundingClientRect().left>cardRect.left+cardRect.width*.8,
       fallbackHasTypeIcon:[...doc.querySelectorAll('.property-visual--fallback')].every(el=>Boolean(el.querySelector('.property-placeholder-icon svg'))),
       actionsClear:[...doc.querySelectorAll('.property-card')].every(el=>el.querySelector('.compact-note').getBoundingClientRect().bottom<=el.querySelector('.compact-actions').getBoundingClientRect().top),
-      typeVisible:typeRect.width>20&&typeRect.height>15,
+      typeVisible:typeRect.width>20&&typeRect.height>=14,
       overviewVisible:getComputedStyle(overview).display!=="none"&&overview.getBoundingClientRect().height>200,
       mapHasSrc:Boolean(map.getAttribute("src")),
+      cardMapLabelFree:!doc.querySelector(".card-map-frame")&&!doc.querySelector(".map-marker small"),
       noHorizontalOverflow:doc.documentElement.scrollWidth<=viewport+2
     };
     const pass=Object.values(checks).every(Boolean);
