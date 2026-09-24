@@ -335,7 +335,7 @@ function installOverviewLayers(map) {
 
   map.on("mouseenter", ROOK_LAYER_ID, event => {
     map.getCanvas().style.cursor = "pointer";
-    const id = event.features?.[0]?.id;
+    const id = event.features?.[0]?.properties?.id ?? event.features?.[0]?.id;
     if (overviewState.hoveredId && overviewState.hoveredId !== id) setFeatureStateSafe(overviewState.hoveredId, { hovered: false });
     overviewState.hoveredId = id == null ? null : String(id);
     if (overviewState.hoveredId) setFeatureStateSafe(overviewState.hoveredId, { hovered: true });
@@ -349,7 +349,7 @@ function installOverviewLayers(map) {
   });
 
   map.on("click", ROOK_LAYER_ID, event => {
-    const id = event.features?.[0]?.id;
+    const id = event.features?.[0]?.properties?.id ?? event.features?.[0]?.id;
     if (id == null) return;
     selectFeature(String(id));
     showPropertyDetails(String(id), true);
@@ -617,4 +617,5 @@ export function openDirections(property) {
   const url = googleMapsDirectionsUrl(property);
   if (url) window.open(url, "_blank", "noopener,noreferrer");
 }
+
 

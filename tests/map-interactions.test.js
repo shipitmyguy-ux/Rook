@@ -43,14 +43,15 @@ test("overview shows POIs and property details with working actions", async () =
   assert.deepEqual(markerPoint, [-105.1, 40.55]);
   assert.match(markerElement.textContent, /Sister-in-law/);
   assert.deepEqual(fitted, [[-105.1, 40.5], [-105, 40.55]]);
-  events["mouseenter:rook-listings-points"]({ features: [{ id: "home" }] });
+  events["mouseenter:rook-listings-points"]({ features: [{ properties: { id: "home" } }] });
   assert.equal(panel.hidden, false);
   assert.equal(panel.children[0].textContent, "Test home");
   assert.match(panel.children[2].textContent, /2,100/);
-  events["click:rook-listings-points"]({ features: [{ id: "home" }] });
+  events["click:rook-listings-points"]({ features: [{ properties: { id: "home" } }] });
   panel.children.at(-1).children.find(child => child.textContent === "Save").handlers.click();
   assert.deepEqual(action, ["save", "home"]);
   panel.children.at(-1).children.find(child => child.textContent === "Close details").handlers.click();
   assert.equal(panel.hidden, true);
 });
+
 

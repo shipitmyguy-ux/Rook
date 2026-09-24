@@ -66,7 +66,9 @@ function cardPointsOfInterest() {
     kind: "primary",
     primary: true,
     label: "Sister-in-law",
-    address: "938 Ridge Runner Dr, Fort Collins, CO"
+    address: "938 Ridge Runner Dr, Fort Collins, CO",
+    lat: 40.6001839,
+    lng: -105.0107885
   };
   const configured = Array.isArray(preferences.pointsOfInterest)
     ? preferences.pointsOfInterest.filter(p => p && (p.address || p.query || p.location || (p.lat != null && p.lng != null)))
@@ -465,5 +467,6 @@ document.addEventListener("touchend", () => {
 store.subscribe(renderList);
 renderList();
 queueMicrotask(() => refreshListings("startup"));
+
 
 
