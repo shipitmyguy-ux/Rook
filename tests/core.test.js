@@ -131,6 +131,30 @@ test("live source URL overrides a stale closed state during dedupe", () => {
   assert.equal(merged.listingState, "active");
 });
 
+test("resolver enrichment preserves recovered price and source URL", async () => {
+  const enriched = await resolveMissingListing(
+    { address:"303 W Prospect Rd, Fort Collins, CO 80526", label:"Prospect Station", price:null },
+    { location:"Fort Collins, CO" },
+    async () => ({ ok:true, json:async()=>({
+      state:"active",
+      checkedAt:"2026-09-24T17:00:00Z",
+      listing:{
+        address:"303 W Prospect Rd, Fort Collins, CO 80526",
+        label:"Prospect Station",
+        price:1595,
+        beds:2,
+        baths:2,
+        sourceUrl:"https://www.prospectstation.com/floorplans/303-w-prospect-rd-2-bed%2C-2-bath"
+      }
+    }) })
+  );
+  assert.equal(enriched.state, "active");
+  assert.equal(enriched.listing.price, 1595);
+  assert.equal(enriched.listing.beds, 2);
+  assert.equal(enriched.listing.baths, 2);
+  assert.match(enriched.url, /prospectstation\.com/);
+});
+
 test("provider results normalize into the shared property model", () => {
   const property = normalizeProviderResult({ address: "1 Main St", price: "1800", beds: "2", url: "https://example.com/1" }, { id: "demo", label: "Demo" });
   assert.equal(property.price, 1800);
