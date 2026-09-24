@@ -62,6 +62,8 @@ function propertyKindIcon(kind) {
   return kind === "apartment" ? "▦" : kind === "townhome" ? "▥" : kind === "house" ? "⌂" : "◇";
 }
 
+function icon(name) { const paths = {"pin":"<path d=\"M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z\"/><circle cx=\"12\" cy=\"10\" r=\"2.5\"/>","phone":"<path d=\"m5 3 4 1 1 5-3 2a16 16 0 0 0 6 6l2-3 5 1 1 4c-1 5-8 3-13-2S1 4 5 3Z\"/>","bed":"<path d=\"M3 18V5m18 13V9H3m0 6h18M6 9V6h6v3\"/>","bath":"<path d=\"M3 12h18l-2 7H5Zm3 7-1 3m13-3 1 3M6 12V5a3 3 0 0 1 6 0\"/>","calendar":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M7 2v6m10-6v6M3 11h18\"/>","house":"<path d=\"m2 11 10-9 10 9M5 9v12h5v-7h4v7h5V9\"/>","tree":"<path d=\"m12 2-7 9h4l-5 7h6v4h4v-4h6l-5-7h4Z\"/>","school":"<path d=\"m2 8 10-5 10 5-10 5Zm4 3v6q6 6 12 0v-6M22 8v9\"/>","star":"<path d=\"m12 2 3 6 7 1-5 5 1 8-6-4-6 4 1-8-5-5 7-1Z\"/>","more":"<circle cx=\"4\" cy=\"12\" r=\"1\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/><circle cx=\"20\" cy=\"12\" r=\"1\"/>"}; return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.house}</svg>`; }
+
 function propertyCard(property) {
   const saved = property.saved || property.status === PROPERTY_STATUS.SHORTLISTED;
   const score = Math.max(0, Math.min(100, rankProperty(property, preferences)));
@@ -69,29 +71,31 @@ function propertyCard(property) {
   const image = property.image || property.imageUrl || property.metadata?.image || "";
   const [nextAction, nextIcon, nextLabel] = primaryAction(property);
   return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" style="--score:${score}">
+      <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
     <section class="property-card__media" aria-label="Listing image">
       <div class="property-visual ${image ? "" : "property-visual--fallback"}" ${image ? `style="--property-image:url(\'${esc(image)}\')"` : ""} aria-hidden="true"></div>
+      ${!image ? '<span class="illustration-label">Illustrative image · not listing photo</span>' : ""}
       <div class="property-type-mark" title="${kind}"><span>${propertyKindIcon(kind)}</span><small>${kind}</small></div>
-      <button class="save-button" data-action="save" aria-label="Save ${esc(property.label)}">${saved ? "★" : "☆"}</button>
     </section>
     <section class="property-card__summary">
-      <header class="property-card__identity"><h2>${esc(property.label)}</h2><p class="muted">⌖ ${esc(property.address || "")}</p></header>
-      <div class="property-card__facts"><strong>${property.price ? "$"+property.price.toLocaleString()+(property.listingType==="rent"?"/mo":"") : "Price TBD"}</strong><span>▰ ${property.beds ?? "—"} bd</span><span>♨ ${property.baths ?? "—"} ba</span></div>
+      <header class="property-card__identity"><h2>${esc(property.label)}</h2><p class="muted">${icon("pin")} ${esc(property.address || preferences.location || config.search.location)}</p></header>
+      <div class="property-card__facts"><strong>${property.price ? "$"+property.price.toLocaleString()+(property.listingType==="rent"?"/mo":"") : "Price TBD"}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span></div>
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
-        <button class="status-action" data-action="${nextAction}" aria-label="${nextLabel}" title="${nextLabel}"><span>${nextIcon}</span><b>${esc(property.status.replaceAll("_"," "))}</b></button>
-        <button class="icon-action" data-action="map" aria-label="Focus on map" title="Focus on map">●</button>
-        <button class="icon-action" data-action="contact" aria-label="Contact" title="Contact">☎</button>
-        <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">•••</button>
+        <button class="status-action" data-action="${nextAction}" aria-label="${nextLabel}" title="${nextLabel}"><span>${icon("calendar")}</span><b>${esc(property.status.replaceAll(/[_-]/g," "))}</b></button>
+        <button class="icon-action" data-action="map" aria-label="Focus on map" title="Focus on map">${icon("pin")}</button>
+        <button class="icon-action" data-action="contact" aria-label="Contact" title="Contact">${icon("phone")}</button>
+        <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">${icon("more")}</button>
       </div>
       <div class="property-card__more" hidden>
         <button data-action="visited">Visited</button><button data-action="contact">Contacted</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Not interested</button><button data-action="archive">Archive</button>
       </div>
     </section>
+    <div class="fit-ring" title="Match score ${score}" aria-label="Match score ${score}"><span>${score}</span></div>
     <aside class="property-card__context" aria-label="Neighborhood context">
-      <div class="context-heading"><span>AREA FIT</span><div class="fit-ring" aria-label="Match score ${score}"><span>${score}</span></div></div>
-      <div class="card-map-art" aria-hidden="true"><div class="map-grid"></div><span class="poi property-pin">⌂</span><span class="poi family-pin">⌂</span><span class="poi park-pin">♠</span><span class="poi school-pin">◆</span></div>
-      <p>Nearby places at a glance</p>
+
+      <div class="card-map-art" aria-hidden="true"><div class="map-grid"></div><span class="poi property-pin">${icon("house")}</span><span class="poi family-pin">${icon("house")}</span><span class="poi park-pin">${icon("tree")}</span><span class="poi school-pin">${icon("school")}</span></div>
+      <p>Illustrative neighborhood map</p>
     </aside>
   </article>`;
 }
