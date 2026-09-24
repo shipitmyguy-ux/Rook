@@ -300,6 +300,29 @@ function normalizeSearchResultUrl(raw: unknown) {
   try { return new URL(value).toString(); } catch { return ""; }
 }
 
+function listingFromBrowserIndex(snapshot: any, address: string, label: string, source: string) {
+  const links = Array.isArray(snapshot?.links) ? snapshot.links : [];
+  for (const link of links) {
+    const context = [link?.text, link?.context].filter(Boolean).join(" ");
+    const matchesAddress = Boolean(address && sameAddress(context, address));
+    const matchesLabel = Boolean(label && sameAddress(context, label));
+    if (!matchesAddress && !matchesLabel) continue;
+
+    const candidateUrl = normalizeSearchResultUrl(link?.href);
+    if (!candidateUrl) continue;
+    try {
+      const candidate = new URL(candidateUrl);
+      if (!isAllowedListingHost(candidate.hostname)) continue;
+      return fallbackListingFromText(context, candidate.toString(), {
+        address,
+        label,
+        source: source || candidate.hostname
+      });
+    } catch {}
+  }
+  return null;
+}
+
 function primaryStatusText(html: string) {
   const parts:string[] = [];
   const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
@@ -436,6 +459,29 @@ async function resolveListing(address: string, label: string, location: string, 
         if (inspected.closed) {
           closedEvidence.push({ source:sourcePage.source, url:match.sourceUrl, reason:inspected.reason || "direct-status" });
         }
+      }
+    } catch {}
+  }
+
+  // High-value rendered rental indexes are the next recovery tier. This catches
+  // listings hidden behind client-rendered cards that do not expose useful JSON-LD
+  // to a lightweight fetch, while still requiring an exact address/unit match.
+  const browserIndexPages = [
+    { source:"Zillow", url:`https://www.zillow.com/${citySlug}-co/rentals/` },
+    { source:"Apartments.com", url:`https://www.apartments.com/${citySlug}-co/` }
+  ];
+  for (const sourcePage of browserIndexPages) {
+    try {
+      const snapshot = await browserSnapshot(sourcePage.url);
+      const match = listingFromBrowserIndex(snapshot, address, label, sourcePage.source);
+      if (match?.sourceUrl) {
+        return {
+          state:"active",
+          listing:match,
+          checkedAt,
+          checkedSources:successfulSources,
+          browserIndex:true
+        };
       }
     } catch {}
   }
