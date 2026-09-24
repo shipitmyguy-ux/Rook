@@ -90,3 +90,5 @@ button:focus-visible{outline:3px solid #78ffee;outline-offset:3px}
 .card-map-art .maplibregl-ctrl-attrib{font-size:7px;line-height:10px;background:#09212acc;color:#91aeb7;padding:1px 3px}
 .card-map-art .maplibregl-ctrl-attrib a{color:#91aeb7}
 .card-map-art .maplibregl-canvas{outline:0}
+
+#ignored-dialog{max-height:80vh;overflow:auto}.property-type-icon{padding-top:1px}
