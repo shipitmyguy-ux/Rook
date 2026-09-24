@@ -4,7 +4,8 @@ const MAPLIBRE_SCRIPT_URL = "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-
 const OPENFREEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const OPENFREEMAP_FALLBACK_STYLE_URL = "https://tiles.openfreemap.org/styles/bright";
 const ROOK_SOURCE_ID = "rook-listings";
-const ROOK_LAYER_ID = "rook-listings-points";
+const ROOK_LAYER_ID = "rook-listings-symbols";
+const ROOK_HALO_LAYER_ID = "rook-listings-halo";
 const FORT_COLLINS_CENTER = [-105.0844, 40.5853];
 
 let maplibrePromise = null;
@@ -344,6 +345,77 @@ async function geocodeMissingOverviewProperties() {
   updateOverviewSource({ fit: !overviewState.fittedOnce });
 }
 
+function propertyIconCanvas(kind, color) {
+  if (typeof document === "undefined") return null;
+  const size = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = color;
+  ctx.strokeStyle = "#07111b";
+  ctx.lineWidth = 4;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  if (kind === "apartment") {
+    ctx.fillRect(15, 8, 34, 48);
+    ctx.beginPath();
+    for (const y of [18, 29, 40]) {
+      ctx.moveTo(23, y); ctx.lineTo(29, y);
+      ctx.moveTo(35, y); ctx.lineTo(41, y);
+    }
+    ctx.moveTo(28, 56); ctx.lineTo(28, 47); ctx.lineTo(36, 47); ctx.lineTo(36, 56);
+    ctx.stroke();
+  } else if (kind === "townhome") {
+    ctx.beginPath();
+    ctx.moveTo(6, 28); ctx.lineTo(18, 12); ctx.lineTo(30, 28); ctx.lineTo(30, 56); ctx.lineTo(6, 56); ctx.closePath();
+    ctx.moveTo(30, 28); ctx.lineTo(42, 12); ctx.lineTo(58, 28); ctx.lineTo(58, 56); ctx.lineTo(30, 56); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(13, 36); ctx.lineTo(23, 36);
+    ctx.moveTo(37, 36); ctx.lineTo(49, 36);
+    ctx.moveTo(16, 56); ctx.lineTo(16, 46); ctx.lineTo(22, 46); ctx.lineTo(22, 56);
+    ctx.moveTo(40, 56); ctx.lineTo(40, 46); ctx.lineTo(46, 46); ctx.lineTo(46, 56);
+    ctx.stroke();
+  } else if (kind === "house") {
+    ctx.beginPath();
+    ctx.moveTo(7, 29); ctx.lineTo(32, 7); ctx.lineTo(57, 29); ctx.lineTo(57, 56); ctx.lineTo(7, 56); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.rect(16, 34, 10, 10);
+    ctx.rect(38, 34, 10, 10);
+    ctx.moveTo(29, 56); ctx.lineTo(29, 44); ctx.lineTo(37, 44); ctx.lineTo(37, 56);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(32, 7); ctx.lineTo(56, 32); ctx.lineTo(32, 57); ctx.lineTo(8, 32); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(20, 32); ctx.lineTo(44, 32);
+    ctx.moveTo(32, 20); ctx.lineTo(32, 44);
+    ctx.stroke();
+  }
+  return canvas;
+}
+
+function ensurePropertyTypeIcons(map) {
+  if (typeof map.addImage !== "function") return;
+  const icons = [
+    ["rook-property-apartment", "apartment", "#4ba8ff"],
+    ["rook-property-townhome", "townhome", "#aa75ff"],
+    ["rook-property-house", "house", "#4fd59b"],
+    ["rook-property-generic", "rental", "#58eadc"]
+  ];
+  for (const [name, kind, color] of icons) {
+    if (typeof map.hasImage === "function" && map.hasImage(name)) continue;
+    const canvas = propertyIconCanvas(kind, color);
+    if (canvas) map.addImage(name, canvas, { pixelRatio: 2 });
+  }
+}
+
 function installOverviewLayers(map) {
   if (!map.getSource(ROOK_SOURCE_ID)) {
     map.addSource(ROOK_SOURCE_ID, {
@@ -351,31 +423,68 @@ function installOverviewLayers(map) {
       data: { type: "FeatureCollection", features: [] }
     });
   }
-  if (!map.getLayer(ROOK_LAYER_ID)) {
+
+  ensurePropertyTypeIcons(map);
+
+  if (!map.getLayer(ROOK_HALO_LAYER_ID)) {
     map.addLayer({
-      id: ROOK_LAYER_ID,
+      id: ROOK_HALO_LAYER_ID,
       type: "circle",
       source: ROOK_SOURCE_ID,
       paint: {
         "circle-radius": [
           "case",
-          ["boolean", ["feature-state", "selected"], false], 11,
-          ["boolean", ["feature-state", "hovered"], false], 9,
-          7
+          ["boolean", ["feature-state", "selected"], false], 15,
+          ["boolean", ["feature-state", "hovered"], false], 12,
+          0
         ],
-        "circle-color": [
-          "match", ["get", "propertyType"],
-          "apartment", "#4ba8ff",
-          "townhome", "#aa75ff",
-          "house", "#4fd59b",
-          "#58eadc"
+        "circle-color": "#ffc429",
+        "circle-opacity": [
+          "case",
+          ["boolean", ["feature-state", "selected"], false], 0.3,
+          ["boolean", ["feature-state", "hovered"], false], 0.2,
+          0
         ],
-        "circle-opacity": ["case", ["boolean", ["feature-state", "dimmed"], false], 0.28, 0.94],
-        "circle-stroke-width": ["case", ["boolean", ["feature-state", "selected"], false], 3, 1.5],
-        "circle-stroke-color": ["case", ["boolean", ["feature-state", "selected"], false], "#ffc429", "#07111b"]
+        "circle-stroke-width": [
+          "case",
+          ["boolean", ["feature-state", "selected"], false], 2,
+          ["boolean", ["feature-state", "hovered"], false], 1,
+          0
+        ],
+        "circle-stroke-color": "#ffc429"
       }
     });
   }
+
+  if (!map.getLayer(ROOK_LAYER_ID)) {
+    map.addLayer({
+      id: ROOK_LAYER_ID,
+      type: "symbol",
+      source: ROOK_SOURCE_ID,
+      layout: {
+        "icon-image": [
+          "match", ["get", "propertyType"],
+          "apartment", "rook-property-apartment",
+          "townhome", "rook-property-townhome",
+          "house", "rook-property-house",
+          "rook-property-generic"
+        ],
+        "icon-size": 0.62,
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+        "icon-anchor": "center"
+      },
+      paint: {
+        "icon-opacity": [
+          "case",
+          ["boolean", ["feature-state", "dimmed"], false], 0.3,
+          0.96
+        ]
+      }
+    });
+  }
+
+  if (overviewState.container) overviewState.container.dataset.mapMarkerMode = "property-icons";
 
   map.on("mouseenter", ROOK_LAYER_ID, event => {
     map.getCanvas().style.cursor = "pointer";
