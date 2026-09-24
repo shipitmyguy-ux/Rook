@@ -10,7 +10,7 @@ import { rankProperty } from "../src/core/ranking.js";
 import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
 import { normalizePreferences } from "../src/core/preferences.js";
-import { googleMapsEmbedUrl } from "../src/integrations/maps.js";
+import { config } from "../src/config.js";
 import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing } from "../src/integrations/providers.js";
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
@@ -90,11 +90,10 @@ test("backup parser rejects unsupported formats", () => {
 });
 
 
-test("embedded map centers on saved property addresses", () => {
-  const url = googleMapsEmbedUrl([{ address: "702 E Myrtle St, Fort Collins, CO" }]);
-  assert.match(url, /^https:\/\/www\.google\.com\/maps\?q=/);
-  assert.match(decodeURIComponent(url), /702 E Myrtle St, Fort Collins, CO/);
-  assert.match(url, /output=embed$/);
+test("overview map uses MapLibre with OpenFreeMap", () => {
+  assert.equal(config.maps.provider, "maplibre");
+  assert.equal(config.maps.tiles, "openfreemap");
+  assert.match(config.maps.styleUrl, /^https:\/\/tiles\.openfreemap\.org\/styles\//);
 });
 
 
