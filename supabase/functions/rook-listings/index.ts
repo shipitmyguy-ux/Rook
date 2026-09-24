@@ -248,12 +248,56 @@ function canonicalAddress(value: unknown) {
   return String(value || "").toLowerCase()
     .replace(/\b(street)\b/g,"st").replace(/\b(avenue)\b/g,"ave").replace(/\b(road)\b/g,"rd")
     .replace(/\b(drive)\b/g,"dr").replace(/\b(lane)\b/g,"ln").replace(/\b(court)\b/g,"ct")
-    .replace(/\b(boulevard)\b/g,"blvd").replace(/[^a-z0-9]/g,"");
+    .replace(/\b(boulevard)\b/g,"blvd")
+    .replace(/\b(?:apartment|apt|unit|suite|ste)\s*#?\s*([a-z0-9-]+)\b/g,"unit$1")
+    .replace(/#\s*([a-z0-9-]+)\b/g,"unit$1")
+    .replace(/[^a-z0-9]/g,"");
 }
 
 function sameAddress(a: unknown, b: unknown) {
   const left = canonicalAddress(a), right = canonicalAddress(b);
   return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
+}
+
+const ALLOWED_LISTING_HOSTS = [
+  "realtor.com", "rent.com", "apartmentlist.com", "zillow.com", "trulia.com",
+  "apartments.com", "rentcafe.com", "redfin.com", "homes.com", "hotpads.com",
+  "zumper.com", "forrent.com"
+];
+
+function isAllowedListingHost(hostname: string) {
+  const host = String(hostname || "").toLowerCase().replace(/^www\./, "");
+  return ALLOWED_LISTING_HOSTS.some(domain => host === domain || host.endsWith("." + domain));
+}
+
+function normalizeSearchResultUrl(raw: unknown) {
+  let value = String(raw || "").trim().replace(/&amp;/gi, "&");
+  if (!value) return "";
+  for (let pass = 0; pass < 3; pass += 1) {
+    try {
+      const parsed = new URL(value, "https://www.google.com/");
+      const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+      const redirectTarget =
+        ((host === "google.com" || host.endsWith(".google.com")) && parsed.pathname === "/url")
+          ? (parsed.searchParams.get("q") || parsed.searchParams.get("url"))
+          : (host === "duckduckgo.com" || host.endsWith(".duckduckgo.com"))
+            ? parsed.searchParams.get("uddg")
+            : null;
+      if (!redirectTarget) return parsed.toString();
+      const decoded = decodeURIComponent(redirectTarget);
+      if (!decoded || decoded === value) return "";
+      value = decoded;
+    } catch {
+      try {
+        const decoded = decodeURIComponent(value);
+        if (!decoded || decoded === value) return "";
+        value = decoded;
+      } catch {
+        return "";
+      }
+    }
+  }
+  try { return new URL(value).toString(); } catch { return ""; }
 }
 
 function primaryStatusText(html: string) {
@@ -404,7 +448,6 @@ async function resolveListing(address: string, label: string, location: string, 
     "https://www.bing.com/search?q=" + encodeURIComponent(query),
     "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query)
   ];
-  const allowedHosts = /(realtor\.com|rent\.com|apartmentlist\.com|zillow\.com|trulia\.com|apartments\.com|rentcafe\.com)$/i;
   const seenCandidates = new Set<string>();
   for (const searchUrl of searchUrls) {
     try {
@@ -415,10 +458,10 @@ async function resolveListing(address: string, label: string, location: string, 
       if (snippet) {
         const snippetUrl = sourceUrl || "https://" + (knownHost || "example.com") + "/";
         const snippetListing = fallbackListingFromText(snippet, snippetUrl, { address, label, source:knownHost || "search-result" });
-        if (snippetListing.price || snippetListing.beds || snippetListing.baths) {
+        if (sourceUrl && (snippetListing.price || snippetListing.beds || snippetListing.baths)) {
           return {
             state:"active",
-            listing:{ ...snippetListing, sourceUrl:sourceUrl || snippetListing.sourceUrl },
+            listing:{ ...snippetListing, sourceUrl },
             checkedAt,
             checkedSources:successfulSources,
             searchSnippet:true
@@ -437,9 +480,11 @@ async function resolveListing(address: string, label: string, location: string, 
       ];
       for (const href of hrefs) {
         try {
-          const candidate = new URL(href);
+          const candidateUrl = normalizeSearchResultUrl(href);
+          if (!candidateUrl) continue;
+          const candidate = new URL(candidateUrl);
           const hostname = candidate.hostname.replace(/^www\./,"");
-          if (!allowedHosts.test(hostname)) continue;
+          if (!isAllowedListingHost(hostname)) continue;
           const normalizedCandidate = candidate.toString();
           if (seenCandidates.has(normalizedCandidate)) continue;
           seenCandidates.add(normalizedCandidate);
@@ -490,9 +535,11 @@ async function resolveListing(address: string, label: string, location: string, 
     const links = Array.isArray(snapshot?.links) ? snapshot.links : [];
     for (const link of links) {
       try {
-        const candidate = new URL(String(link?.href || ""));
+        const candidateUrl = normalizeSearchResultUrl(link?.href);
+        if (!candidateUrl) continue;
+        const candidate = new URL(candidateUrl);
         const hostname = candidate.hostname.replace(/^www\./,"");
-        if (!allowedHosts.test(hostname)) continue;
+        if (!isAllowedListingHost(hostname)) continue;
         const linkTextRaw = String(link?.text || "");
         const linkContext = String(link?.context || "");
         const linkText = linkTextRaw.toLowerCase();
