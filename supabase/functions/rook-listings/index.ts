@@ -158,7 +158,7 @@ async function inspectListingUrl(url: string) {
   }
 }
 
-async function resolveListing(address: string, label: string, location: string) {
+async function resolveListing(address: string, label: string, location: string, sourceUrl = "") {
   const checkedAt = new Date().toISOString();
   const citySlug = location.toLowerCase().replace(/,.*$/, "").trim().replace(/[^a-z0-9]+/g, "-");
   const sourcePages = [
@@ -166,6 +166,37 @@ async function resolveListing(address: string, label: string, location: string) 
     { id:"rent", source:"Rent.com", url:`https://www.rent.com/colorado/${citySlug}-apartments` },
     { id:"apartmentlist", source:"Apartment List", url:`https://www.apartmentlist.com/co/${citySlug}` }
   ];
+
+  if (sourceUrl) {
+    try {
+      const direct = new URL(sourceUrl);
+      const inspected = await inspectListingUrl(direct.toString());
+      if (inspected.reachable && !inspected.closed) {
+        const rows = jsonLdListings(inspected.html, direct.hostname, direct.toString());
+        const match = rows.find(row =>
+          (address && sameAddress(row.address, address)) ||
+          (!address && canonicalAddress(row.label) === canonicalAddress(label))
+        ) || rows[0];
+        if (match) {
+          return {
+            state:"active",
+            listing:{ ...match, sourceUrl:direct.toString() },
+            checkedAt,
+            checkedSources:1
+          };
+        }
+      }
+      if (inspected.closed) {
+        return {
+          state:"closed",
+          listing:null,
+          checkedAt,
+          checkedSources:1,
+          evidence:{ confirmed:true, kind:"direct-listing-status", matches:[{ source:direct.hostname, url:direct.toString(), reason:inspected.reason || "direct-status" }] }
+        };
+      }
+    } catch {}
+  }
 
   let successfulSources = 0;
   const closedEvidence:any[] = [];
@@ -203,7 +234,7 @@ async function resolveListing(address: string, label: string, location: string) 
         const inspected = await inspectListingUrl(candidate.toString());
         if (!inspected.reachable && !inspected.closed) continue;
         const rows = inspected.html ? jsonLdListings(inspected.html, candidate.hostname, candidate.toString()) : [];
-        const match = rows.find(row => sameAddress(row.address, address));
+        const match = rows.find(row => sameAddress(row.address, address) || (!address && canonicalAddress(row.label) === canonicalAddress(label)));
         if (match && inspected.reachable && !inspected.closed) {
           return { state:"active", listing:{ ...match, sourceUrl:candidate.toString() }, checkedAt, checkedSources:successfulSources };
         }
@@ -237,8 +268,9 @@ Deno.serve(async (req: Request) => {
   if (url.searchParams.get("resolve") === "1") {
     const address = (url.searchParams.get("address") || "").trim();
     const label = (url.searchParams.get("label") || "").trim();
-    if (!address && !label) return new Response(JSON.stringify({ state:"unknown", listing:null, checkedAt:new Date().toISOString(), error:"address or label required" }), { status:400, headers:corsHeaders });
-    const result = await resolveListing(address, label, location);
+    const sourceUrl = (url.searchParams.get("sourceUrl") || "").trim();
+    if (!address && !label && !sourceUrl) return new Response(JSON.stringify({ state:"unknown", listing:null, checkedAt:new Date().toISOString(), error:"address, label, or sourceUrl required" }), { status:400, headers:corsHeaders });
+    const result = await resolveListing(address, label, location, sourceUrl);
     return new Response(JSON.stringify(result), { headers:corsHeaders });
   }
   const minBeds = Number(url.searchParams.get("minBeds") || "2");
