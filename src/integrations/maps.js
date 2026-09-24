@@ -93,7 +93,7 @@ async function updateOverviewPois() {
     const glyph = point.primary ? "★" : poiGlyph(style.icon);
     const displayAddress = point.address || point.query || point.location || point.label || "Saved address";
     element.textContent = glyph;
-    element.style.setProperty("--poi-color", poiColorHex(style.color));
+    element.style?.setProperty?.("--poi-color", poiColorHex(style.color));
     element.title = displayAddress;
     element.setAttribute("aria-label", displayAddress);
     const popupContent = document.createElement("div");
@@ -951,7 +951,7 @@ export async function renderCardMap(container, property, pointsOfInterest = [], 
         if (p.kind !== "property") {
           const style = resolvePoiStyle(p, Math.max(0, index - (point ? 1 : 0)));
           marker.textContent = p.primary ? "★" : poiGlyph(style.icon);
-          marker.style.setProperty("--poi-color", poiColorHex(style.color));
+          marker.style?.setProperty?.("--poi-color", poiColorHex(style.color));
         }
         element.append(marker);
         new library.Marker({ element }).setLngLat([p.lng, p.lat]).addTo(map);
