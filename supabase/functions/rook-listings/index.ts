@@ -526,7 +526,9 @@ async function resolveListing(address: string, label: string, location: string, 
   // Search-engine HTML is discovery only. Try more than one engine because any
   // individual search endpoint can block automated requests or omit a live result.
   const query = [address || label, location, "rental listing"].filter(Boolean).join(" ");
+  const exactProviderQuery = ['"' + (address || label) + '"', "rent"].filter(Boolean).join(" ");
   const searchUrls = [
+    "https://www.bing.com/search?format=rss&q=" + encodeURIComponent(exactProviderQuery),
     "https://www.google.com/search?q=" + encodeURIComponent(query),
     "https://www.bing.com/search?q=" + encodeURIComponent(query),
     "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query)
@@ -553,6 +555,8 @@ async function resolveListing(address: string, label: string, location: string, 
       }
 
       const hrefs = [
+        ...[...searchHtml.matchAll(/<link>\s*(https?:\/\/[^<\s]+)\s*<\/link>/gi)].map(match => match[1].replace(/&amp;/g, "&")),
+        ...[...searchHtml.matchAll(/<guid[^>]*>\s*(https?:\/\/[^<\s]+)\s*<\/guid>/gi)].map(match => match[1].replace(/&amp;/g, "&")),
         ...[...searchHtml.matchAll(/href="\/url\?q=([^&"]+)/g)].map(match => {
           try { return decodeURIComponent(match[1]); } catch { return ""; }
         }),
