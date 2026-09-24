@@ -143,7 +143,6 @@ async function inspectListingUrl(url: string) {
 async function resolveListing(address: string, label: string, location: string) {
   const checkedAt = new Date().toISOString();
   const citySlug = location.toLowerCase().replace(/,.*$/, "").trim().replace(/[^a-z0-9]+/g, "-");
-  const encoded = encodeURIComponent(address || label);
   const sourcePages = [
     { id:"realtor", source:"Realtor.com", url:`https://www.realtor.com/apartments/${citySlug}_CO` },
     { id:"rent", source:"Rent.com", url:`https://www.rent.com/colorado/${citySlug}-apartments` },
@@ -151,6 +150,7 @@ async function resolveListing(address: string, label: string, location: string) 
   ];
 
   let successfulSources = 0;
+  const closedEvidence:any[] = [];
   for (const sourcePage of sourcePages) {
     try {
       const html = await fetchText(sourcePage.url);
@@ -159,13 +159,18 @@ async function resolveListing(address: string, label: string, location: string) 
       const match = rows.find(row => sameAddress(row.address, address) || (!address && canonicalAddress(row.label) === canonicalAddress(label)));
       if (match?.sourceUrl) {
         const inspected = await inspectListingUrl(match.sourceUrl);
-        if (inspected.reachable && !inspected.closed) return { state:"active", listing:match, checkedAt, checkedSources:successfulSources };
+        if (inspected.reachable && !inspected.closed) {
+          return { state:"active", listing:match, checkedAt, checkedSources:successfulSources };
+        }
+        if (inspected.closed) {
+          closedEvidence.push({ source:sourcePage.source, url:match.sourceUrl, reason:inspected.reachable ? "page-status-text" : "http-404-410" });
+        }
       }
     } catch {}
   }
 
-  // Search-engine HTML is a discovery fallback only. Any candidate still has to
-  // resolve to a supported property portal and survive an availability check.
+  // Search-engine HTML is discovery only. A result must resolve to a supported
+  // portal, match the exact address, and then be inspected directly.
   try {
     const query = [address || label, location, "rental listing"].filter(Boolean).join(" ");
     const searchHtml = await fetchText("https://www.google.com/search?q=" + encodeURIComponent(query));
@@ -178,17 +183,31 @@ async function resolveListing(address: string, label: string, location: string) 
         const candidate = new URL(href);
         if (!allowedHosts.test(candidate.hostname.replace(/^www\./,""))) continue;
         const inspected = await inspectListingUrl(candidate.toString());
-        if (!inspected.reachable || inspected.closed) continue;
-        const rows = jsonLdListings(inspected.html, candidate.hostname, candidate.toString());
+        if (!inspected.reachable && !inspected.closed) continue;
+        const rows = inspected.html ? jsonLdListings(inspected.html, candidate.hostname, candidate.toString()) : [];
         const match = rows.find(row => sameAddress(row.address, address));
-        if (match) return { state:"active", listing:{ ...match, sourceUrl:candidate.toString() }, checkedAt, checkedSources:successfulSources };
+        if (match && inspected.reachable && !inspected.closed) {
+          return { state:"active", listing:{ ...match, sourceUrl:candidate.toString() }, checkedAt, checkedSources:successfulSources };
+        }
+        if (match && inspected.closed) {
+          closedEvidence.push({ source:candidate.hostname, url:candidate.toString(), reason:inspected.reachable ? "page-status-text" : "http-404-410" });
+        }
       } catch {}
     }
   } catch {}
 
-  // "Closed" is intentionally conservative: only mark it when at least two live
-  // source searches completed and the exact address is absent from all of them.
-  return { state: successfulSources >= 2 ? "closed" : "unknown", listing:null, checkedAt, checkedSources:successfulSources };
+  // Absence from search/index pages is never closure evidence. Only an exact
+  // property page with a direct unavailable/off-market signal may mark closed.
+  if (closedEvidence.length) {
+    return {
+      state:"closed",
+      listing:null,
+      checkedAt,
+      checkedSources:successfulSources,
+      evidence:{ confirmed:true, kind:"direct-listing-status", matches:closedEvidence }
+    };
+  }
+  return { state:"unknown", listing:null, checkedAt, checkedSources:successfulSources, evidence:null };
 }
 
 Deno.serve(async (req: Request) => {
