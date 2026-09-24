@@ -21,7 +21,7 @@ export function googleMapsEmbedUrl(properties = []) {
   // directions links. A true multi-marker overview requires the Maps JS API.
   const target = locations[0] || "Fort Collins, CO";
   const zoom = locations.length > 1 ? 12 : 15;
-  return "https://maps.google.com/maps?q=" + encodeURIComponent(target) + "&z=" + zoom + "&output=embed";
+  return "https://www.google.com/maps?q=" + encodeURIComponent(target) + "&z=" + zoom + "&output=embed";
 }
 
 export function renderPropertyMap(frame, properties = []) {
