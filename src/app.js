@@ -72,8 +72,8 @@ function cardPointsOfInterest() {
     ? preferences.pointsOfInterest.filter(p => p && (p.address || p.query || p.location || (p.lat != null && p.lng != null)))
     : [];
   const fixed = [
-    { id: "address-2", kind: "poi", label: "Address 2", query: "Laurel Elementary School, Fort Collins, CO" },
-    { id: "address-3", kind: "poi", label: "Address 3", query: "Twin Silo Park, Fort Collins, CO" }
+    { id: "address-2", kind: "poi", label: "Address 2", lat: 40.57589, lng: -105.06223, address: "1000 Locust St, Fort Collins, CO 80524" },
+    { id: "address-3", kind: "poi", label: "Address 3", lat: 40.5104806, lng: -105.0171262, address: "5480 Ziegler Rd, Fort Collins, CO 80528" }
   ];
   const secondary = [...fixed, ...configured.filter(p => !fixed.some(f => f.id === p.id))];
   return [...(preferences.address1 ? [primary] : []), ...secondary.filter(p => p.id !== primary.id && p.address !== primary.address)];
