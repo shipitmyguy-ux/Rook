@@ -398,7 +398,7 @@ function propertyIconCanvas(kind, color) {
     ctx.moveTo(32, 20); ctx.lineTo(32, 44);
     ctx.stroke();
   }
-  return canvas;
+  return ctx.getImageData(0, 0, size, size);
 }
 
 function ensurePropertyTypeIcons(map) {
