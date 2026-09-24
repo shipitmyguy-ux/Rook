@@ -56,17 +56,32 @@ export function firstImageUrl(input = {}) {
 }
 
 export function normalizeProviderResult(input = {}, provider = {}) {
-  const price = Number(input.price);
-  const beds = Number(input.beds);
-  const baths = Number(input.baths);
-  const sourceUrl = input.sourceUrl || input.url || null;
+  const metadata = input.metadata && typeof input.metadata === "object" ? input.metadata : {};
+  const pickNumber = (...values) => {
+    for (const value of values) {
+      if (value === null || value === undefined || value === "") continue;
+      const match = String(value).replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+      if (match) return Number(match[0]);
+    }
+    return null;
+  };
+  const locationAddress = input.location?.address;
+  const addressObject = typeof input.address === "object" ? input.address : locationAddress && typeof locationAddress === "object" ? locationAddress : null;
+  const address = typeof input.address === "string" ? input.address
+    : typeof locationAddress === "string" ? locationAddress
+    : metadata.address || metadata.streetAddress
+    || [addressObject?.streetAddress, addressObject?.addressLocality, addressObject?.addressRegion, addressObject?.postalCode].filter(Boolean).join(", ");
+  const price = pickNumber(input.price, input.monthlyRent, input.rent, input.listPrice, input.offers?.price, metadata.price, metadata.rent);
+  const beds = pickNumber(input.beds, input.bedrooms, input.numberOfBedrooms, metadata.beds, metadata.bedrooms);
+  const baths = pickNumber(input.baths, input.bathrooms, input.numberOfBathrooms, input.numberOfBathroomsTotal, metadata.baths, metadata.bathrooms);
+  const sourceUrl = input.sourceUrl || input.url || input.offers?.url || metadata.url || null;
   const image = firstImageUrl({ ...input, sourceUrl });
   const stableKey = listingIdentity(input);
   return {
     ...input,
     id: stableKey ? `${provider.id || "provider"}:${String(stableKey).trim().toLowerCase()}` : undefined,
-    label: input.label || input.address || "Untitled property",
-    address: input.address || "",
+    label: input.label || input.name || address || "Untitled property",
+    address: address || "",
     type: input.type || "Property",
     listingType: input.listingType === "buy" ? "buy" : "rent",
     price: Number.isFinite(price) ? price : null,
@@ -77,7 +92,7 @@ export function normalizeProviderResult(input = {}, provider = {}) {
     image,
     imageUrl: image,
     primaryImageUrl: image,
-    metadata: { ...(input.metadata || {}), image: image || input.metadata?.image || null, providerId: provider.id || null }
+    metadata: { ...metadata, image: image || metadata.image || null, providerId: provider.id || null }
   };
 }
 
