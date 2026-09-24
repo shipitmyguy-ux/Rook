@@ -88,9 +88,7 @@ function icon(name) { const paths = {"pin":"<path d=\"M20 10c0 6-8 12-8 12S4 16 
 
 function propertyListingUrl(property) {
   const direct = safeListingUrl(property?.sourceUrl);
-  if (direct) return { url: direct, direct: true };
-  const query = [property?.label, property?.address, preferences.location || config.search.location, "rental listing"].filter(Boolean).join(" ");
-  return { url: "https://www.google.com/search?q=" + encodeURIComponent(query), direct: false };
+  return direct ? { url: direct, direct: true } : { url: null, direct: false };
 }
 
 function propertyContactMethods(property) {
@@ -155,21 +153,21 @@ function openContactWorkflow(property, intent = "contact") {
     actions.append(email);
   }
 
-  const listing = document.createElement("a");
-  listing.href = methods.listing.url;
-  listing.target = "_blank";
-  listing.rel = "noopener noreferrer";
-  listing.className = "workflow-action";
-  listing.textContent = methods.listing.direct
-    ? (intent === "showing" ? "Open listing to request showing" : "Open listing to contact")
-    : (intent === "showing" ? "Find listing to request showing" : "Find listing to contact");
-  listing.addEventListener("click", () => {
-    if (intent === "showing") {
-      store.upsert(markShowingRequested(property));
-      recordActivity("showing-requested", property, { via: "listing" });
-    } else markPropertyContacted(property);
-  });
-  actions.append(listing);
+  if (methods.listing.url) {
+    const listing = document.createElement("a");
+    listing.href = methods.listing.url;
+    listing.target = "_blank";
+    listing.rel = "noopener noreferrer";
+    listing.className = "workflow-action";
+    listing.textContent = intent === "showing" ? "Open source listing to request showing" : "Open source listing";
+    listing.addEventListener("click", () => {
+      if (intent === "showing") {
+        store.upsert(markShowingRequested(property));
+        recordActivity("showing-requested", property, { via: "listing" });
+      } else markPropertyContacted(property);
+    });
+    actions.append(listing);
+  }
 
   const manual = document.createElement("button");
   manual.type = "button";
@@ -216,14 +214,15 @@ function propertyCard(property) {
       <div class="property-card__facts"><strong>${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span><span class="poi-distance-primary" data-primary-distance aria-label="Distance to Address 1">Address 1 —</span></div>
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
-        <button class="status-action" data-action="${nextAction}" aria-label="${nextLabel}" title="${nextLabel}"><span>${icon("phone")}</span><b>Contact</b></button>
-        `<a class="status-action listing-action source-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer" aria-label="${listing.direct ? "View" : "Find"} listing for ${esc(property.label)}" title="${listing.direct ? "View listing" : "Find listing"}"><span aria-hidden="true">↗</span><b>${listing.direct ? "Listing" : "Find listing"}</b></a>`
+        ${listing.url
+          ? `<a class="status-action listing-action source-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer" aria-label="View source listing for ${esc(property.label)}" title="View source listing"><span aria-hidden="true">↗</span><b>View listing</b></a>`
+          : `<button class="status-action listing-action" type="button" disabled aria-label="Source listing unavailable" title="Source listing unavailable"><span aria-hidden="true">↗</span><b>Listing unavailable</b></button>`}
         <button class="icon-action" data-action="map" aria-label="Focus on map" title="Focus on map">${icon("pin")}</button>
-        <button class="icon-action" data-action="contact" aria-label="Contact" title="Contact">${icon("phone")}</button>
         <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">${icon("more")}</button>
       </div>
       <div class="property-card__more" hidden>
-        <a class="source-link more-listing-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer">${listing.direct ? "View listing" : "Find listing"}</a><button data-action="visited">Visited</button><button data-action="contact">Contact</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Ignore</button><button data-action="archive">Archive</button>
+        ${listing.url ? `<a class="source-link more-listing-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer">View listing</a>` : ""}
+        <button data-action="visited">Visited</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Ignore</button><button data-action="archive">Archive</button>
       </div>
     </section>
     <div class="fit-ring" title="Match score ${score}" aria-label="Match score ${score}"><span>${score}</span></div>
