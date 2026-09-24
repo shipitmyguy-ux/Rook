@@ -15,6 +15,16 @@ export function propertyIdentity(property) {
 }
 
 function mergeProperty(prior, property) {
+  const sourceUrl = property.sourceUrl || prior.sourceUrl || null;
+  const metadata = { ...(prior.metadata || {}), ...(property.metadata || {}) };
+  const confirmedClosed = metadata?.listingClosedEvidence?.confirmed === true;
+  const listingState = sourceUrl
+    ? "active"
+    : confirmedClosed && (property.listingState === "closed" || prior.listingState === "closed")
+      ? "closed"
+      : property.listingState === "active" || prior.listingState === "active"
+        ? "active"
+        : "unknown";
   return {
     ...prior,
     ...property,
@@ -26,10 +36,10 @@ function mergeProperty(prior, property) {
     lat: prior.lat ?? property.lat,
     lng: prior.lng ?? property.lng,
     source: property.source || prior.source,
-    sourceUrl: property.sourceUrl || prior.sourceUrl,
-    listingState: property.listingState === "active" ? "active" : property.listingState === "closed" ? "closed" : prior.listingState || "unknown",
+    sourceUrl,
+    listingState,
     listingCheckedAt: property.listingCheckedAt || prior.listingCheckedAt || null,
-    metadata: { ...(prior.metadata || {}), ...(property.metadata || {}) },
+    metadata,
     saved: Boolean(prior.saved || property.saved),
     status: property.status || prior.status,
     note: property.note || prior.note || "",
