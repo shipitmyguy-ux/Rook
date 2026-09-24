@@ -269,35 +269,61 @@ async function resolveListing(address: string, label: string, location: string, 
     } catch {}
   }
 
-  // Search-engine HTML is discovery only. A result must resolve to a supported
-  // portal, match the exact address, and then be inspected directly.
-  try {
-    const query = [address || label, location, "rental listing"].filter(Boolean).join(" ");
-    const searchHtml = await fetchText("https://www.google.com/search?q=" + encodeURIComponent(query));
-    const hrefs = [
-      ...[...searchHtml.matchAll(/href="\/url\?q=([^&"]+)/g)].map(match => {
-        try { return decodeURIComponent(match[1]); } catch { return ""; }
-      }),
-      ...[...searchHtml.matchAll(/href=["'](https?:\/\/[^"'<> ]+)["']/g)].map(match => match[1])
-    ];
-    const allowedHosts = /(realtor\.com|rent\.com|apartmentlist\.com|zillow\.com|trulia\.com|apartments\.com)$/i;
-    for (const href of hrefs) {
-      try {
-        const candidate = new URL(href);
-        if (!allowedHosts.test(candidate.hostname.replace(/^www\./,""))) continue;
-        const inspected = await inspectListingUrl(candidate.toString());
-        if (!inspected.reachable && !inspected.closed) continue;
-        const rows = inspected.html ? jsonLdListings(inspected.html, candidate.hostname, candidate.toString()) : [];
-        const match = rows.find(row => sameAddress(row.address, address) || (!address && canonicalAddress(row.label) === canonicalAddress(label)));
-        if (match && inspected.reachable && !inspected.closed) {
-          return { state:"active", listing:{ ...match, sourceUrl:candidate.toString() }, checkedAt, checkedSources:successfulSources };
-        }
-        if (match && inspected.closed) {
-          closedEvidence.push({ source:candidate.hostname, url:candidate.toString(), reason:inspected.reason || "direct-status" });
-        }
-      } catch {}
-    }
-  } catch {}
+  // Search-engine HTML is discovery only. Try more than one engine because any
+  // individual search endpoint can block automated requests or omit a live result.
+  const query = [address || label, location, "rental listing"].filter(Boolean).join(" ");
+  const searchUrls = [
+    "https://www.google.com/search?q=" + encodeURIComponent(query),
+    "https://www.bing.com/search?q=" + encodeURIComponent(query),
+    "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query)
+  ];
+  const allowedHosts = /(realtor\.com|rent\.com|apartmentlist\.com|zillow\.com|trulia\.com|apartments\.com|rentcafe\.com)$/i;
+  const seenCandidates = new Set<string>();
+  for (const searchUrl of searchUrls) {
+    try {
+      const searchHtml = await fetchText(searchUrl);
+      const hrefs = [
+        ...[...searchHtml.matchAll(/href="\/url\?q=([^&"]+)/g)].map(match => {
+          try { return decodeURIComponent(match[1]); } catch { return ""; }
+        }),
+        ...[...searchHtml.matchAll(/href=["'](https?:\/\/[^"'<> ]+)["']/g)].map(match => match[1]),
+        ...[...searchHtml.matchAll(/uddg=([^&"']+)/g)].map(match => {
+          try { return decodeURIComponent(match[1]); } catch { return ""; }
+        })
+      ];
+      for (const href of hrefs) {
+        try {
+          const candidate = new URL(href);
+          const hostname = candidate.hostname.replace(/^www\./,"");
+          if (!allowedHosts.test(hostname)) continue;
+          const normalizedCandidate = candidate.toString();
+          if (seenCandidates.has(normalizedCandidate)) continue;
+          seenCandidates.add(normalizedCandidate);
+
+          const inspected = await inspectListingUrl(normalizedCandidate);
+          if (!inspected.reachable && !inspected.closed) continue;
+          const rows = inspected.html ? jsonLdListings(inspected.html, candidate.hostname, normalizedCandidate) : [];
+          const match = rows.find(row => sameAddress(row.address, address) || (!address && canonicalAddress(row.label) === canonicalAddress(label)));
+          if (inspected.reachable && !inspected.closed) {
+            const resolved = match || fallbackListingFromHtml(inspected.html, normalizedCandidate, { address, label, source:candidate.hostname });
+            const candidateAddressMatches = !address || !resolved.address || sameAddress(resolved.address, address);
+            const candidateLabelMatches = !label || canonicalAddress(resolved.label).includes(canonicalAddress(label)) || canonicalAddress(label).includes(canonicalAddress(resolved.label));
+            if (candidateAddressMatches && candidateLabelMatches) {
+              return {
+                state:"active",
+                listing:{ ...resolved, address:resolved.address || address, label:resolved.label || label || address, sourceUrl:normalizedCandidate },
+                checkedAt,
+                checkedSources:successfulSources
+              };
+            }
+          }
+          if (match && inspected.closed) {
+            closedEvidence.push({ source:candidate.hostname, url:normalizedCandidate, reason:inspected.reason || "direct-status" });
+          }
+        } catch {}
+      }
+    } catch {}
+  }
 
   // Absence from search/index pages is never closure evidence. Only an exact
   // property page with a direct unavailable/off-market signal may mark closed.
