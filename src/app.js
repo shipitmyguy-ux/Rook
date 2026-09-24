@@ -69,7 +69,7 @@ function propertyCard(property) {
   const image = property.image || property.imageUrl || property.metadata?.image || "";
   const [nextAction, nextIcon, nextLabel] = primaryAction(property);
   return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" style="--score:${score}">
-    <div class="property-visual" ${image ? `style="--property-image:url('${esc(image)}')"` : ""} aria-hidden="true"></div>
+    <div class="property-visual ${image ? "" : "property-visual--fallback"}" ${image ? `style="--property-image:url(\'${esc(image)}\')"` : ""} aria-hidden="true"><span class="fallback-house">⌂</span></div>
     <div class="property-card__content">
       <div class="property-type-mark" title="${kind}"><span>${propertyKindIcon(kind)}</span><small>${kind}</small></div>
       <div class="property-card__identity"><h2>${esc(property.label)}</h2><p class="muted">⌖ ${esc(property.address || "")}</p></div>
@@ -87,7 +87,7 @@ function propertyCard(property) {
     </div>
     <div class="fit-ring" aria-label="Match score ${score}"><span>${score}</span></div>
     <button class="save-button" data-action="save" aria-label="Save ${esc(property.label)}">${saved ? "★" : "☆"}</button>
-    <div class="card-map-art" aria-hidden="true"><i class="map-road r1"></i><i class="map-road r2"></i><i class="map-road r3"></i><span class="poi property-pin">⌂</span><span class="poi family-pin">⌂</span><span class="poi park-pin">♠</span><span class="poi school-pin">◆</span></div>
+    <div class="card-map-art" aria-hidden="true"><div class="map-grid"></div><span class="poi property-pin">⌂</span><span class="poi family-pin">⌂</span><span class="poi park-pin">♠</span><span class="poi school-pin">◆</span></div>
   </article>`;
 }
 
@@ -150,7 +150,7 @@ function renderList() {
 app.innerHTML = `<main class="shell">
 <header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></header>
 <div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div>
-<section class="map-shell" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><iframe id="property-map" class="property-map" loading="eager" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe><div class="map-caption"><strong>Map</strong><span id="map-summary">Saved properties</span></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
+<section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><iframe id="property-map" class="property-map" loading="eager" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe><div class="map-caption"><strong>Map</strong><span id="map-summary">Saved properties</span></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
 <section class="results"><div class="section-heading"><h2>Properties</h2><span id="property-count"></span></div><div id="property-list"></div></section>
 <section class="activity-panel"><div class="section-heading"><h2>Recent activity</h2></div><ul id="activity-list"></ul></section>
 
