@@ -167,7 +167,11 @@ export async function renderCardMap(container, property, pointsOfInterest = [], 
     const pos = markerOffset(point, center, zoom);
     const distance = haversineMiles(propertyPoint, point);
     const tone = point.kind === "park" ? "park" : point.kind === "school" ? "school" : "poi";
-    return `<span class="map-distance-line" style="--x1:${propertyPos.dx}px;--y1:${propertyPos.dy}px;--x2:${pos.dx}px;--y2:${pos.dy}px"></span><span class="map-marker map-marker--poi map-marker--${tone}" style="left:calc(50% + ${pos.dx}px);top:calc(50% + ${pos.dy}px)" title="${distance.toFixed(distance < 10 ? 1 : 0)} mi"><span></span></span>`;
+    const vx = pos.dx - propertyPos.dx;
+    const vy = pos.dy - propertyPos.dy;
+    const length = Math.sqrt(vx * vx + vy * vy);
+    const angle = Math.atan2(vy, vx) * 180 / Math.PI;
+    return `<span class="map-distance-line" style="left:calc(50% + ${propertyPos.dx}px);top:calc(50% + ${propertyPos.dy}px);width:${length}px;transform:rotate(${angle}deg)"></span><span class="map-marker map-marker--poi map-marker--${tone}" style="left:calc(50% + ${pos.dx}px);top:calc(50% + ${pos.dy}px)" title="${distance.toFixed(distance < 10 ? 1 : 0)} mi"><span></span></span>`;
   }).join("");
 
   container.innerHTML = `${tileLayerHtml(center, zoom)}<div class="card-map-shade"></div><div class="card-map-markers" aria-hidden="true">${propertyMarker}${poiMarkers}</div>`;
