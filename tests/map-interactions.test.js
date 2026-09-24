@@ -49,11 +49,11 @@ test("overview shows POIs and property details with working actions", async () =
   assert.deepEqual(markerPoint, [-105.1, 40.55]);
   assert.equal(markerElement.innerHTML, "★");
   assert.deepEqual(fitted, [[-105.1, 40.5], [-105, 40.55]]);
-  events["mouseenter:rook-listings-points"]({ features: [{ properties: { id: "home" } }] });
+  events["mouseenter:rook-listings-symbols"]({ features: [{ properties: { id: "home" } }] });
   assert.equal(panel.hidden, true);
   assert.equal(popupContent.children[0].textContent, "Test home");
   assert.match(popupContent.children[1].textContent, /2,100/);
-  events["click:rook-listings-points"]({ features: [{ properties: { id: "home" } }] });
+  events["click:rook-listings-symbols"]({ features: [{ properties: { id: "home" } }] });
   assert.equal(selectedEvent?.type, "rook:map-select");
   assert.deepEqual(selectedEvent?.detail, { id: "home" });
   assert.equal(panel.hidden, false);
