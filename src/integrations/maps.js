@@ -156,10 +156,33 @@ export function googleMapsDirectionsUrl(property) {
   return "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(destination);
 }
 
+export function mapLocationQueries(property, fallbackLocation = "Fort Collins, CO") {
+  if (validCoordinates(property)) return [];
+  const values = [];
+  const push = value => {
+    const q = normalizeQuery(value);
+    if (q && !values.includes(q)) values.push(q);
+  };
+  const address = String(property?.address || "").trim();
+  const metadataAddress = String(property?.metadata?.address || property?.metadata?.streetAddress || "").trim();
+  const label = String(property?.label || "").trim();
+
+  push(address);
+  // Unit/suite identifiers frequently make otherwise valid residential addresses fail geocoding.
+  if (address) {
+    push(address
+      .replace(/\s+(?:unit|apt|apartment|suite|#)\s*[A-Za-z0-9-]+(?=,|$)/i, "")
+      .replace(/\s+#?[A-Za-z]\d+[A-Za-z0-9-]*(?=,|$)/i, "")
+      .replace(/\s{2,}/g, " ")
+      .trim());
+  }
+  push(metadataAddress);
+  if (label) push([label, fallbackLocation].filter(Boolean).join(", "));
+  return values;
+}
+
 function mapLocationQuery(property, fallbackLocation = "Fort Collins, CO") {
-  if (property?.address) return property.address;
-  if (property?.lat != null && property?.lng != null) return `${property.lat},${property.lng}`;
-  return [property?.label, fallbackLocation].filter(Boolean).join(", ");
+  return mapLocationQueries(property, fallbackLocation)[0] || "";
 }
 
 function validCoordinates(point) {
@@ -175,9 +198,22 @@ function validCoordinates(point) {
 function cachedCoordinates(property, fallbackLocation = "Fort Collins, CO") {
   const direct = validCoordinates(property);
   if (direct) return direct;
-  const q = normalizeQuery(mapLocationQuery(property, fallbackLocation));
-  const cached = readGeocodeCache()[q];
-  return validCoordinates(cached);
+  const cache = readGeocodeCache();
+  for (const q of mapLocationQueries(property, fallbackLocation)) {
+    const cached = validCoordinates(cache[q]);
+    if (cached) return cached;
+  }
+  return null;
+}
+
+async function geocodeProperty(property, fallbackLocation = "Fort Collins, CO") {
+  const direct = validCoordinates(property);
+  if (direct) return direct;
+  for (const q of mapLocationQueries(property, fallbackLocation)) {
+    const point = await geocode(q);
+    if (point) return point;
+  }
+  return null;
 }
 
 function propertyFeature(property, fallbackLocation = "Fort Collins, CO") {
@@ -208,6 +244,9 @@ function listingGeoJson(properties = [], fallbackLocation = "Fort Collins, CO") 
 }
 
 function mapFilter(options = {}) {
+  // When the caller supplies the visible list, the GeoJSON is already filtered.
+  // Do not apply a second, map-only filter that can make visible cards disappear.
+  if (options.dataAlreadyFiltered) return ["all"];
   const filters = ["all"];
   const types = Array.isArray(options.propertyTypes) ? options.propertyTypes.filter(Boolean) : [];
   if (types.length) filters.push(["in", ["get", "propertyType"], ["literal", types]]);
@@ -259,6 +298,11 @@ function updateOverviewSource({ fit = false } = {}) {
   const data = listingGeoJson(overviewState.latestProperties, fallbackLocation);
   const source = map.getSource(ROOK_SOURCE_ID);
   source?.setData(data);
+  if (overviewState.container) {
+    overviewState.container.dataset.mapExpectedPropertyCount = String(overviewState.latestProperties.length);
+    overviewState.container.dataset.mapFeatureCount = String(data.features.length);
+    overviewState.container.dataset.mapUnresolvedCount = String(Math.max(0, overviewState.latestProperties.length - data.features.length));
+  }
   applyOverviewFilter();
 
   if (overviewState.selectedId) selectFeature(overviewState.selectedId);
@@ -282,17 +326,22 @@ function updateOverviewSource({ fit = false } = {}) {
 }
 
 async function geocodeMissingOverviewProperties() {
-  const run = ++overviewState.geocodeRun;
   const fallbackLocation = overviewState.latestOptions.location || "Fort Collins, CO";
-  let changed = false;
-  for (const property of overviewState.latestProperties) {
-    if (run !== overviewState.geocodeRun) return;
-    if (cachedCoordinates(property, fallbackLocation)) continue;
-    const point = await geocode(mapLocationQuery(property, fallbackLocation));
-    if (run !== overviewState.geocodeRun) return;
-    if (point) changed = true;
+  const properties = [...overviewState.latestProperties];
+  const missing = properties.filter(property => !cachedCoordinates(property, fallbackLocation));
+  if (!missing.length) {
+    updateOverviewSource({ fit: !overviewState.fittedOnce });
+    return;
   }
-  if (changed && run === overviewState.geocodeRun) updateOverviewSource({ fit: !overviewState.fittedOnce });
+
+  // Never cancel an older geocode pass just because store/UI state re-rendered.
+  // geocode() already deduplicates and serializes requests; each resolved property
+  // is published immediately so late-list properties cannot starve forever.
+  await Promise.all(missing.map(async property => {
+    const point = await geocodeProperty(property, fallbackLocation);
+    if (point) updateOverviewSource({ fit: !overviewState.fittedOnce });
+  }));
+  updateOverviewSource({ fit: !overviewState.fittedOnce });
 }
 
 function installOverviewLayers(map) {
@@ -491,7 +540,7 @@ export async function focusPropertyOnMap(property) {
   const fallbackLocation = overviewState.latestOptions.location || "Fort Collins, CO";
   let point = cachedCoordinates(property, fallbackLocation);
   if (!point) {
-    point = await geocode(mapLocationQuery(property, fallbackLocation));
+    point = await geocodeProperty(property, fallbackLocation);
     updateOverviewSource();
   }
   if (!point || !overviewState.map) return;
@@ -505,7 +554,7 @@ export async function focusPropertyOnMap(property) {
 }
 
 const GEOCODE_CACHE_KEY = "rook.geocode-cache.v1";
-const GEOCODE_MISS_TTL_MS = 12 * 60 * 60 * 1000;
+const GEOCODE_MISS_TTL_MS = 20 * 60 * 1000;
 let geocodeQueue = Promise.resolve();
 const geocodeInflight = new Map();
 const distanceCache = new Map();
