@@ -353,7 +353,12 @@ function installOverviewLayers(map) {
 
   map.on("click", event => {
     const hits = map.queryRenderedFeatures(event.point, { layers: [ROOK_LAYER_ID] });
-    if (!hits.length) clearSelectionState();
+    if (!hits.length) {
+      clearSelectionState();
+      detailId = null;
+      pinnedDetails = false;
+      overviewState.container?.dispatchEvent(new CustomEvent("rook:map-clear"));
+    }
   });
 }
 
