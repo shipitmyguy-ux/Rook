@@ -92,7 +92,7 @@ async function updateOverviewPois() {
     const style = resolvePoiStyle(point, index);
     const glyph = point.primary ? "★" : poiGlyph(style.icon);
     const displayAddress = point.address || point.query || point.location || point.label || "Saved address";
-    element.textContent = glyph;
+    element.innerHTML = glyph;
     element.style?.setProperty?.("--poi-color", poiColorHex(style.color));
     element.title = displayAddress;
     element.setAttribute("aria-label", displayAddress);
