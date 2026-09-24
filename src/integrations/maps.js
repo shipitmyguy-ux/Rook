@@ -1,34 +1,289 @@
+import { classifyPropertyKind } from "../core/property.js";
+
+const MAPLIBRE_MODULE_URL = "https://unpkg.com/maplibre-gl@6.11.1/dist/maplibre-gl.mjs";
+const OPENFREEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
+const ROOK_SOURCE_ID = "rook-listings";
+const ROOK_LAYER_ID = "rook-listings-points";
+const FORT_COLLINS_CENTER = [-105.0844, 40.5853];
+
+let maplibrePromise = null;
+const overviewState = {
+  map: null,
+  container: null,
+  ready: false,
+  latestProperties: [],
+  latestOptions: {},
+  selectedId: null,
+  hoveredId: null,
+  fittedOnce: false,
+  geocodeRun: 0
+};
+
+function loadMapLibre() {
+  if (!maplibrePromise) maplibrePromise = import(MAPLIBRE_MODULE_URL);
+  return maplibrePromise;
+}
+
 export function googleMapsDirectionsUrl(property) {
   const destination = property.address || [property.lat, property.lng].filter(v => v != null).join(",");
   if (!destination) return null;
   return "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(destination);
 }
 
-function mapLocation(property) {
+function mapLocationQuery(property, fallbackLocation = "Fort Collins, CO") {
   if (property?.address) return property.address;
   if (property?.lat != null && property?.lng != null) return `${property.lat},${property.lng}`;
-  return null;
+  return [property?.label, fallbackLocation].filter(Boolean).join(", ");
 }
 
-function usableLocations(properties = []) {
-  return [...new Set(properties.map(mapLocation).filter(Boolean))];
+function cachedCoordinates(property, fallbackLocation = "Fort Collins, CO") {
+  const lat = Number(property?.lat);
+  const lng = Number(property?.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  const q = normalizeQuery(mapLocationQuery(property, fallbackLocation));
+  const cached = readGeocodeCache()[q];
+  return cached && Number.isFinite(Number(cached.lat)) && Number.isFinite(Number(cached.lng))
+    ? { lat: Number(cached.lat), lng: Number(cached.lng) }
+    : null;
 }
 
-export function googleMapsEmbedUrl(properties = []) {
-  const locations = usableLocations(properties);
-  const target = locations[0] || "Fort Collins, CO";
-  const zoom = locations.length > 1 ? 12 : 15;
-  return "https://www.google.com/maps?q=" + encodeURIComponent(target) + "&z=" + zoom + "&output=embed";
+function propertyFeature(property, fallbackLocation = "Fort Collins, CO") {
+  const point = cachedCoordinates(property, fallbackLocation);
+  if (!point) return null;
+  const props = {
+    id: String(property.id),
+    propertyType: classifyPropertyKind(property),
+    listingType: property.listingType === "buy" ? "buy" : "rent",
+    status: property.status || "new",
+    saved: Boolean(property.saved)
+  };
+  if (Number.isFinite(Number(property.price))) props.price = Number(property.price);
+  if (Number.isFinite(Number(property.beds))) props.beds = Number(property.beds);
+  return {
+    type: "Feature",
+    id: String(property.id),
+    properties: props,
+    geometry: { type: "Point", coordinates: [point.lng, point.lat] }
+  };
 }
 
-export function renderPropertyMap(frame, properties = []) {
-  if (!frame) return;
-  frame.removeAttribute("srcdoc");
-  frame.src = googleMapsEmbedUrl(properties);
-  frame.title = properties.length > 1 ? `Map centered on ${properties.length} active properties` : properties.length ? "Property map" : "Rook property map";
+function listingGeoJson(properties = [], fallbackLocation = "Fort Collins, CO") {
+  return {
+    type: "FeatureCollection",
+    features: properties.map(property => propertyFeature(property, fallbackLocation)).filter(Boolean)
+  };
 }
 
-// Card maps intentionally use label-free raster tiles and prioritize the sister-in-law comparison; interactive overview remains Google Maps.
+function mapFilter(options = {}) {
+  const filters = ["all"];
+  const types = Array.isArray(options.propertyTypes) ? options.propertyTypes.filter(Boolean) : [];
+  if (types.length) filters.push(["in", ["get", "propertyType"], ["literal", types]]);
+  if (Number(options.minBeds) > 0) filters.push(["any", ["!", ["has", "beds"]], [">=", ["get", "beds"], Number(options.minBeds)]]);
+  if (Number(options.maxPrice) > 0) filters.push(["any", ["!", ["has", "price"]], ["<=", ["get", "price"], Number(options.maxPrice)]]);
+  if (options.activeFilter === "rent" || options.activeFilter === "buy") filters.push(["==", ["get", "listingType"], options.activeFilter]);
+  if (options.activeFilter === "shortlist") filters.push(["==", ["get", "saved"], true]);
+  return filters;
+}
+
+function applyOverviewFilter() {
+  const map = overviewState.map;
+  if (!map || !overviewState.ready || !map.getLayer(ROOK_LAYER_ID)) return;
+  map.setFilter(ROOK_LAYER_ID, mapFilter(overviewState.latestOptions));
+}
+
+function setFeatureStateSafe(id, state) {
+  const map = overviewState.map;
+  if (!map || !overviewState.ready || !id) return;
+  try { map.setFeatureState({ source: ROOK_SOURCE_ID, id: String(id) }, state); } catch {}
+}
+
+function clearSelectionState() {
+  const previous = overviewState.selectedId;
+  overviewState.selectedId = null;
+  if (previous) setFeatureStateSafe(previous, { selected: false });
+  const source = overviewState.map?.getSource(ROOK_SOURCE_ID);
+  if (!source) return;
+  for (const property of overviewState.latestProperties) setFeatureStateSafe(property.id, { dimmed: false });
+}
+
+function selectFeature(id) {
+  if (!id) return;
+  const previous = overviewState.selectedId;
+  if (previous && previous !== id) setFeatureStateSafe(previous, { selected: false });
+  overviewState.selectedId = String(id);
+  for (const property of overviewState.latestProperties) {
+    setFeatureStateSafe(property.id, {
+      selected: String(property.id) === String(id),
+      dimmed: String(property.id) !== String(id)
+    });
+  }
+}
+
+function updateOverviewSource({ fit = false } = {}) {
+  const map = overviewState.map;
+  if (!map || !overviewState.ready) return;
+  const fallbackLocation = overviewState.latestOptions.location || "Fort Collins, CO";
+  const data = listingGeoJson(overviewState.latestProperties, fallbackLocation);
+  const source = map.getSource(ROOK_SOURCE_ID);
+  source?.setData(data);
+  applyOverviewFilter();
+
+  if (overviewState.selectedId) selectFeature(overviewState.selectedId);
+
+  if (fit && !overviewState.fittedOnce && data.features.length) {
+    const coords = data.features.map(feature => feature.geometry.coordinates);
+    if (coords.length === 1) {
+      map.jumpTo({ center: coords[0], zoom: 13 });
+    } else {
+      const lngs = coords.map(([lng]) => lng);
+      const lats = coords.map(([, lat]) => lat);
+      map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], {
+        padding: 42,
+        maxZoom: 13,
+        duration: 0
+      });
+    }
+    overviewState.fittedOnce = true;
+  }
+}
+
+async function geocodeMissingOverviewProperties() {
+  const run = ++overviewState.geocodeRun;
+  const fallbackLocation = overviewState.latestOptions.location || "Fort Collins, CO";
+  for (const property of overviewState.latestProperties) {
+    if (run !== overviewState.geocodeRun) return;
+    if (cachedCoordinates(property, fallbackLocation)) continue;
+    await geocode(mapLocationQuery(property, fallbackLocation));
+    if (run !== overviewState.geocodeRun) return;
+    updateOverviewSource({ fit: !overviewState.fittedOnce });
+  }
+}
+
+function installOverviewLayers(map) {
+  if (!map.getSource(ROOK_SOURCE_ID)) {
+    map.addSource(ROOK_SOURCE_ID, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    });
+  }
+  if (!map.getLayer(ROOK_LAYER_ID)) {
+    map.addLayer({
+      id: ROOK_LAYER_ID,
+      type: "circle",
+      source: ROOK_SOURCE_ID,
+      paint: {
+        "circle-radius": [
+          "case",
+          ["boolean", ["feature-state", "selected"], false], 11,
+          ["boolean", ["feature-state", "hovered"], false], 9,
+          7
+        ],
+        "circle-color": [
+          "match", ["get", "propertyType"],
+          "apartment", "#4ba8ff",
+          "townhome", "#aa75ff",
+          "house", "#4fd59b",
+          "#58eadc"
+        ],
+        "circle-opacity": ["case", ["boolean", ["feature-state", "dimmed"], false], 0.28, 0.94],
+        "circle-stroke-width": ["case", ["boolean", ["feature-state", "selected"], false], 3, 1.5],
+        "circle-stroke-color": ["case", ["boolean", ["feature-state", "selected"], false], "#ffc429", "#07111b"]
+      }
+    });
+  }
+
+  map.on("mouseenter", ROOK_LAYER_ID, event => {
+    map.getCanvas().style.cursor = "pointer";
+    const id = event.features?.[0]?.id;
+    if (overviewState.hoveredId && overviewState.hoveredId !== id) setFeatureStateSafe(overviewState.hoveredId, { hovered: false });
+    overviewState.hoveredId = id == null ? null : String(id);
+    if (overviewState.hoveredId) setFeatureStateSafe(overviewState.hoveredId, { hovered: true });
+  });
+
+  map.on("mouseleave", ROOK_LAYER_ID, () => {
+    map.getCanvas().style.cursor = "";
+    if (overviewState.hoveredId) setFeatureStateSafe(overviewState.hoveredId, { hovered: false });
+    overviewState.hoveredId = null;
+  });
+
+  map.on("click", ROOK_LAYER_ID, event => {
+    const id = event.features?.[0]?.id;
+    if (id == null) return;
+    selectFeature(String(id));
+    overviewState.container?.dispatchEvent(new CustomEvent("rook:map-select", { detail: { id: String(id) } }));
+  });
+
+  map.on("click", event => {
+    const hits = map.queryRenderedFeatures(event.point, { layers: [ROOK_LAYER_ID] });
+    if (!hits.length) clearSelectionState();
+  });
+}
+
+async function ensureOverviewMap(container) {
+  if (overviewState.map && overviewState.container === container) return overviewState.map;
+  const maplibregl = await loadMapLibre();
+  container.replaceChildren();
+  container.dataset.mapProvider = "maplibre-openfreemap";
+
+  const map = new maplibregl.Map({
+    container,
+    style: OPENFREEMAP_STYLE_URL,
+    center: FORT_COLLINS_CENTER,
+    zoom: 11,
+    attributionControl: true
+  });
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+
+  overviewState.map = map;
+  overviewState.container = container;
+  overviewState.ready = false;
+  overviewState.fittedOnce = false;
+
+  map.once("load", () => {
+    overviewState.ready = true;
+    installOverviewLayers(map);
+    updateOverviewSource({ fit: true });
+    void geocodeMissingOverviewProperties();
+  });
+  map.on("error", () => { container.dataset.mapStatus = "degraded"; });
+  return map;
+}
+
+export function renderPropertyMap(container, properties = [], options = {}) {
+  if (!container) return;
+  overviewState.latestProperties = [...properties];
+  overviewState.latestOptions = { ...options };
+  if (overviewState.map && overviewState.container === container && overviewState.ready) {
+    updateOverviewSource();
+    void geocodeMissingOverviewProperties();
+    return;
+  }
+  void ensureOverviewMap(container).catch(() => {
+    container.dataset.mapStatus = "error";
+    container.innerHTML = '<div class="property-map__error">Map unavailable</div>';
+  });
+}
+
+export async function focusPropertyOnMap(property) {
+  if (!property) return;
+  const container = overviewState.container;
+  if (!container) return;
+  await ensureOverviewMap(container);
+  const fallbackLocation = overviewState.latestOptions.location || "Fort Collins, CO";
+  let point = cachedCoordinates(property, fallbackLocation);
+  if (!point) {
+    point = await geocode(mapLocationQuery(property, fallbackLocation));
+    updateOverviewSource();
+  }
+  if (!point || !overviewState.map) return;
+  selectFeature(String(property.id));
+  overviewState.map.easeTo({
+    center: [point.lng, point.lat],
+    zoom: Math.max(overviewState.map.getZoom(), 14),
+    duration: 450
+  });
+}
+
 const GEOCODE_CACHE_KEY = "rook.geocode-cache.v1";
 let geocodeQueue = Promise.resolve();
 
