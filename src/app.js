@@ -81,12 +81,120 @@ function cardPointsOfInterest() {
 
 function icon(name) { const paths = {"pin":"<path d=\"M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z\"/><circle cx=\"12\" cy=\"10\" r=\"2.5\"/>","phone":"<path d=\"m5 3 4 1 1 5-3 2a16 16 0 0 0 6 6l2-3 5 1 1 4c-1 5-8 3-13-2S1 4 5 3Z\"/>","bed":"<path d=\"M3 18V5m18 13V9H3m0 6h18M6 9V6h6v3\"/>","bath":"<path d=\"M3 12h18l-2 7H5Zm3 7-1 3m13-3 1 3M6 12V5a3 3 0 0 1 6 0\"/>","calendar":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M7 2v6m10-6v6M3 11h18\"/>","house":"<path d=\"M2 11 12 2l10 9v11H2Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M6 13h4v4H6zm8 0h4v4h-4zm-3 9v-5h3v5\" stroke=\"#07111b\" fill=\"none\"/>","building":"<path d=\"M5 2h14v20H5Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M8 6h3m2 0h3M8 10h3m2 0h3M8 14h3m2 0h3M10 22v-4h4v4\" stroke=\"#07111b\" fill=\"none\"/>","townhome":"<path d=\"M2 10 7 4l5 6v12H2Zm10 0 5-6 5 6v12H12Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M5 13h4m6 0h4M6 22v-5h2v5m8 0v-5h2v5\" stroke=\"#07111b\" fill=\"none\"/>","tree":"<path d=\"m12 2-7 9h4l-5 7h6v4h4v-4h6l-5-7h4Z\"/>","school":"<path d=\"m2 8 10-5 10 5-10 5Zm4 3v6q6 6 12 0v-6M22 8v9\"/>","star":"<path d=\"m12 2 3 6 7 1-5 5 1 8-6-4-6 4 1-8-5-5 7-1Z\"/>","more":"<circle cx=\"4\" cy=\"12\" r=\"1\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/><circle cx=\"20\" cy=\"12\" r=\"1\"/>"}; return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.house}</svg>`; }
 
+function propertyListingUrl(property) {
+  const direct = safeListingUrl(property?.sourceUrl);
+  if (direct) return { url: direct, direct: true };
+  const query = [property?.label, property?.address, preferences.location || config.search.location, "rental listing"].filter(Boolean).join(" ");
+  return { url: "https://www.google.com/search?q=" + encodeURIComponent(query), direct: false };
+}
+
+function propertyContactMethods(property) {
+  const metadata = property?.metadata || {};
+  const phone = property?.phone || metadata.phone || metadata.contactPhone || metadata.contact_phone || null;
+  const email = property?.email || metadata.email || metadata.contactEmail || metadata.contact_email || null;
+  return {
+    phone: phone ? String(phone) : null,
+    email: email ? String(email) : null,
+    listing: propertyListingUrl(property)
+  };
+}
+
+let workflowPropertyId = null;
+let workflowIntent = "contact";
+
+function markPropertyContacted(property) {
+  store.update(property.id, { status: PROPERTY_STATUS.CONTACTED, contactedAt: new Date().toISOString() });
+  recordActivity("contacted", property);
+}
+
+function openContactWorkflow(property, intent = "contact") {
+  if (!property) return;
+  workflowPropertyId = String(property.id);
+  workflowIntent = intent;
+  const methods = propertyContactMethods(property);
+  const title = intent === "showing" ? "Request showing" : "Contact";
+  document.querySelector("#contact-workflow-title").textContent = title;
+  document.querySelector("#contact-workflow-property").textContent = property.label || property.address || "Property";
+  const actions = document.querySelector("#contact-workflow-actions");
+  actions.replaceChildren();
+
+  if (methods.phone) {
+    const call = document.createElement("a");
+    call.href = "tel:" + methods.phone.replace(/[^+\d]/g, "");
+    call.className = "workflow-action";
+    call.textContent = "Call " + methods.phone;
+    call.addEventListener("click", () => {
+      if (intent === "showing") {
+        store.upsert(markShowingRequested(property));
+        recordActivity("showing-requested", property, { via: "phone" });
+      } else markPropertyContacted(property);
+    });
+    actions.append(call);
+  }
+
+  if (methods.email) {
+    const email = document.createElement("a");
+    const subject = intent === "showing" ? "Showing request — " + (property.label || property.address || "property") : "Question about " + (property.label || property.address || "property");
+    const body = intent === "showing"
+      ? "Hi, I’m interested in this property and would like to request a showing. Please let me know what times are available."
+      : "Hi, I’m interested in this property and would like more information. Please let me know when you have a chance.";
+    email.href = "mailto:" + encodeURIComponent(methods.email) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+    email.className = "workflow-action";
+    email.textContent = "Email " + methods.email;
+    email.addEventListener("click", () => {
+      if (intent === "showing") {
+        store.upsert(markShowingRequested(property));
+        recordActivity("showing-requested", property, { via: "email" });
+      } else markPropertyContacted(property);
+    });
+    actions.append(email);
+  }
+
+  const listing = document.createElement("a");
+  listing.href = methods.listing.url;
+  listing.target = "_blank";
+  listing.rel = "noopener noreferrer";
+  listing.className = "workflow-action";
+  listing.textContent = methods.listing.direct
+    ? (intent === "showing" ? "Open listing to request showing" : "Open listing to contact")
+    : (intent === "showing" ? "Find listing to request showing" : "Find listing to contact");
+  listing.addEventListener("click", () => {
+    if (intent === "showing") {
+      store.upsert(markShowingRequested(property));
+      recordActivity("showing-requested", property, { via: "listing" });
+    } else markPropertyContacted(property);
+  });
+  actions.append(listing);
+
+  const manual = document.createElement("button");
+  manual.type = "button";
+  manual.className = "workflow-action";
+  manual.textContent = intent === "showing" ? "Already requested" : "Mark as contacted";
+  manual.addEventListener("click", () => {
+    if (intent === "showing") {
+      store.upsert(markShowingRequested(property));
+      recordActivity("showing-requested", property, { via: "manual" });
+    } else markPropertyContacted(property);
+    document.querySelector("#contact-workflow-dialog").close();
+  });
+  actions.append(manual);
+
+  document.querySelector("#contact-workflow-dialog").showModal();
+}
+
+function openShowingWorkflow(property) {
+  if (!property) return;
+  workflowPropertyId = String(property.id);
+  document.querySelector("#showing-workflow-property").textContent = property.label || property.address || "Property";
+  document.querySelector("#showing-workflow-dialog").showModal();
+}
+
 function propertyCard(property) {
   const saved = property.saved || property.status === PROPERTY_STATUS.SHORTLISTED;
   const score = Math.max(0, Math.min(100, rankProperty(property, preferences)));
   const kind = classifyPropertyKind(property);
   const image = firstImageUrl(property) || "";
-  const listingUrl = safeListingUrl(property.sourceUrl);
+  const listing = propertyListingUrl(property);
   const [nextAction, nextIcon, nextLabel] = primaryAction(property);
   return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" tabindex="0" aria-label="View summary for ${esc(property.label)}" aria-haspopup="dialog" style="--score:${score}">
       <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
@@ -100,13 +208,13 @@ function propertyCard(property) {
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
         <button class="status-action" data-action="${nextAction}" aria-label="${nextLabel}" title="${nextLabel}"><span>${icon("phone")}</span><b>Contact</b></button>
-        ${listingUrl ? `<a class="status-action listing-action source-link" href="${esc(listingUrl)}" target="_blank" rel="noopener noreferrer" aria-label="View listing for ${esc(property.label)}" title="View listing"><span aria-hidden="true">↗</span><b>Listing</b></a>` : ""}
+        `<a class="status-action listing-action source-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer" aria-label="${listing.direct ? "View" : "Find"} listing for ${esc(property.label)}" title="${listing.direct ? "View listing" : "Find listing"}"><span aria-hidden="true">↗</span><b>${listing.direct ? "Listing" : "Find listing"}</b></a>`
         <button class="icon-action" data-action="map" aria-label="Focus on map" title="Focus on map">${icon("pin")}</button>
         <button class="icon-action" data-action="contact" aria-label="Contact" title="Contact">${icon("phone")}</button>
         <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">${icon("more")}</button>
       </div>
       <div class="property-card__more" hidden>
-        <button data-action="visited">Visited</button><button data-action="contact">Contacted</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Ignore</button><button data-action="archive">Archive</button>
+        <a class="source-link more-listing-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer">${listing.direct ? "View listing" : "Find listing"}</a><button data-action="visited">Visited</button><button data-action="contact">Contact</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Ignore</button><button data-action="archive">Archive</button>
       </div>
     </section>
     <div class="fit-ring" title="Match score ${score}" aria-label="Match score ${score}"><span>${score}</span></div>
@@ -215,6 +323,20 @@ app.innerHTML = `<main class="shell">
 <div id="ignore-toast" class="ignore-toast" role="status" hidden><span id="ignore-message"></span><button id="undo-ignore" type="button">Undo</button><button id="dismiss-ignore" type="button" aria-label="Dismiss">×</button></div>
 <dialog id="ignored-dialog"><div class="dialog-heading"><h2>Ignored properties</h2><button id="close-ignored" class="dialog-close" aria-label="Close ignored properties">×</button></div><p>Restore a property to put it back in your results.</p><div id="ignored-list"></div></dialog>
 <dialog id="property-summary-dialog" aria-labelledby="property-summary-title"><div class="dialog-heading"><h2 id="property-summary-title">Property summary</h2><button id="close-property-summary" class="dialog-close" aria-label="Close property summary">×</button></div><div id="property-summary-content"></div></dialog>
+<dialog id="contact-workflow-dialog" class="workflow-dialog" aria-labelledby="contact-workflow-title">
+  <div class="dialog-heading"><div><p class="eyebrow">PROPERTY</p><h2 id="contact-workflow-title">Contact</h2></div><button id="close-contact-workflow" class="dialog-close" aria-label="Close contact options">×</button></div>
+  <p id="contact-workflow-property" class="workflow-property"></p>
+  <div id="contact-workflow-actions" class="workflow-actions"></div>
+</dialog>
+<dialog id="showing-workflow-dialog" class="workflow-dialog" aria-labelledby="showing-workflow-title">
+  <div class="dialog-heading"><div><p class="eyebrow">PROPERTY</p><h2 id="showing-workflow-title">Showing</h2></div><button id="close-showing-workflow" class="dialog-close" aria-label="Close showing options">×</button></div>
+  <p id="showing-workflow-property" class="workflow-property"></p>
+  <div class="workflow-actions">
+    <button type="button" id="showing-contact-request" class="workflow-action">Contact to request showing</button>
+    <button type="button" id="showing-already-requested" class="workflow-action">Already requested</button>
+    <button type="button" id="showing-schedule-confirmed" class="workflow-action">Schedule confirmed showing</button>
+  </div>
+</dialog>
 <dialog id="import-dialog"><form method="dialog"><h2>Add listing</h2><p class="muted">Paste a listing URL. Rook keeps the source and routes it through the shared property model.</p><input id="listing-url" type="url" placeholder="https://…" required /><div class="dialog-actions"><button value="cancel">Cancel</button><button id="import-confirm" value="default">Add</button></div></form></dialog>
 
 <dialog id="settings-dialog"><form method="dialog"><h2>Search preferences</h2>
@@ -323,6 +445,34 @@ function openPropertySummary(id) {
   document.querySelector("#property-summary-dialog").showModal();
 }
 document.querySelector("#close-property-summary").addEventListener("click", () => document.querySelector("#property-summary-dialog").close());
+document.querySelector("#close-contact-workflow").addEventListener("click", () => document.querySelector("#contact-workflow-dialog").close());
+document.querySelector("#close-showing-workflow").addEventListener("click", () => document.querySelector("#showing-workflow-dialog").close());
+document.querySelector("#showing-contact-request").addEventListener("click", () => {
+  const property = store.getAll().find(p => String(p.id) === workflowPropertyId);
+  document.querySelector("#showing-workflow-dialog").close();
+  if (property) openContactWorkflow(property, "showing");
+});
+document.querySelector("#showing-already-requested").addEventListener("click", () => {
+  const property = store.getAll().find(p => String(p.id) === workflowPropertyId);
+  if (property) {
+    store.upsert(markShowingRequested(property));
+    recordActivity("showing-requested", property, { via: "manual" });
+  }
+  document.querySelector("#showing-workflow-dialog").close();
+});
+document.querySelector("#showing-schedule-confirmed").addEventListener("click", () => {
+  const property = store.getAll().find(p => String(p.id) === workflowPropertyId);
+  document.querySelector("#showing-workflow-dialog").close();
+  if (!property) return;
+  const value = window.prompt("Showing date/time (example: 2026-09-29 14:30)", "");
+  if (!value) return;
+  const startsAt = new Date(value);
+  if (Number.isNaN(startsAt.getTime())) return;
+  store.update(property.id, { status: PROPERTY_STATUS.SHOWING_SCHEDULED, showingAt: startsAt.toISOString(), contactOutcome: "showing-scheduled" });
+  recordActivity("showing-scheduled", property, { startsAt: startsAt.toISOString() });
+  const calendarUrl = googleCalendarShowingUrl(property, startsAt);
+  if (calendarUrl) window.open(calendarUrl, "_blank", "noopener,noreferrer");
+});
 function handlePropertyCardKeydown(event) {
   if (event.target.matches(".property-card") && ["Enter", " "].includes(event.key)) {
     event.preventDefault();
@@ -378,12 +528,12 @@ function handlePropertyCardClick(e) {
     recordActivity("visited", p);
   }
   if (action === "contact") {
-    store.update(p.id, { status: PROPERTY_STATUS.CONTACTED, contactedAt: new Date().toISOString() });
-    recordActivity("contacted", p);
+    openContactWorkflow(p, "contact");
+    return;
   }
   if (action === "showing") {
-    store.upsert(markShowingRequested(p));
-    recordActivity("showing-requested", p);
+    openShowingWorkflow(p);
+    return;
   }
   if (action === "note") {
     const note = window.prompt("Property notes", p.note || "");
