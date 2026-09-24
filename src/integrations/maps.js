@@ -23,6 +23,117 @@ const overviewState = {
   baseErrorCount: 0
 };
 
+let detailId = null;
+let pinnedDetails = false;
+let poiRun = 0;
+let poiMarkers = [];
+let poiFitted = false;
+let userMovedMap = false;
+
+function showPropertyDetails(id, pinned = false) {
+  const property = overviewState.latestProperties.find(p => String(p.id) === String(id));
+  const panel = document.querySelector("#map-details");
+  if (!property || !panel) return;
+  if (pinnedDetails && !pinned && detailId !== String(id)) return;
+  detailId = String(id);
+  pinnedDetails = pinnedDetails || pinned;
+  panel.replaceChildren();
+  panel.hidden = false;
+  const title = document.createElement("h3");
+  title.textContent = property.label || property.address || "Property";
+  const address = document.createElement("p");
+  address.textContent = property.address || "Address unavailable";
+  const facts = document.createElement("p");
+  facts.textContent = [
+    property.price ? "$" + Number(property.price).toLocaleString() + (property.listingType === "buy" ? "" : "/mo") : "Price TBD",
+    (property.beds ?? "—") + " bd",
+    (property.baths ?? "—") + " ba",
+    (property.status || "new").replaceAll("-", " ")
+  ].join(" · ");
+  panel.append(title, address, facts);
+  if (property.note) {
+    const note = document.createElement("p");
+    note.textContent = property.note;
+    panel.append(note);
+  }
+  const actions = document.createElement("div");
+  actions.className = "map-detail-actions";
+  for (const [action, label] of [
+    ["save", property.saved ? "Unsave" : "Save"],
+    ["note", "Notes"], ["contact", "Mark contacted"], ["showing", "Request showing"],
+    ["directions", "Directions"], ["view", "View property"]
+  ]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      pinnedDetails = true;
+      overviewState.latestOptions.onPropertyAction?.(action, String(property.id));
+    });
+    actions.append(button);
+  }
+  try {
+    const url = new URL(property.sourceUrl);
+    if (["https:", "http:"].includes(url.protocol)) {
+      const link = document.createElement("a");
+      link.href = url.href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "Open listing";
+      actions.append(link);
+    }
+  } catch {}
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "Close details";
+  close.addEventListener("click", () => {
+    detailId = null;
+    pinnedDetails = false;
+    panel.hidden = true;
+    clearSelectionState();
+  });
+  actions.append(close);
+  panel.append(actions);
+}
+
+async function updateOverviewPois() {
+  const run = ++poiRun;
+  const pois = overviewState.latestOptions.pointsOfInterest || [];
+  const points = [];
+  for (const poi of pois) {
+    const query = poi.address || poi.query || poi.location || poi.label;
+    const point = validCoordinates(poi) || (query ? await geocode(query) : null);
+    if (run !== poiRun) return;
+    if (point) points.push({ ...poi, ...point });
+  }
+  if (run !== poiRun || !overviewState.map) return;
+  poiMarkers.forEach(marker => marker.remove());
+  poiMarkers = points.map(point => {
+    const element = document.createElement("button");
+    element.type = "button";
+    element.className = "overview-poi" + (point.primary ? " overview-poi--primary" : "");
+    element.textContent = (point.primary ? "★ " : "● ") + (point.label || "Point of interest");
+    element.setAttribute("aria-label", point.label || "Point of interest");
+    const popupContent = document.createElement("div");
+    popupContent.textContent = [point.label, point.address || point.query || point.location].filter(Boolean).join(" · ");
+    const popup = new window.maplibregl.Popup({ offset: 18 }).setDOMContent(popupContent);
+    return new window.maplibregl.Marker({ element })
+      .setLngLat([point.lng, point.lat]).setPopup(popup).addTo(overviewState.map);
+  });
+  if (!poiFitted && !userMovedMap && points.length) {
+    const coords = [
+      ...listingGeoJson(overviewState.latestProperties, overviewState.latestOptions.location).features.map(f => f.geometry.coordinates),
+      ...points.map(p => [p.lng, p.lat])
+    ];
+    overviewState.map.fitBounds([
+      [Math.min(...coords.map(p => p[0])), Math.min(...coords.map(p => p[1]))],
+      [Math.max(...coords.map(p => p[0])), Math.max(...coords.map(p => p[1]))]
+    ], { padding: { top: 42, bottom: 55, left: 85, right: 85 }, maxZoom: 13, duration: 0 });
+    poiFitted = true;
+    overviewState.fittedOnce = true;
+  }
+}
+
 function loadMapLibre() {
   if (typeof window !== "undefined" && window.maplibregl?.Map) return Promise.resolve(window.maplibregl);
   if (!maplibrePromise) {
@@ -158,6 +269,7 @@ function updateOverviewSource({ fit = false } = {}) {
   applyOverviewFilter();
 
   if (overviewState.selectedId) selectFeature(overviewState.selectedId);
+  if (detailId) showPropertyDetails(detailId, pinnedDetails);
 
   if (fit && !overviewState.fittedOnce && data.features.length) {
     const coords = data.features.map(feature => feature.geometry.coordinates);
@@ -227,6 +339,7 @@ function installOverviewLayers(map) {
     if (overviewState.hoveredId && overviewState.hoveredId !== id) setFeatureStateSafe(overviewState.hoveredId, { hovered: false });
     overviewState.hoveredId = id == null ? null : String(id);
     if (overviewState.hoveredId) setFeatureStateSafe(overviewState.hoveredId, { hovered: true });
+    if (id != null) showPropertyDetails(String(id));
   });
 
   map.on("mouseleave", ROOK_LAYER_ID, () => {
@@ -239,7 +352,7 @@ function installOverviewLayers(map) {
     const id = event.features?.[0]?.id;
     if (id == null) return;
     selectFeature(String(id));
-    overviewState.container?.dispatchEvent(new CustomEvent("rook:map-select", { detail: { id: String(id) } }));
+    showPropertyDetails(String(id), true);
   });
 
   map.on("click", event => {
@@ -262,6 +375,7 @@ async function ensureOverviewMap(container) {
     attributionControl: true
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+  map.on("movestart", event => { if (event.originalEvent) userMovedMap = true; });
 
   overviewState.map = map;
   overviewState.container = container;
@@ -273,6 +387,7 @@ async function ensureOverviewMap(container) {
     installOverviewLayers(map);
     updateOverviewSource({ fit: !overviewState.fittedOnce });
     void geocodeMissingOverviewProperties();
+    void updateOverviewPois();
     container.dataset.mapStatus = "ready";
     const style = map.getStyle();
     container.dataset.baseLayerCount = String((style?.layers || []).filter(layer => layer.id !== ROOK_LAYER_ID).length);
@@ -302,6 +417,7 @@ export function renderPropertyMap(container, properties = [], options = {}) {
   if (overviewState.map && overviewState.container === container && overviewState.ready) {
     updateOverviewSource();
     void geocodeMissingOverviewProperties();
+    void updateOverviewPois();
     return;
   }
   void ensureOverviewMap(container).catch(() => {
@@ -323,6 +439,7 @@ export async function focusPropertyOnMap(property) {
   }
   if (!point || !overviewState.map) return;
   selectFeature(String(property.id));
+  showPropertyDetails(String(property.id), true);
   overviewState.map.easeTo({
     center: [point.lng, point.lat],
     zoom: Math.max(overviewState.map.getZoom(), 14),
@@ -500,3 +617,4 @@ export function openDirections(property) {
   const url = googleMapsDirectionsUrl(property);
   if (url) window.open(url, "_blank", "noopener,noreferrer");
 }
+

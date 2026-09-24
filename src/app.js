@@ -171,7 +171,19 @@ function renderList() {
     propertyTypes: preferences.propertyTypes,
     minBeds: preferences.minBeds,
     maxPrice: preferences.maxPrice,
-    location: preferences.location || config.search.location
+    location: preferences.location || config.search.location,
+    pointsOfInterest: cardPointsOfInterest(),
+    onPropertyAction(action, id) {
+      const property = store.getAll().find(p => String(p.id) === id);
+      if (!property) return;
+      const card = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+      if (action === "directions") return openDirections(property);
+      if (action === "view") {
+        card?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      card?.querySelector(`[data-action="${action}"]`)?.click();
+    }
   });
   const pois = cardPointsOfInterest();
   for (const property of visible) {
@@ -185,6 +197,7 @@ app.innerHTML = `<main class="shell">
 <header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></header>
 <div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div>
 <section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><div id="property-map" class="property-map" role="region" aria-label="Interactive property map"></div><div class="map-caption"><strong>Map</strong><span id="map-summary">Saved properties</span></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
+<section id="map-details" class="map-details" aria-label="Property details" aria-live="polite" hidden></section>
 <section class="results"><div class="section-heading"><h2>Properties</h2><span id="property-count"></span></div><div id="property-list"></div></section>
 <section class="activity-panel"><div class="section-heading"><h2>Recent activity</h2></div><ul id="activity-list"></ul></section>
 
@@ -452,3 +465,5 @@ document.addEventListener("touchend", () => {
 store.subscribe(renderList);
 renderList();
 queueMicrotask(() => refreshListings("startup"));
+
+
