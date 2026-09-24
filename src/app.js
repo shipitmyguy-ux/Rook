@@ -72,8 +72,8 @@ function cardPointsOfInterest() {
     ? preferences.pointsOfInterest.filter(p => p && (p.address || p.query || p.location || (p.lat != null && p.lng != null)))
     : [];
   const secondary = configured.length ? configured : [
-    { id: "park", kind: "park", label: "Twin Silo Park", query: "Twin Silo Park, Fort Collins, CO" },
-    { id: "school", kind: "school", label: "Laurel Elementary", query: "Laurel Elementary School, Fort Collins, CO" }
+    { id: "address-2", kind: "poi", label: "Address 2", query: "Laurel Elementary School, Fort Collins, CO" },
+    { id: "address-3", kind: "poi", label: "Address 3", query: "Twin Silo Park, Fort Collins, CO" }
   ];
   return [...(preferences.address1 ? [primary] : []), ...secondary.filter(p => p.id !== primary.id && p.address !== primary.address)];
 }
