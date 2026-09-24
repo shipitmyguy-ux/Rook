@@ -31,11 +31,17 @@ test("overview shows POIs and property details with working actions", async () =
     Map: function () { return map; }, AttributionControl: function () {},
     Marker, Popup: class { setDOMContent(content) { popupContent = content; return this; } setLngLat() { return this; } addTo() { return this; } remove() {} }
   } };
-  let action;
-  const container = { replaceChildren() {}, dataset: {} };
+  let selectedEvent;
+  const container = {
+    replaceChildren() {},
+    dataset: {},
+    dispatchEvent(event) { selectedEvent = event; return true; }
+  };
+  globalThis.CustomEvent = class CustomEvent {
+    constructor(type, options = {}) { this.type = type; this.detail = options.detail; }
+  };
   renderPropertyMap(container, [{ id: "home", label: "Test home", address: "Test address", lat: 40.5, lng: -105, price: 2100, beds: 2 }], {
-    pointsOfInterest: [{ id: "address-1", label: "address-1", primary: true, lat: 40.55, lng: -105.1 }],
-    onPropertyAction: (...args) => { action = args; }
+    pointsOfInterest: [{ id: "address-1", label: "address-1", primary: true, lat: 40.55, lng: -105.1 }]
   });
   await new Promise(resolve => setImmediate(resolve));
   events["style.load"]();
@@ -48,13 +54,9 @@ test("overview shows POIs and property details with working actions", async () =
   assert.equal(popupContent.children[0].textContent, "Test home");
   assert.match(popupContent.children[1].textContent, /2,100/);
   events["click:rook-listings-points"]({ features: [{ properties: { id: "home" } }] });
-  assert.equal(panel.children[0].textContent, "Test home");
-  assert.match(panel.children[2].textContent, /2,100/);
-  events["click:rook-listings-points"]({ features: [{ properties: { id: "home" } }] });
-  panel.children.at(-1).children.find(child => child.textContent === "Save").handlers.click();
-  assert.deepEqual(action, ["save", "home"]);
-  panel.children.at(-1).children.find(child => child.textContent === "Close details").handlers.click();
-  assert.equal(panel.hidden, true);
+  assert.equal(selectedEvent?.type, "rook:map-select");
+  assert.deepEqual(selectedEvent?.detail, { id: "home" });
+  assert.equal(panel.hidden, false);
 });
 
 
