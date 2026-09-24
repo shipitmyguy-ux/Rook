@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderPropertyMap } from "../src/integrations/maps.js";
+import { renderPropertyMap, mapLocationQueries } from "../src/integrations/maps.js";
 
 test("overview excludes missing coordinates, uses valid cache, and preserves real zero coordinates", async () => {
   let data;
@@ -41,3 +41,67 @@ test("overview excludes missing coordinates, uses valid cache, and preserves rea
 
 
 
+
+
+test("map location queries fall back from unit addresses to building addresses and property names", () => {
+  const unitQueries = mapLocationQueries(
+    { address:"2502 Timberwood Dr Unit K56, Fort Collins, CO 80528", label:"2502 Timberwood Dr Unit K56" },
+    "Fort Collins, CO"
+  );
+  assert.equal(unitQueries[0], "2502 Timberwood Dr Unit K56, Fort Collins, CO 80528");
+  assert.ok(unitQueries.includes("2502 Timberwood Dr, Fort Collins, CO 80528"));
+
+  const namedQueries = mapLocationQueries(
+    { address:"", label:"Country Ranch Apartments" },
+    "Fort Collins, CO"
+  );
+  assert.deepEqual(namedQueries, ["Country Ranch Apartments, Fort Collins, CO"]);
+});
+
+test("every already-visible property with a resolvable location reaches the map source", async () => {
+  let data;
+  let appliedFilter;
+  const cache = {
+    "Country Ranch Apartments, Fort Collins, CO": { lat: 40.5, lng: -105.0 },
+    "2502 Timberwood Dr, Fort Collins, CO 80528": { lat: 40.49, lng: -105.01 },
+    "Generic Rental, Fort Collins, CO": { lat: 40.51, lng: -105.02 }
+  };
+  globalThis.localStorage = {
+    getItem: key => key === "rook.geocode-cache.v1" ? JSON.stringify(cache) : null,
+    setItem() {}
+  };
+  globalThis.fetch = async () => ({ ok:false });
+  let onStyle;
+  const source = { setData(value) { data = value; } };
+  const map = {
+    addControl() {},
+    on(event, handler) { if (event === "style.load") onStyle = handler; },
+    getSource() { return source; },
+    getLayer() { return true; },
+    setFilter(_id, filter) { appliedFilter = filter; },
+    fitBounds() {},
+    jumpTo() {},
+    getStyle() { return { layers:[], sources:{} }; }
+  };
+  globalThis.window = { maplibregl:{ Map:function(){ return map; }, AttributionControl:function(){} } };
+  const container = { replaceChildren(){}, dataset:{} };
+  const visible = [
+    { id:"country-ranch", label:"Country Ranch Apartments", address:"", type:"Apartment", listingType:"rent" },
+    { id:"unit", label:"2502 Timberwood Dr Unit K56", address:"2502 Timberwood Dr Unit K56, Fort Collins, CO 80528", type:"Townhome", listingType:"rent" },
+    { id:"generic", label:"Generic Rental", address:"", type:"Rental", listingType:"rent" }
+  ];
+  renderPropertyMap(container, visible, {
+    dataAlreadyFiltered:true,
+    propertyTypes:["apartment","townhome","house"],
+    location:"Fort Collins, CO"
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  onStyle();
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.deepEqual(data.features.map(feature => feature.id).sort(), ["country-ranch","generic","unit"]);
+  assert.deepEqual(appliedFilter, ["all"]);
+  assert.equal(container.dataset.mapExpectedPropertyCount, "3");
+  assert.equal(container.dataset.mapFeatureCount, "3");
+  assert.equal(container.dataset.mapUnresolvedCount, "0");
+});
