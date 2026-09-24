@@ -84,6 +84,10 @@ async function browserSnapshot(url: string) {
   }
 }
 
+function looksLikeBrowserChallenge(text: string) {
+  return /performing security verification|verify you are not a bot|checking your browser|cloudflare|access denied|enable javascript and cookies|captcha|security service to protect against malicious bots/i.test(text);
+}
+
 function fallbackListingFromText(text: string, pageUrl: string, known: { address?: string; label?: string; source?: string } = {}) {
   const price = firstMatchNumber(text, [
     /\$([\d,]{3,})(?:\.\d+)?\s*(?:\/\s*mo|per\s*month|monthly)?/i,
@@ -104,7 +108,7 @@ function fallbackListingFromText(text: string, pageUrl: string, known: { address
     price, beds, baths,
     source:known.source || new URL(pageUrl).hostname,
     sourceUrl:pageUrl,
-    metadata:{ enrichedFromBrowser:true, browserTextSample: text.slice(0,1200) }
+    metadata:{ enrichedFromBrowser:true }
   };
 }
 
@@ -305,7 +309,7 @@ async function resolveListing(address: string, label: string, location: string, 
         try {
           const snapshot = await browserSnapshot(direct.toString());
           const text = String(snapshot?.text || "");
-          if (text) {
+          if (text && !looksLikeBrowserChallenge(text)) {
             const browserListing = fallbackListingFromText(text, direct.toString(), { address, label, source:direct.hostname });
             return {
               state:"active",
@@ -406,18 +410,32 @@ async function resolveListing(address: string, label: string, location: string, 
         const candidate = new URL(String(link?.href || ""));
         const hostname = candidate.hostname.replace(/^www\./,"");
         if (!allowedHosts.test(hostname)) continue;
-        const linkText = String(link?.text || "").toLowerCase();
+        const linkTextRaw = String(link?.text || "");
+        const linkContext = String(link?.context || "");
+        const linkText = linkTextRaw.toLowerCase();
         const addressToken = canonicalAddress(address || label);
-        const textToken = canonicalAddress(linkText);
+        const textToken = canonicalAddress(linkTextRaw + " " + linkContext);
         if (addressToken && textToken && !textToken.includes(addressToken) && !addressToken.includes(textToken)) {
-          if (label && !linkText.includes(String(label).toLowerCase())) continue;
+          if (label && !(linkTextRaw + " " + linkContext).toLowerCase().includes(String(label).toLowerCase())) continue;
+        }
+
+        const snippetListing = fallbackListingFromText(linkContext, candidate.toString(), { address, label, source:candidate.hostname });
+        if (snippetListing.price || snippetListing.beds || snippetListing.baths) {
+          return {
+            state:"active",
+            listing:snippetListing,
+            checkedAt,
+            checkedSources:successfulSources,
+            browserFallback:true,
+            searchSnippet:true
+          };
         }
 
         let snapshotListing: Listing | null = null;
         try {
           const listingSnapshot = await browserSnapshot(candidate.toString());
           const listingText = String(listingSnapshot?.text || "");
-          if (!listingText) continue;
+          if (!listingText || looksLikeBrowserChallenge(listingText)) continue;
           snapshotListing = fallbackListingFromText(listingText, candidate.toString(), { address, label, source:candidate.hostname });
         } catch {}
         if (snapshotListing) {
