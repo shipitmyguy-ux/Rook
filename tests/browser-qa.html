@@ -46,6 +46,7 @@ function finish(){
       overviewVisible:getComputedStyle(overview).display!=="none"&&overview.getBoundingClientRect().height>200,
       mapProvider:map.dataset.mapProvider==="maplibre-openfreemap",
       mapHostIsDiv:map.tagName==="DIV",
+      baseMapLoaded:Number(map.dataset.baseLayerCount||0)>5&&Number(map.dataset.baseSourceCount||0)>0,
       cardMapLabelFree:!doc.querySelector(".card-map-frame")&&!doc.querySelector(".map-marker small"),
       noHorizontalOverflow:doc.documentElement.scrollWidth<=viewport+2
     };
