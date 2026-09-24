@@ -118,8 +118,9 @@ function tileLayerHtml(center, zoom) {
       const x = baseX + col;
       const y = baseY + row;
       const sub = ["a","b","c","d"][(row + col) % 4];
-      const src = `https://${sub}.basemaps.cartocdn.com/dark_nolabels/${zoom}/${x}/${y}@2x.png`;
-      tiles += `<img src="${src}" alt="" loading="lazy" style="left:${col * 256}px;top:${row * 256}px">`;
+      const primary = `https://${sub}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/${zoom}/${x}/${y}@2x.png`;
+      const fallback = `https://${sub}.basemaps.cartocdn.com/light_nolabels/${zoom}/${x}/${y}@2x.png`;
+      tiles += `<img src="${primary}" data-fallback="${fallback}" alt="" loading="eager" referrerpolicy="no-referrer" style="left:${col * 256}px;top:${row * 256}px" onerror="if(this.dataset.fallback&&this.src!==this.dataset.fallback){this.src=this.dataset.fallback}else{this.style.visibility='hidden'}">`;
     }
   }
   return `<div class="card-map-tiles" style="left:calc(50% - ${offsetX}px);top:calc(50% - ${offsetY}px)">${tiles}</div>`;
@@ -134,12 +135,16 @@ function markerOffset(point, center, zoom) {
 export async function renderCardMap(container, property, pointsOfInterest = [], fallbackLocation = "Fort Collins, CO") {
   if (!container || !property) return;
   const propertyQuery = property.address || [property.label, fallbackLocation].filter(Boolean).join(", ");
-  container.innerHTML = `<div class="card-map-loading"></div><div class="card-map-shade"></div>`;
+  const fallbackPoint = /fort collins/i.test(fallbackLocation)
+    ? { lat: 40.5853, lng: -105.0844 }
+    : await geocode(fallbackLocation) || { lat: 40.5853, lng: -105.0844 };
 
-  const propertyPoint = property.lat != null && property.lng != null
+  container.innerHTML = `${tileLayerHtml(fallbackPoint, 12)}<div class="card-map-shade"></div>`;
+
+  const resolvedPropertyPoint = property.lat != null && property.lng != null
     ? { lat: Number(property.lat), lng: Number(property.lng), label: property.label || "Property", kind: "property" }
     : await geocode(propertyQuery);
-  if (!propertyPoint) return;
+  const propertyPoint = resolvedPropertyPoint || fallbackPoint;
 
   const poiPoints = [];
   for (const poi of pointsOfInterest) {
