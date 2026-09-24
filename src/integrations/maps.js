@@ -7,6 +7,7 @@ const ROOK_LAYER_ID = "rook-listings-points";
 const FORT_COLLINS_CENTER = [-105.0844, 40.5853];
 
 let maplibrePromise = null;
+// Pan, zoom, hover, selection, and map filter state are intentionally session-only.
 const overviewState = {
   map: null,
   container: null,
