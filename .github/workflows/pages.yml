@@ -102,6 +102,8 @@ jobs:
           "$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=7000 --window-size=390,900 --dump-dom http://127.0.0.1:4173/tests/browser-qa.html > /tmp/rook-mobile.html
           grep -q 'data-qa="pass"' /tmp/rook-mobile.html
           grep -q '"noHorizontalOverflow":true' /tmp/rook-mobile.html
+          echo "Desktop QA:" && grep -o '{"pass"[^<]*' /tmp/rook-desktop.html | tail -1
+          echo "Mobile QA:" && grep -o '{"pass"[^<]*' /tmp/rook-mobile.html | tail -1
 
       - name: Smoke test live Fort Collins listing backend
         run: |
