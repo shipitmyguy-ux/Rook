@@ -10,7 +10,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl } from "./integrations/providers.js";
-import { openDirections, renderPropertyMap, renderCardMap, focusPropertyOnMap } from "./integrations/maps.js?v=selection-only-v1";
+import { openDirections, renderPropertyMap, renderCardMap, focusPropertyOnMap } from "./integrations/maps.js?v=relocate-card-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js";
 import { config } from "./config.js";
 
@@ -21,6 +21,9 @@ let query = "";
 let preferences = loadPreferences();
 document.documentElement.dataset.theme = preferences.visualTheme || "default";
 let refreshInFlight = false;
+let selectedMapPropertyId = null;
+let selectedMapCard = null;
+let selectedMapCardPlaceholder = null;
 let pullStartY = null;
 let pullDistance = 0;
 registerConfiguredProviders();
@@ -272,7 +275,50 @@ async function refreshListings(trigger = "manual") {
   }
 }
 
+function restoreSelectedMapCard({ keepSelection = false } = {}) {
+  const panel = document.querySelector("#map-details");
+  if (selectedMapCard && selectedMapCardPlaceholder?.isConnected) {
+    selectedMapCardPlaceholder.replaceWith(selectedMapCard);
+  } else if (selectedMapCard?.isConnected && selectedMapCard.closest("#map-details")) {
+    selectedMapCard.remove();
+  }
+  selectedMapCard = null;
+  selectedMapCardPlaceholder = null;
+  if (panel) {
+    panel.replaceChildren();
+    panel.hidden = true;
+    delete panel.dataset.selectedPropertyId;
+  }
+  if (!keepSelection) selectedMapPropertyId = null;
+}
+
+function movePropertyCardUnderMap(id) {
+  const propertyId = String(id || "");
+  if (!propertyId) return;
+  if (selectedMapPropertyId === propertyId && selectedMapCard?.isConnected && selectedMapCard.closest("#map-details")) return;
+
+  restoreSelectedMapCard();
+  const panel = document.querySelector("#map-details");
+  const list = document.querySelector("#property-list");
+  const card = list?.querySelector(`[data-id="${CSS.escape(propertyId)}"]`);
+  if (!panel || !card) return;
+
+  const placeholder = document.createElement("div");
+  placeholder.hidden = true;
+  placeholder.dataset.mapCardPlaceholder = propertyId;
+  card.before(placeholder);
+
+  selectedMapPropertyId = propertyId;
+  selectedMapCard = card;
+  selectedMapCardPlaceholder = placeholder;
+  panel.replaceChildren(card);
+  panel.hidden = false;
+  panel.dataset.selectedPropertyId = propertyId;
+}
+
 function renderList() {
+  const mapSelectionToRestore = selectedMapPropertyId;
+  if (mapSelectionToRestore) restoreSelectedMapCard({ keepSelection: true });
   const visible = visibleProperties();
   document.querySelector("#property-count").textContent = `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`;
   document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("");
@@ -303,6 +349,7 @@ function renderList() {
   }
   renderActivity();
   renderIgnoredProperties();
+  if (mapSelectionToRestore) movePropertyCardUnderMap(mapSelectionToRestore);
 }
 
 app.innerHTML = `<main class="shell">
@@ -400,14 +447,10 @@ function ignoreProperty(property, status) {
 document.querySelector("#property-map").addEventListener("rook:map-select", event => {
   const id = String(event.detail?.id || "");
   if (!id) return;
-  const property = store.getAll().find(p => String(p.id) === id);
-  const panel = document.querySelector("#map-details");
-  if (!property || !panel) return;
-  panel.innerHTML = propertyCard(property);
-  panel.hidden = false;
-  panel.dataset.selectedPropertyId = id;
-  const cardMap = panel.querySelector(`[data-card-map="${CSS.escape(property.id)}"]`);
-  if (cardMap) void renderCardMap(cardMap, property, cardPointsOfInterest(), preferences.location || config.search.location);
+  movePropertyCardUnderMap(id);
+});
+document.querySelector("#property-map").addEventListener("rook:map-clear", () => {
+  restoreSelectedMapCard();
 });
 document.querySelector("#more-button").addEventListener("click", () => document.querySelector("#actions-dialog").showModal());
 document.querySelector("#property-search").addEventListener("input", e => { query = e.target.value; renderList(); });
