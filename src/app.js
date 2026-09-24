@@ -15,6 +15,8 @@ import { googleCalendarShowingUrl } from "./integrations/calendar.js";
 import { config } from "./config.js";
 
 const app = document.querySelector("#app");
+window.addEventListener("error", event => { if (app) app.dataset.runtimeError = String(event.error?.stack || event.message || "runtime error").slice(0,500); });
+window.addEventListener("unhandledrejection", event => { if (app) app.dataset.runtimeError = String(event.reason?.stack || event.reason || "unhandled rejection").slice(0,500); });
 const store = createPropertyStore(seedProperties);
 let activeFilter = "all";
 let query = "";
