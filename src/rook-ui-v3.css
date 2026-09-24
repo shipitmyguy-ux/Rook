@@ -92,3 +92,23 @@ button:focus-visible{outline:3px solid #78ffee;outline-offset:3px}
 .card-map-art .maplibregl-canvas{outline:0}
 
 #ignored-dialog{max-height:80vh;overflow:auto}.property-type-icon{padding-top:1px}
+
+/* Neutral POI labels for Address 2 and Address 3. */
+.overview-poi--neutral{
+  width:auto;
+  min-width:22px;
+  height:24px;
+  padding:0 8px 0 6px;
+  border-radius:12px;
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  background:#17313a;
+  color:#d9e4e8;
+  border:1px solid rgba(217,228,232,.55);
+  font-size:11px;
+  line-height:1;
+  z-index:3;
+}
+.overview-poi__dot{font-size:10px;line-height:1;opacity:.9}
+.overview-poi__label{font:600 11px/1 system-ui;white-space:nowrap}
