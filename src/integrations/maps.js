@@ -406,6 +406,8 @@ async function ensureOverviewMap(container) {
   container.replaceChildren();
   container.dataset.mapProvider = "maplibre-openfreemap";
 
+  container.dataset.mapStatus = "loading";
+  container.dataset.mapFirstPaint = "pending";
   const map = new maplibregl.Map({
     container,
     style: OPENFREEMAP_STYLE_URL,
@@ -433,7 +435,13 @@ async function ensureOverviewMap(container) {
     updateOverviewSource({ fit: !overviewState.fittedOnce });
     void geocodeMissingOverviewProperties();
     void updateOverviewPois();
-    container.dataset.mapStatus = "ready";
+    const reveal = () => {
+      if (container.dataset.mapFirstPaint === "ready") return;
+      container.dataset.mapFirstPaint = "ready";
+      container.dataset.mapStatus = "ready";
+    };
+    if (map.loaded()) reveal();
+    else map.once("idle", reveal);
     const style = map.getStyle();
     container.dataset.baseLayerCount = String((style?.layers || []).filter(layer => layer.id !== ROOK_LAYER_ID).length);
     container.dataset.baseSourceCount = String(Object.keys(style?.sources || {}).filter(id => id !== ROOK_SOURCE_ID).length);
