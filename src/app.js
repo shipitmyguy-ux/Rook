@@ -475,20 +475,10 @@ document.querySelector("#showing-schedule-confirmed").addEventListener("click", 
   if (calendarUrl) window.open(calendarUrl, "_blank", "noopener,noreferrer");
 });
 function handlePropertyCardKeydown(event) {
-  if (event.target.matches(".property-card") && ["Enter", " "].includes(event.key)) {
-    event.preventDefault();
-    openPropertySummary(event.target.dataset.id);
-  }
+  // Property cards are passive containers; actions are available through explicit controls only.
 }
 
 function handlePropertyCardClick(e) {
-  const summaryCard = e.target.closest(".property-card");
-  const inMapPreview = Boolean(e.currentTarget?.matches?.("#map-details"));
-  if (summaryCard && !inMapPreview && !e.target.closest("button,a,input,select,textarea")) {
-    openPropertySummary(summaryCard.dataset.id);
-    return;
-  }
-
   const sourceLink = e.target.closest(".source-link");
   if (sourceLink) {
     const sourceCard = e.target.closest("[data-id]");
