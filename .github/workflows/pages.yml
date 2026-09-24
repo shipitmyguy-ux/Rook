@@ -115,6 +115,9 @@ jobs:
           curl --fail --retry 1 --max-time 35 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?resolve=1&address=303%20W%20Prospect%20Rd%2C%20Fort%20Collins%2C%20CO%2080526&label=Prospect%20Station&sourceUrl=https%3A%2F%2Fwww.prospectstation.com%2Ffloorplans%2F303-w-prospect-rd-2-bed%252C-2-bath&location=Fort%20Collins%2C%20CO" -o /tmp/rook-prospect.json
           echo "Prospect resolver:" && cat /tmp/rook-prospect.json
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-prospect.json","utf8"));if(p.state!=="active"||!p.listing?.sourceUrl||!(Number(p.listing?.price)>0))process.exit(1)'
+          curl --fail --retry 1 --max-time 45 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?resolve=1&address=3051%20Sage%20Creek%20Rd%20Unit%20G38%2C%20Fort%20Collins%2C%20CO%2080528&label=3051%20Sage%20Creek%20Rd%20Unit%20G38&location=Fort%20Collins%2C%20CO" -o /tmp/rook-sage-creek.json
+          echo "Sage Creek resolver:" && cat /tmp/rook-sage-creek.json
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-sage-creek.json","utf8"));let h="";try{h=new URL(p.listing?.sourceUrl||"").hostname}catch{};if(p.state!=="active"||!p.listing?.sourceUrl||/^(www\\.)?(google\\.com|example\\.com)$/.test(h))process.exit(1)'
 
   deploy-visual:
     needs: detect
