@@ -16,15 +16,19 @@ function usableLocations(properties = []) {
 
 export function googleMapsEmbedUrl(properties = []) {
   const locations = usableLocations(properties);
-  const query = locations.length ? locations.slice(0, 10).join(" | ") : "Fort Collins, CO";
+  // Google's keyless iframe endpoint supports a single search query reliably.
+  // Center on the active result set's first property; individual cards provide
+  // directions links. A true multi-marker overview requires the Maps JS API.
+  const target = locations[0] || "Fort Collins, CO";
   const zoom = locations.length > 1 ? 12 : 15;
-  return "https://www.google.com/maps?q=" + encodeURIComponent(query) + "&z=" + zoom + "&output=embed";
+  return "https://maps.google.com/maps?q=" + encodeURIComponent(target) + "&z=" + zoom + "&output=embed";
 }
 
 export function renderPropertyMap(frame, properties = []) {
   if (!frame) return;
+  frame.removeAttribute("srcdoc");
   frame.src = googleMapsEmbedUrl(properties);
-  frame.title = properties.length > 1 ? `Map showing ${properties.length} properties` : properties.length ? "Property map" : "Rook property map";
+  frame.title = properties.length > 1 ? `Map centered on ${properties.length} active properties` : properties.length ? "Property map" : "Rook property map";
 }
 
 export function openDirections(property) {
