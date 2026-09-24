@@ -166,6 +166,7 @@ export async function resolveMissingListing(property = {}, criteria = {}, fetchI
   url.searchParams.set("resolve", "1");
   if (property.address) url.searchParams.set("address", property.address);
   if (property.label) url.searchParams.set("label", property.label);
+  if (property.sourceUrl) url.searchParams.set("sourceUrl", property.sourceUrl);
   url.searchParams.set("listingType", property.listingType === "buy" ? "buy" : "rent");
   if (criteria.location) url.searchParams.set("location", criteria.location);
   const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
