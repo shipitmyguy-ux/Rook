@@ -28,7 +28,7 @@ test("overview shows POIs and property details with working actions", async () =
     setPopup() { return this; } addTo() { return this; } remove() {}
   }
   globalThis.window = { maplibregl: {
-    Map: function () { return map; }, NavigationControl: function () {},
+    Map: function () { return map; }, AttributionControl: function () {},
     Marker, Popup: class { setDOMContent() { return this; } }
   } };
   let action;
@@ -41,7 +41,7 @@ test("overview shows POIs and property details with working actions", async () =
   events["style.load"]();
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(markerPoint, [-105.1, 40.55]);
-  assert.match(markerElement.textContent, /Sister-in-law/);
+  assert.equal(markerElement.textContent, "★");
   assert.deepEqual(fitted, [[-105.1, 40.5], [-105, 40.55]]);
   events["mouseenter:rook-listings-points"]({ features: [{ properties: { id: "home" } }] });
   assert.equal(panel.hidden, false);
@@ -53,5 +53,6 @@ test("overview shows POIs and property details with working actions", async () =
   panel.children.at(-1).children.find(child => child.textContent === "Close details").handlers.click();
   assert.equal(panel.hidden, true);
 });
+
 
 

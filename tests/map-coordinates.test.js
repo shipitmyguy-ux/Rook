@@ -18,7 +18,7 @@ test("overview excludes missing coordinates, uses valid cache, and preserves rea
     setFilter() {}, fitBounds() {}, jumpTo() {},
     getStyle() { return { layers: [], sources: {} }; }
   };
-  globalThis.window = { maplibregl: { Map: function () { return map; }, NavigationControl: function () {} } };
+  globalThis.window = { maplibregl: { Map: function () { return map; }, AttributionControl: function () {} } };
   const container = { replaceChildren() {}, dataset: {} };
   renderPropertyMap(container, [
     { id: "missing", lat: null, lng: null, address: "Missing address" },
@@ -38,3 +38,6 @@ test("overview excludes missing coordinates, uses valid cache, and preserves rea
     ["numeric-string", [-105.1, 40.5]]
   ]);
 });
+
+
+

@@ -167,7 +167,6 @@ function renderList() {
   document.querySelector("#property-count").textContent = `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`;
   document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("");
   const mappedProperties = store.getAll().filter(p => ![PROPERTY_STATUS.ARCHIVED, PROPERTY_STATUS.REJECTED].includes(p.status));
-  document.querySelector("#map-summary").textContent = `${mappedProperties.length} properties`;
   renderPropertyMap(document.querySelector("#property-map"), mappedProperties, {
     activeFilter,
     propertyTypes: preferences.propertyTypes,
@@ -198,7 +197,7 @@ function renderList() {
 app.innerHTML = `<main class="shell">
 <header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></header>
 <div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div>
-<section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><div id="property-map" class="property-map" role="region" aria-label="Interactive property map"></div><div class="map-caption"><strong>Map</strong><span id="map-summary">Saved properties</span></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
+<section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><div id="property-map" class="property-map" role="region" aria-label="Interactive property map"></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
 <section id="map-details" class="map-details" aria-label="Property details" aria-live="polite" hidden></section>
 <section class="results"><div class="section-heading"><h2>Properties</h2><span id="property-count"></span></div><div id="property-list"></div></section>
 <section class="activity-panel"><div class="section-heading"><h2>Recent activity</h2></div><ul id="activity-list"></ul></section>

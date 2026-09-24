@@ -112,7 +112,8 @@ async function updateOverviewPois() {
     const element = document.createElement("button");
     element.type = "button";
     element.className = "overview-poi" + (point.primary ? " overview-poi--primary" : "");
-    element.textContent = (point.primary ? "★ " : "● ") + (point.label || "Point of interest");
+    element.textContent = point.primary ? "★" : "●";
+    element.title = point.label || "Point of interest";
     element.setAttribute("aria-label", point.label || "Point of interest");
     const popupContent = document.createElement("div");
     popupContent.textContent = [point.label, point.address || point.query || point.location].filter(Boolean).join(" · ");
@@ -361,6 +362,31 @@ function installOverviewLayers(map) {
   });
 }
 
+
+// Palette from the original card-map artwork in assets/neighborhood.svg.
+function applyReferenceMapTheme(map) {
+  for (const layer of map.getStyle()?.layers || []) {
+    const id = layer.id.toLowerCase();
+    if (id === ROOK_LAYER_ID) continue;
+    if (layer.type === "symbol") {
+      map.setLayoutProperty(layer.id, "visibility", "none");
+      continue;
+    }
+    const water = /water|ocean|river|lake/.test(id);
+    const green = /park|wood|forest|grass|landcover|landuse/.test(id);
+    const building = /building/.test(id);
+    if (layer.type === "background") map.setPaintProperty(layer.id, "background-color", "#09212a");
+    if (layer.type === "fill") {
+      map.setPaintProperty(layer.id, "fill-color", water ? "#041b31" : green ? "#154134" : building ? "#173332" : "#09212a");
+      map.setPaintProperty(layer.id, "fill-outline-color", building ? "#1d4141" : water ? "#041b31" : "#173332");
+    }
+    if (layer.type === "line") {
+      map.setPaintProperty(layer.id, "line-color", water ? "#041b31" : /boundary|admin/.test(id) ? "#28505d" : /casing/.test(id) ? "#28505d" : "#3d6372");
+    }
+    if (layer.type === "fill-extrusion") map.setPaintProperty(layer.id, "fill-extrusion-color", "#173332");
+  }
+}
+
 async function ensureOverviewMap(container) {
   if (overviewState.map && overviewState.container === container) return overviewState.map;
   const maplibregl = await loadMapLibre();
@@ -372,9 +398,14 @@ async function ensureOverviewMap(container) {
     style: OPENFREEMAP_STYLE_URL,
     center: FORT_COLLINS_CENTER,
     zoom: 11,
-    attributionControl: true
+    attributionControl: false,
+    dragPan: true,
+    scrollZoom: true,
+    touchZoomRotate: true,
+    doubleClickZoom: true,
+    keyboard: true
   });
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+  map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-right");
   map.on("movestart", event => { if (event.originalEvent) userMovedMap = true; });
 
   overviewState.map = map;
@@ -383,6 +414,7 @@ async function ensureOverviewMap(container) {
   overviewState.fittedOnce = false;
 
   const hydrateStyle = () => {
+    applyReferenceMapTheme(map);
     overviewState.ready = true;
     installOverviewLayers(map);
     updateOverviewSource({ fit: !overviewState.fittedOnce });

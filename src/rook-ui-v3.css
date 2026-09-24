@@ -33,3 +33,10 @@ button:focus-visible{outline:3px solid #78ffee;outline-offset:3px}
 .map-detail-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.map-detail-actions button,.map-detail-actions a{padding:9px 12px;border:1px solid #526a80;border-radius:9px;background:#1d3448;color:#fff;font:inherit;font-size:.85rem;text-decoration:none;cursor:pointer}
 .map-detail-actions button:hover,.map-detail-actions a:hover{background:#31536e}.maplibregl-popup-content{color:#17202a}
 
+
+/* Compact POI markers; map navigation uses touch and mouse gestures. */
+.overview-poi{width:22px;height:22px;min-width:0;padding:0;border-radius:50%;font-size:12px;line-height:18px;border-width:1px}
+.overview-poi--primary{width:28px;height:28px;font-size:18px;line-height:24px}
+.property-map .maplibregl-ctrl-attrib{background:rgba(5,16,24,.8);color:#91aeb7;font-size:9px;line-height:14px;padding:2px 5px}
+.property-map .maplibregl-ctrl-attrib a{color:#91aeb7}
+.property-map .maplibregl-canvas{touch-action:none}
