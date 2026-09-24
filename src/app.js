@@ -10,7 +10,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl } from "./integrations/providers.js";
-import { openDirections, renderPropertyMap, updateCardDistance, focusPropertyOnMap } from "./integrations/maps.js?v=perf-v1";
+import { openDirections, renderPropertyMap, updateCardDistance, focusPropertyOnMap } from "./integrations/maps.js?v=qa-rootfix-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js";
 import { config } from "./config.js";
 
@@ -54,10 +54,6 @@ function followUpBadge(property) {
   const label = next.kind === "follow-up-due" ? "Follow-up due" : next.kind === "showing" ? "Showing" : "Waiting";
   const detail = Number.isNaN(date.getTime()) ? "" : date.toLocaleString([], { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
   return `<span class="status-chip ${next.kind}">${esc(label)}${detail ? " · " + esc(detail) : ""}</span>`;
-}
-
-function primaryAction() {
-  return ["contact", "☎", "Contact"];
 }
 
 // Generic no-photo silhouettes use solid bodies with recessed window/door lines.
@@ -199,10 +195,11 @@ function propertyCard(property) {
   const image = firstImageUrl(property) || "";
   const listing = propertyListingUrl(property);
   const displayAddress = property.address || (/^\d+\s/.test(String(property.label || "")) ? property.label : "Address unavailable");
-  const displayPrice = Number.isFinite(Number(property.price)) && Number(property.price) > 0
-    ? "$" + Number(property.price).toLocaleString() + (property.listingType === "rent" ? "/mo" : "")
-    : "Price unavailable";
-  const [nextAction, nextIcon, nextLabel] = primaryAction(property);
+  const displayPrice = property.metadata?.priceLabel
+    || (property.type === "Rental area" ? "Area research"
+    : Number.isFinite(Number(property.price)) && Number(property.price) > 0
+      ? "$" + Number(property.price).toLocaleString() + (property.listingType === "rent" ? "/mo" : "")
+      : "Price unavailable");
   return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" tabindex="0" aria-label="View summary for ${esc(property.label)}" aria-haspopup="dialog" style="--score:${score}">
       <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
     <section class="property-card__media" aria-label="Listing image">
