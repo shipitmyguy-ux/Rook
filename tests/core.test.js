@@ -11,7 +11,7 @@ import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
 import { normalizePreferences } from "../src/core/preferences.js";
 import { config } from "../src/config.js";
-import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing } from "../src/integrations/providers.js";
+import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing } from "../src/integrations/providers.js";
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
   const property = normalizeProperty({
@@ -96,6 +96,24 @@ test("overview map uses MapLibre with OpenFreeMap", () => {
   assert.match(config.maps.styleUrl, /^https:\/\/tiles\.openfreemap\.org\/styles\//);
 });
 
+
+
+test("missing listing resolver distinguishes recovered closed and unknown states", async () => {
+  const recovered = await resolveMissingListing(
+    { address:"123 Main St, Fort Collins, CO", label:"123 Main St" },
+    { location:"Fort Collins, CO" },
+    async () => ({ ok:true, json:async()=>({ state:"active", checkedAt:"2026-09-24T17:00:00Z", listing:{ address:"123 Main Street, Fort Collins, CO", sourceUrl:"https://example.test/listing" } }) })
+  );
+  assert.equal(recovered.state, "active");
+  assert.equal(recovered.url, "https://example.test/listing");
+
+  const closed = await resolveMissingListing(
+    { address:"123 Main St, Fort Collins, CO" },
+    { location:"Fort Collins, CO" },
+    async () => ({ ok:true, json:async()=>({ state:"closed", checkedAt:"2026-09-24T17:00:00Z", listing:null }) })
+  );
+  assert.equal(closed.state, "closed");
+});
 
 test("provider results normalize into the shared property model", () => {
   const property = normalizeProviderResult({ address: "1 Main St", price: "1800", beds: "2", url: "https://example.com/1" }, { id: "demo", label: "Demo" });
