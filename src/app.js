@@ -10,7 +10,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl } from "./integrations/providers.js";
-import { openDirections, renderPropertyMap, renderCardMap, focusPropertyOnMap } from "./integrations/maps.js?v=relocate-card-v1";
+import { openDirections, renderPropertyMap, updateCardDistance, focusPropertyOnMap } from "./integrations/maps.js?v=perf-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js";
 import { config } from "./config.js";
 
@@ -26,6 +26,8 @@ let selectedMapCard = null;
 let selectedMapCardPlaceholder = null;
 let pullStartY = null;
 let pullDistance = 0;
+let renderQueued = false;
+let distanceObserver = null;
 registerConfiguredProviders();
 
 function applySyncedEvidence() {
@@ -198,6 +200,10 @@ function propertyCard(property) {
   const kind = classifyPropertyKind(property);
   const image = firstImageUrl(property) || "";
   const listing = propertyListingUrl(property);
+  const displayAddress = property.address || (/^\d+\s/.test(String(property.label || "")) ? property.label : "Address unavailable");
+  const displayPrice = Number.isFinite(Number(property.price)) && Number(property.price) > 0
+    ? "$" + Number(property.price).toLocaleString() + (property.listingType === "rent" ? "/mo" : "")
+    : "Price unavailable";
   const [nextAction, nextIcon, nextLabel] = primaryAction(property);
   return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" tabindex="0" aria-label="View summary for ${esc(property.label)}" aria-haspopup="dialog" style="--score:${score}">
       <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
@@ -206,8 +212,8 @@ function propertyCard(property) {
 
     </section>
     <section class="property-card__summary">
-      <header class="property-card__identity"><span class="property-type-icon" role="img" aria-label="${kind}" title="${kind}">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span><div><h2>${esc(property.label)}</h2><p class="muted">${esc(property.address || preferences.location || config.search.location)}</p></div></header>
-      <div class="property-card__facts"><strong>${property.price ? "$"+property.price.toLocaleString()+(property.listingType==="rent"?"/mo":"") : "Price TBD"}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span><span class="poi-distance-primary" data-primary-distance aria-label="Distance to Address 1">Address 1 —</span></div>
+      <header class="property-card__identity"><span class="property-type-icon" role="img" aria-label="${kind}" title="${kind}">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span><div><h2>${esc(property.label)}</h2><p class="muted">${esc(displayAddress)}</p></div></header>
+      <div class="property-card__facts"><strong>${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span><span class="poi-distance-primary" data-primary-distance aria-label="Distance to Address 1">Address 1 —</span></div>
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
         <button class="status-action" data-action="${nextAction}" aria-label="${nextLabel}" title="${nextLabel}"><span>${icon("phone")}</span><b>Contact</b></button>
@@ -223,7 +229,7 @@ function propertyCard(property) {
     <div class="fit-ring" title="Match score ${score}" aria-label="Match score ${score}"><span>${score}</span></div>
     <aside class="property-card__context" aria-label="Neighborhood context">
 
-      <div class="card-map-art" data-card-map="${esc(property.id)}" aria-label="Location map for ${esc(property.label)}"></div>
+      <div class="card-map-art card-map-art--disabled" aria-hidden="true"></div>
     </aside>
   </article>`;
 }
@@ -314,6 +320,51 @@ function movePropertyCardUnderMap(id) {
   panel.replaceChildren(card);
   panel.hidden = false;
   panel.dataset.selectedPropertyId = propertyId;
+  queueDistanceUpdates(panel);
+}
+
+function ensureDistanceObserver() {
+  if (distanceObserver || typeof IntersectionObserver === "undefined") return distanceObserver;
+  distanceObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      distanceObserver.unobserve(entry.target);
+      const card = entry.target.closest("[data-id]");
+      const property = card && store.getAll().find(p => String(p.id) === String(card.dataset.id));
+      const primary = cardPointsOfInterest().find(p => p.primary);
+      if (property && primary) void updateCardDistance(entry.target, property, primary, preferences.location || config.search.location);
+    }
+  }, { rootMargin: "200px" });
+  return distanceObserver;
+}
+
+function queueDistanceUpdates(root = document) {
+  const targets = root.querySelectorAll?.("[data-primary-distance]") || [];
+  const primary = cardPointsOfInterest().find(p => p.primary);
+  if (!primary) {
+    targets.forEach(target => { target.textContent = "Address 1 —"; });
+    return;
+  }
+  const observer = ensureDistanceObserver();
+  for (const target of targets) {
+    if (observer) observer.observe(target);
+    else {
+      const card = target.closest("[data-id]");
+      const property = card && store.getAll().find(p => String(p.id) === String(card.dataset.id));
+      if (property) void updateCardDistance(target, property, primary, preferences.location || config.search.location);
+    }
+  }
+}
+
+function scheduleRenderList() {
+  if (renderQueued) return;
+  renderQueued = true;
+  const run = () => {
+    renderQueued = false;
+    renderList();
+  };
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+  else queueMicrotask(run);
 }
 
 function renderList() {
@@ -342,11 +393,8 @@ function renderList() {
       card?.querySelector(`[data-action="${action}"]`)?.click();
     }
   });
-  const pois = cardPointsOfInterest();
-  for (const property of visible) {
-    const cardMap = document.querySelector(`[data-card-map="${CSS.escape(property.id)}"]`);
-    if (cardMap) void renderCardMap(cardMap, property, pois, preferences.location || config.search.location);
-  }
+  // Per-card background maps are temporarily disabled to avoid flashing and excess GPU/CPU work.
+  queueDistanceUpdates(document.querySelector("#property-list"));
   renderActivity();
   renderIgnoredProperties();
   if (mapSelectionToRestore) movePropertyCardUnderMap(mapSelectionToRestore);
@@ -755,7 +803,7 @@ document.addEventListener("touchend", () => {
   }
 }, { passive: true });
 
-store.subscribe(renderList);
+store.subscribe(scheduleRenderList);
 renderList();
 queueMicrotask(() => refreshListings("startup"));
 
