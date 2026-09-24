@@ -282,10 +282,7 @@ async function resolveUnavailableListings() {
     const missingAddress = !String(property.address || "").trim();
     const missingSource = !safeListingUrl(property.sourceUrl);
     const missingPrice = !(Number.isFinite(Number(property.price)) && Number(property.price) > 0) && !property.metadata?.priceLabel;
-    const missingBeds = property.beds == null;
-    const missingBaths = property.baths == null;
-    const missingImage = !firstImageUrl(property);
-    const needsEnrichment = missingAddress || missingSource || missingPrice || missingBeds || missingBaths || missingImage;
+    const needsEnrichment = missingAddress || missingSource || missingPrice;
     if (!needsEnrichment) return false;
     const staleResolverState = Number(property.metadata?.listingResolverVersion || 0) < LISTING_RESOLVER_VERSION;
     if (staleResolverState) return true;
@@ -342,10 +339,10 @@ async function refreshListings(trigger = "manual") {
     const { address1, ...searchPreferences } = preferences;
     const found = await searchProviders({ ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query });
     store.upsertMany(found);
-    await resolveUnavailableListings();
+    void resolveUnavailableListings().then(() => renderList());
     recordActivity("provider-refresh", null, { count: found.length, trigger });
     const indicator = document.querySelector("#pull-indicator");
-    if (indicator) indicator.textContent = found.length ? `Found ${found.length} listings · details refreshed` : "Listings checked · details refreshed";
+    if (indicator) indicator.textContent = found.length ? `Found ${found.length} listings · checking missing details` : "Listings checked · checking missing details";
   } catch (error) {
     recordActivity("provider-refresh-error", null, { trigger, message: String(error?.message || error) });
     const indicator = document.querySelector("#pull-indicator");
