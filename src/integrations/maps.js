@@ -553,15 +553,26 @@ export async function focusPropertyOnMap(property) {
   });
 }
 
-const GEOCODE_CACHE_KEY = "rook.geocode-cache.v1";
+const GEOCODE_CACHE_KEY = "rook.geocode-cache.v2";
+const LEGACY_GEOCODE_CACHE_KEY = "rook.geocode-cache.v1";
 const GEOCODE_MISS_TTL_MS = 20 * 60 * 1000;
 let geocodeQueue = Promise.resolve();
 const geocodeInflight = new Map();
 const distanceCache = new Map();
 
 function readGeocodeCache() {
-  try { return JSON.parse(localStorage.getItem(GEOCODE_CACHE_KEY) || "{}"); }
-  catch { return {}; }
+  try {
+    const current = JSON.parse(localStorage.getItem(GEOCODE_CACHE_KEY) || "{}");
+    if (Object.keys(current).length) return current;
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_GEOCODE_CACHE_KEY) || "{}");
+    const migrated = {};
+    for (const [key, value] of Object.entries(legacy)) {
+      const point = validCoordinates(value);
+      if (point) migrated[key] = point;
+    }
+    if (Object.keys(migrated).length) localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(migrated));
+    return migrated;
+  } catch { return {}; }
 }
 
 function writeGeocodeCache(cache) {
