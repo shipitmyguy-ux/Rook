@@ -67,7 +67,7 @@ function showPropertyDetails(id, pinned = false) {
   pinnedDetails = pinnedDetails || pinned;
   panel.hidden = false;
   overviewState.container?.dispatchEvent(new CustomEvent("rook:map-select", {
-    detail: { id: String(property.id), selectionOnly: true }
+    detail: { id: String(property.id) }
   }));
 }
 
@@ -284,13 +284,15 @@ function updateOverviewSource({ fit = false } = {}) {
 async function geocodeMissingOverviewProperties() {
   const run = ++overviewState.geocodeRun;
   const fallbackLocation = overviewState.latestOptions.location || "Fort Collins, CO";
+  let changed = false;
   for (const property of overviewState.latestProperties) {
     if (run !== overviewState.geocodeRun) return;
     if (cachedCoordinates(property, fallbackLocation)) continue;
-    await geocode(mapLocationQuery(property, fallbackLocation));
+    const point = await geocode(mapLocationQuery(property, fallbackLocation));
     if (run !== overviewState.geocodeRun) return;
-    updateOverviewSource({ fit: !overviewState.fittedOnce });
+    if (point) changed = true;
   }
+  if (changed && run === overviewState.geocodeRun) updateOverviewSource({ fit: !overviewState.fittedOnce });
 }
 
 function installOverviewLayers(map) {
@@ -440,8 +442,10 @@ async function ensureOverviewMap(container) {
       container.dataset.mapFirstPaint = "ready";
       container.dataset.mapStatus = "ready";
     };
-    if (map.loaded()) reveal();
-    else map.once("idle", reveal);
+    const alreadyLoaded = typeof map.loaded === "function" && map.loaded();
+    if (alreadyLoaded) reveal();
+    else if (typeof map.once === "function") map.once("idle", reveal);
+    else reveal();
     const style = map.getStyle();
     container.dataset.baseLayerCount = String((style?.layers || []).filter(layer => layer.id !== ROOK_LAYER_ID).length);
     container.dataset.baseSourceCount = String(Object.keys(style?.sources || {}).filter(id => id !== ROOK_SOURCE_ID).length);
@@ -501,8 +505,10 @@ export async function focusPropertyOnMap(property) {
 }
 
 const GEOCODE_CACHE_KEY = "rook.geocode-cache.v1";
+const GEOCODE_MISS_TTL_MS = 12 * 60 * 60 * 1000;
 let geocodeQueue = Promise.resolve();
 const geocodeInflight = new Map();
+const distanceCache = new Map();
 
 function readGeocodeCache() {
   try { return JSON.parse(localStorage.getItem(GEOCODE_CACHE_KEY) || "{}"); }
@@ -521,20 +527,29 @@ function normalizeQuery(value = "") {
 async function geocode(query) {
   const q = normalizeQuery(query);
   if (!q) return null;
-  const cache = readGeocodeCache();
-  if (cache[q]) return cache[q];
+  const cachedEntry = readGeocodeCache()[q];
+  const cachedPoint = validCoordinates(cachedEntry);
+  if (cachedPoint) return cachedPoint;
+  if (cachedEntry?.missedAt && Date.now() - Number(cachedEntry.missedAt) < GEOCODE_MISS_TTL_MS) return null;
   if (geocodeInflight.has(q)) return geocodeInflight.get(q);
 
   const task = geocodeQueue.then(async () => {
-    const cached = readGeocodeCache()[q];
-    if (cached) return cached;
+    const latestEntry = readGeocodeCache()[q];
+    const latestPoint = validCoordinates(latestEntry);
+    if (latestPoint) return latestPoint;
+    if (latestEntry?.missedAt && Date.now() - Number(latestEntry.missedAt) < GEOCODE_MISS_TTL_MS) return null;
     const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q=" + encodeURIComponent(q);
     try {
       const response = await fetch(url, { headers: { "Accept": "application/json" } });
       if (!response.ok) return null;
       const rows = await response.json();
       const row = rows?.[0];
-      if (!row) return null;
+      if (!row) {
+        const next = readGeocodeCache();
+        next[q] = { missedAt: Date.now() };
+        writeGeocodeCache(next);
+        return null;
+      }
       const value = { lat: Number(row.lat), lng: Number(row.lon) };
       if (!Number.isFinite(value.lat) || !Number.isFinite(value.lng)) return null;
       const next = readGeocodeCache();
@@ -612,10 +627,20 @@ function markerOffset(point, center, zoom) {
 const cardMapViews = new Map();
 export async function updateCardDistance(target, property, primary, fallbackLocation = "Fort Collins, CO") {
   if (!target || !property || !primary) return;
-  const propertyPoint = validCoordinates(property) || await geocode(property.address || [property.label, fallbackLocation].filter(Boolean).join(", "));
-  const primaryPoint = validCoordinates(primary) || await geocode(primary.address || primary.query || primary.location || primary.label);
-  if (!target.isConnected) return;
+  const propertyQuery = mapLocationQuery(property, fallbackLocation);
+  const primaryPointDirect = validCoordinates(primary);
+  const primaryQuery = primaryPointDirect ? `${primaryPointDirect.lat},${primaryPointDirect.lng}` : (primary.address || primary.query || primary.location || primary.label);
+  const cacheKey = `${normalizeQuery(propertyQuery)}|${normalizeQuery(primaryQuery)}`;
+  if (distanceCache.has(cacheKey)) {
+    const cachedDistance = distanceCache.get(cacheKey);
+    if (target.isConnected) target.textContent = cachedDistance == null ? "Address 1 —" : "Address 1 " + cachedDistance.toFixed(cachedDistance < 10 ? 1 : 0) + " mi";
+    return;
+  }
+  const propertyPoint = cachedCoordinates(property, fallbackLocation) || await geocode(propertyQuery);
+  const primaryPoint = primaryPointDirect || await geocode(primaryQuery);
   const distance = propertyPoint && primaryPoint ? haversineMiles(propertyPoint, primaryPoint) : null;
+  distanceCache.set(cacheKey, distance);
+  if (!target.isConnected) return;
   target.textContent = distance == null ? "Address 1 —" : "Address 1 " + distance.toFixed(distance < 10 ? 1 : 0) + " mi";
 }
 
