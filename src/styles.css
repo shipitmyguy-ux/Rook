@@ -223,3 +223,76 @@ dialog .check-row input { width: auto; margin: 0; }
  .property-card.visual-card .status-action b{display:none}.property-card.visual-card .status-action{width:44px;padding:0;justify-content:center}
  .property-type-mark{right:auto;left:calc(100% + 4px);top:2px}.property-type-mark small{display:none}
 }
+
+
+/* Reference-card fidelity pass — 2026-09-23 */
+.shell { width:min(100%,1500px); }
+.property-card.visual-card {
+  min-height:365px;
+  border-radius:26px;
+  border-width:2px;
+  background:#07101a;
+  box-shadow:0 0 0 1px rgba(139,76,255,.42),0 22px 60px rgba(0,0,0,.44),inset 0 0 55px rgba(50,242,223,.08);
+}
+.property-card.visual-card::after {
+  z-index:2;
+  background:linear-gradient(90deg,transparent 0 25%,rgba(5,10,18,.18) 32%,rgba(5,10,18,.93) 47%,rgba(5,10,18,.76) 58%,rgba(5,10,18,.10) 72%);
+}
+.property-visual {
+  inset:0 39% 0 0;
+  background-image:linear-gradient(90deg,rgba(5,10,18,.02),rgba(5,10,18,.02) 46%,rgba(5,10,18,.88) 77%,#07101a 100%),var(--property-image,linear-gradient(135deg,#27364a,#111927));
+  background-size:cover;
+  background-position:center;
+}
+.property-visual::after {
+  background:linear-gradient(90deg,transparent 0 52%,rgba(5,10,18,.18) 65%,rgba(5,10,18,.94) 100%);
+}
+.property-card__content {
+  z-index:5;
+  width:48%;
+  margin-left:30%;
+  padding:36px 22px 28px;
+}
+.property-card.visual-card h2 { font-size:clamp(1.55rem,2.7vw,2.25rem);font-weight:760;letter-spacing:-.025em; }
+.property-card.visual-card .muted { margin-top:13px;font-size:1.08rem; }
+.property-card.visual-card .property-card__facts { gap:18px;margin-top:24px;font-size:1.05rem; }
+.property-card.visual-card .property-card__facts strong { font-size:clamp(1.45rem,2.5vw,2rem); }
+.property-card.visual-card .compact-note { margin:18px 0 28px;max-width:82%;font-size:1rem; }
+.property-card.visual-card .compact-actions { gap:14px; }
+.property-card.visual-card .status-action { min-height:64px;padding:12px 24px;font-size:1.05rem; }
+.property-card.visual-card .status-action b { font-size:.95rem;font-weight:600; }
+.property-card.visual-card .icon-action { width:64px;height:64px;min-height:64px;border-width:2px;font-size:1.35rem; }
+.property-card.visual-card .save-button { right:14px;top:14px;width:68px;height:68px;border-width:2px;border-radius:15px;font-size:2.35rem; }
+.fit-ring { right:34.5%;top:20px;width:112px; }
+.fit-ring::after { inset:12px; }
+.fit-ring span { font-size:1.75rem; }
+.card-map-art {
+  z-index:3;
+  width:42%;
+  background:
+    linear-gradient(90deg,rgba(5,10,18,.55) 0,rgba(3,17,28,.06) 24%,rgba(3,17,28,.12)),
+    repeating-linear-gradient(23deg,transparent 0 25px,rgba(71,178,214,.26) 26px 29px,transparent 30px 55px),
+    repeating-linear-gradient(103deg,transparent 0 33px,rgba(77,170,207,.20) 34px 38px,transparent 39px 68px);
+  mix-blend-mode:normal;
+  opacity:1;
+}
+.card-map-art::after { content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(5,10,18,.82),transparent 28%);pointer-events:none; }
+.poi { z-index:2;width:52px;height:52px;border:5px solid rgba(3,10,18,.8);font-size:1.3rem; }
+.property-pin { left:45%;top:47%;width:62px;height:62px; }
+.family-pin { left:28%;top:12%; }.park-pin { left:69%;top:25%; }.school-pin { left:72%;top:69%; }
+.property-type-mark { right:calc(100% + 12px);top:32px;z-index:8; }
+
+@media (max-width:699px) {
+  .shell { padding:10px; }
+  .property-card.visual-card { min-height:245px;border-radius:20px; }
+  .property-visual { inset:0 28% 0 0; }
+  .property-card__content { width:73%;margin-left:0;padding:20px 12px 14px;background:linear-gradient(90deg,rgba(5,11,19,.84),rgba(5,11,19,.56) 72%,transparent); }
+  .card-map-art { width:40%; }
+  .fit-ring { width:62px;right:13%;top:12px; }
+  .fit-ring::after { inset:7px; }.fit-ring span { font-size:1rem; }
+  .property-card.visual-card .save-button { width:42px;height:42px;font-size:1.45rem; }
+  .property-card.visual-card .status-action,.property-card.visual-card .icon-action { width:46px;height:46px;min-height:46px; }
+  .property-card.visual-card .compact-note { margin:9px 0 11px; }
+  .poi { width:36px;height:36px;border-width:3px;font-size:.9rem; }
+  .property-pin { width:43px;height:43px; }
+}
