@@ -180,10 +180,11 @@ export async function resolveMissingListing(property = {}, criteria = {}, fetchI
       checkedAt: payload.checkedAt || new Date().toISOString()
     };
   }
+  const confirmedClosed = payload?.state === "closed" && payload?.evidence?.confirmed === true;
   return {
-    state: payload?.state === "closed" ? "closed" : "unknown",
+    state: confirmedClosed ? "closed" : "unknown",
     url: null,
-    evidence: payload?.evidence || null,
+    evidence: confirmedClosed ? payload.evidence : null,
     checkedAt: payload?.checkedAt || new Date().toISOString()
   };
 }
