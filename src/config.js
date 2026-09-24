@@ -1,7 +1,9 @@
 export const config = Object.freeze({
   maps: {
-    provider: "google",
-    terrainEnabled: true
+    provider: "maplibre",
+    tiles: "openfreemap",
+    styleUrl: "https://tiles.openfreemap.org/styles/liberty",
+    terrainEnabled: false
   },
   search: {
     minBeds: 2,
