@@ -109,6 +109,23 @@ async function updateOverviewPois() {
   }
 }
 
+function addRequiredMapAttribution(map) {
+  const control = {
+    onAdd() {
+      const el = document.createElement("div");
+      el.className = "maplibregl-ctrl maplibregl-ctrl-attrib";
+      el.innerHTML = '<a href="https://openmaptiles.org/" target="_blank" rel="noopener noreferrer">© OpenMapTiles</a> <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">Data from OpenStreetMap</a>';
+      this._container = el;
+      return el;
+    },
+    onRemove() {
+      this._container?.remove();
+      this._container = null;
+    }
+  };
+  map.addControl(control, "bottom-right");
+}
+
 function loadMapLibre() {
   if (typeof window !== "undefined" && window.maplibregl?.Map) return Promise.resolve(window.maplibregl);
   if (!maplibrePromise) {
@@ -382,7 +399,7 @@ async function ensureOverviewMap(container) {
     doubleClickZoom: true,
     keyboard: true
   });
-  map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-right");
+  addRequiredMapAttribution(map);
   map.on("movestart", event => { if (event.originalEvent) userMovedMap = true; });
 
   overviewState.map = map;
@@ -606,7 +623,7 @@ export async function renderCardMap(container, property, pointsOfInterest = [], 
       interactive: false, attributionControl: false
     });
     view.map = map;
-    map.addControl(new library.AttributionControl({ compact: false }), "bottom-right");
+    addRequiredMapAttribution(map);
     map.on("style.load", () => {
       applyReferenceMapTheme(map);
       for (const p of [...(point ? [{ ...point, kind: "property" }] : []), ...pois]) {
