@@ -32,6 +32,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
+
       - name: Detect visual-only change
         id: changes
         shell: bash
@@ -41,12 +42,22 @@ jobs:
             CHANGED="$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}")"
             echo "Changed files:"
             echo "$CHANGED"
-            if [ -n "$CHANGED" ] && echo "$CHANGED" | grep -Evq '^(src/.*\.css|assets/.*\.(png|jpe?g|webp|svg|gif|avif|ico|woff2?|ttf|otf))
-              VISUAL_ONLY=false
-            elif [ -n "$CHANGED" ]; then
+
+            if [ -n "$CHANGED" ]; then
               VISUAL_ONLY=true
+              while IFS= read -r file; do
+                case "$file" in
+                  src/*.css|assets/*.png|assets/*.jpg|assets/*.jpeg|assets/*.webp|assets/*.svg|assets/*.gif|assets/*.avif|assets/*.ico|assets/*.woff|assets/*.woff2|assets/*.ttf|assets/*.otf)
+                    ;;
+                  *)
+                    VISUAL_ONLY=false
+                    break
+                    ;;
+                esac
+              done <<< "$CHANGED"
             fi
           fi
+
           echo "visual_only=$VISUAL_ONLY" >> "$GITHUB_OUTPUT"
           echo "Visual-only fast path: $VISUAL_ONLY"
 
@@ -59,11 +70,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Validate JavaScript syntax
         run: |
           for file in $(find src tests -name '*.js'); do node --check "$file"; done
+
       - name: Run core regression tests
         run: npm test
+
       - name: Verify required files
         run: |
           test -f index.html
@@ -73,6 +87,7 @@ jobs:
           grep -q 'viewport' index.html
           grep -q 'pref-location' src/app.js
           grep -q 'pref-type-townhome' src/app.js
+
       - name: Rendered UI QA in headless Chrome
         run: |
           python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/rook-http.log 2>&1 &
@@ -87,6 +102,7 @@ jobs:
           "$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=7000 --window-size=390,900 --dump-dom http://127.0.0.1:4173/tests/browser-qa.html > /tmp/rook-mobile.html
           grep -q 'data-qa="pass"' /tmp/rook-mobile.html
           grep -q '"noHorizontalOverflow":true' /tmp/rook-mobile.html
+
       - name: Smoke test live Fort Collins listing backend
         run: |
           curl --fail --retry 2 --max-time 30 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?location=Fort%20Collins%2C%20CO&minBeds=2" -o /tmp/rook-listings.json
@@ -102,6 +118,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+
       - name: Prepare minimal cache-busted site
         run: |
           rm -rf _site
@@ -111,11 +128,13 @@ jobs:
           BUILD="${{ github.sha }}"
           sed -E -i "s#rook-ui-v3\.css\?v=[^\"']+#rook-ui-v3.css?v=$BUILD#g" _site/index.html
           sed -E -i "s#app\.js\?v=[^\"']+#app.js?v=$BUILD#g" _site/index.html
-          find _site/src -name '*.css' -type f -print0 | xargs -0 -r sed -E -i "s#(\.\./assets/[^)'\"]+)#\1?v=$BUILD#g"
+          find _site/src -name '*.css' -type f -print0 | xargs -0 -r sed -E -i "s#(\.\./assets/[^)'\"?]+)(\?v=[^)'\"]+)?#\1?v=$BUILD#g"
           echo "$BUILD" > _site/build.txt
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
       - name: Deploy visual update
         id: deployment
         uses: actions/deploy-pages@v4
@@ -130,6 +149,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+
       - name: Prepare minimal cache-busted site
         run: |
           rm -rf _site
@@ -139,117 +159,13 @@ jobs:
           BUILD="${{ github.sha }}"
           sed -E -i "s#rook-ui-v3\.css\?v=[^\"']+#rook-ui-v3.css?v=$BUILD#g" _site/index.html
           sed -E -i "s#app\.js\?v=[^\"']+#app.js?v=$BUILD#g" _site/index.html
-          find _site/src -name '*.css' -type f -print0 | xargs -0 -r sed -E -i "s#(\.\./assets/[^)'\"]+)#\1?v=$BUILD#g"
+          find _site/src -name '*.css' -type f -print0 | xargs -0 -r sed -E -i "s#(\.\./assets/[^)'\"?]+)(\?v=[^)'\"]+)?#\1?v=$BUILD#g"
           echo "$BUILD" > _site/build.txt
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
-      - name: Deploy validated update
-        id: deployment
-        uses: actions/deploy-pages@v4
-; then
-              VISUAL_ONLY=false
-            elif [ -n "$CHANGED" ]; then
-              VISUAL_ONLY=true
-            fi
-          fi
-          echo "visual_only=$VISUAL_ONLY" >> "$GITHUB_OUTPUT"
-          echo "Visual-only fast path: $VISUAL_ONLY"
 
-  validate:
-    needs: detect
-    if: needs.detect.outputs.visual_only != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Validate JavaScript syntax
-        run: |
-          for file in $(find src tests -name '*.js'); do node --check "$file"; done
-      - name: Run core regression tests
-        run: npm test
-      - name: Verify required files
-        run: |
-          test -f index.html
-          test -f src/app.js
-          test -f src/rook-ui-v3.css
-          grep -q 'rook-ui-v3.css' index.html
-          grep -q 'viewport' index.html
-          grep -q 'pref-location' src/app.js
-          grep -q 'pref-type-townhome' src/app.js
-      - name: Rendered UI QA in headless Chrome
-        run: |
-          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/rook-http.log 2>&1 &
-          SERVER_PID=$!
-          trap 'kill $SERVER_PID || true' EXIT
-          for i in {1..20}; do curl -fsS http://127.0.0.1:4173/ >/dev/null && break; sleep .25; done
-          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
-          test -n "$CHROME"
-          "$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=7000 --window-size=1440,1000 --dump-dom http://127.0.0.1:4173/tests/browser-qa.html > /tmp/rook-desktop.html
-          grep -q 'data-qa="pass"' /tmp/rook-desktop.html
-          grep -q '"v3":true' /tmp/rook-desktop.html
-          "$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=7000 --window-size=390,900 --dump-dom http://127.0.0.1:4173/tests/browser-qa.html > /tmp/rook-mobile.html
-          grep -q 'data-qa="pass"' /tmp/rook-mobile.html
-          grep -q '"noHorizontalOverflow":true' /tmp/rook-mobile.html
-      - name: Smoke test live Fort Collins listing backend
-        run: |
-          curl --fail --retry 2 --max-time 30 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?location=Fort%20Collins%2C%20CO&minBeds=2" -o /tmp/rook-listings.json
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-listings.json","utf8"));if(!Array.isArray(p.listings)||!Array.isArray(p.meta?.adapters)||p.listings.length<1||!p.meta.adapters.some(a=>a.ok&&a.count>0))process.exit(1)'
-
-  deploy-visual:
-    needs: detect
-    if: needs.detect.outputs.visual_only == 'true'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - name: Prepare minimal cache-busted site
-        run: |
-          rm -rf _site
-          mkdir -p _site
-          cp index.html _site/
-          cp -R src assets _site/
-          BUILD="${{ github.sha }}"
-          sed -E -i "s#rook-ui-v3\.css\?v=[^\"']+#rook-ui-v3.css?v=$BUILD#g" _site/index.html
-          sed -E -i "s#app\.js\?v=[^\"']+#app.js?v=$BUILD#g" _site/index.html
-          find _site/src -name '*.css' -type f -print0 | xargs -0 -r sed -E -i "s#(\.\./assets/[^)'\"]+)#\1?v=$BUILD#g"
-          echo "$BUILD" > _site/build.txt
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-      - name: Deploy visual update
-        id: deployment
-        uses: actions/deploy-pages@v4
-
-  deploy-full:
-    needs: [detect, validate]
-    if: needs.detect.outputs.visual_only != 'true' && needs.validate.result == 'success'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - name: Prepare minimal cache-busted site
-        run: |
-          rm -rf _site
-          mkdir -p _site
-          cp index.html _site/
-          cp -R src assets _site/
-          BUILD="${{ github.sha }}"
-          sed -E -i "s#rook-ui-v3\.css\?v=[^\"']+#rook-ui-v3.css?v=$BUILD#g" _site/index.html
-          sed -E -i "s#app\.js\?v=[^\"']+#app.js?v=$BUILD#g" _site/index.html
-          find _site/src -name '*.css' -type f -print0 | xargs -0 -r sed -E -i "s#(\.\./assets/[^)'\"]+)#\1?v=$BUILD#g"
-          echo "$BUILD" > _site/build.txt
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
       - name: Deploy validated update
         id: deployment
         uses: actions/deploy-pages@v4
