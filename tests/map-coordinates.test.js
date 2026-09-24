@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderPropertyMap, mapLocationQueries } from "../src/integrations/maps.js";
+import { renderPropertyMap, mapLocationQueries, resolvePropertyDistances, getCachedPropertyDistances } from "../src/integrations/maps.js";
 
 test("overview excludes missing coordinates, uses valid cache, and preserves real zero coordinates", async () => {
   let data;
@@ -104,4 +104,34 @@ test("every already-visible property with a resolvable location reaches the map 
   assert.equal(container.dataset.mapExpectedPropertyCount, "3");
   assert.equal(container.dataset.mapFeatureCount, "3");
   assert.equal(container.dataset.mapUnresolvedCount, "0");
+});
+
+
+test("property distances are calculated once and reused from persistent cache", async () => {
+  const memory = {};
+  globalThis.localStorage = {
+    getItem:key => memory[key] || null,
+    setItem:(key,value) => { memory[key] = value; }
+  };
+  let fetchCount = 0;
+  globalThis.fetch = async url => {
+    fetchCount += 1;
+    const q = new URL(String(url)).searchParams.get("q") || "";
+    const isProperty = q.includes("123 Test");
+    return { ok:true, json:async()=>[{ lat:isProperty ? "40.58" : "40.60", lon:isProperty ? "-105.08" : "-105.06" }] };
+  };
+  const property = { id:"p1", address:"123 Test St, Fort Collins, CO" };
+  const pois = [
+    { id:"address-1", label:"Address 1", address:"100 First St, Fort Collins, CO" },
+    { id:"address-2", label:"Address 2", lat:40.57, lng:-105.05 }
+  ];
+  const first = await resolvePropertyDistances(property, pois, "Fort Collins, CO");
+  assert.equal(first.length, 2);
+  assert.ok(first.every(item => item.resolved));
+  const afterFirst = fetchCount;
+  const second = await resolvePropertyDistances(property, pois, "Fort Collins, CO");
+  assert.equal(fetchCount, afterFirst);
+  assert.deepEqual(second.map(x=>x.distance), first.map(x=>x.distance));
+  const cached = getCachedPropertyDistances(property, pois, "Fort Collins, CO");
+  assert.ok(cached.every(item => item.resolved));
 });
