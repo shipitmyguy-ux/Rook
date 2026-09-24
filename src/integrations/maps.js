@@ -58,15 +58,22 @@ function mapLocationQuery(property, fallbackLocation = "Fort Collins, CO") {
   return [property?.label, fallbackLocation].filter(Boolean).join(", ");
 }
 
+function validCoordinates(point) {
+  // Missing values must reach geocoding, never Number(null) / Number("") = 0.
+  const isNumeric = value => (typeof value === "number" || typeof value === "string")
+    && String(value).trim() !== "" && Number.isFinite(Number(value));
+  if (!isNumeric(point?.lat) || !isNumeric(point?.lng)) return null;
+  const lat = Number(point.lat);
+  const lng = Number(point.lng);
+  return Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
+}
+
 function cachedCoordinates(property, fallbackLocation = "Fort Collins, CO") {
-  const lat = Number(property?.lat);
-  const lng = Number(property?.lng);
-  if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  const direct = validCoordinates(property);
+  if (direct) return direct;
   const q = normalizeQuery(mapLocationQuery(property, fallbackLocation));
   const cached = readGeocodeCache()[q];
-  return cached && Number.isFinite(Number(cached.lat)) && Number.isFinite(Number(cached.lng))
-    ? { lat: Number(cached.lat), lng: Number(cached.lng) }
-    : null;
+  return validCoordinates(cached);
 }
 
 function propertyFeature(property, fallbackLocation = "Fort Collins, CO") {
