@@ -259,9 +259,16 @@ function addressCore(value: unknown) {
   return canonicalAddress(firstLine);
 }
 
+function streetNumber(value: unknown) {
+  return String(value || "").trim().match(/^(\d+[a-z]?)(?:\s|$)/i)?.[1]?.toLowerCase() || "";
+}
+
 function sameAddress(a: unknown, b: unknown) {
   const left = canonicalAddress(a), right = canonicalAddress(b);
-  return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
+  if (!left || !right) return false;
+  const leftNumber = streetNumber(a), rightNumber = streetNumber(b);
+  if (leftNumber && rightNumber && leftNumber !== rightNumber) return false;
+  return left === right || left.includes(right) || right.includes(left);
 }
 
 function contextMatchesAddress(context: unknown, address = "", label = "") {
@@ -431,10 +438,25 @@ async function resolveListing(address: string, label: string, location: string, 
       const inspected = await inspectListingUrl(direct.toString());
       if (inspected.reachable && !inspected.closed) {
         const rows = jsonLdListings(inspected.html, direct.hostname, direct.toString());
-        const match = rows.find(row =>
+        let match = rows.find(row =>
           (address && sameAddress(row.address, address)) ||
           (!address && canonicalAddress(row.label) === canonicalAddress(label))
         ) || fallbackListingFromHtml(inspected.html, direct.toString(), { address, label, source:direct.hostname });
+
+        if (!match.price || match.beds == null || match.baths == null) {
+          const reader = await readerText(direct.toString(), 5000);
+          if (reader && !looksLikeBrowserChallenge(reader)) {
+            const enriched = fallbackListingFromText(reader, direct.toString(), { address, label, source:direct.hostname });
+            match = {
+              ...match,
+              price: match.price || enriched.price,
+              beds: match.beds ?? enriched.beds,
+              baths: match.baths ?? enriched.baths,
+              metadata:{ ...(match.metadata || {}), directReaderEnriched:true }
+            };
+          }
+        }
+
         return {
           state:"active",
           listing:{ ...match, address:match.address || address, label:match.label || label || address, sourceUrl:direct.toString() },
