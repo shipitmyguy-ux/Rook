@@ -54,6 +54,9 @@ function finish(){
       noPrimaryContact:[...doc.querySelectorAll(".compact-actions")].every(el=>!/\bContact\b/i.test(el.textContent||"")),
       noCardMapRuntime:!doc.querySelector(".property-card .maplibregl-map,.property-card canvas"),
       strictSourceLinks:[...doc.querySelectorAll(".source-link")].every(link=>{try{const u=new URL(link.href);return !/google\.com$/i.test(u.hostname)&&!u.pathname.includes("/search");}catch{return false}}),
+      listingActionsUsable:[...doc.querySelectorAll(".listing-action")].every(el=>el.tagName==="A"&&!el.hasAttribute("disabled")),
+      listingActionsCompact:[...doc.querySelectorAll(".listing-action")].every(el=>el.getBoundingClientRect().width<cardRect.width*.38),
+      recoverySearchesSeparated:[...doc.querySelectorAll(".listing-recovery-link")].every(link=>!link.classList.contains("source-link")),
       noHorizontalOverflow:doc.documentElement.scrollWidth<=viewport+2
     };
     const pass=Object.values(checks).every(Boolean);
