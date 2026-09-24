@@ -121,3 +121,20 @@ button:focus-visible{outline:3px solid #78ffee;outline-offset:3px}
 .workflow-action{display:flex;align-items:center;justify-content:flex-start;min-height:46px;padding:10px 13px;border:1px solid #344a5d;border-radius:10px;background:#142034;color:#eff5f9;text-decoration:none;font:600 14px/1.25 system-ui;cursor:pointer}
 .workflow-action:hover{background:#192940}
 .more-listing-link{display:grid;place-items:center;min-height:40px;border:1px solid #344a5d;border-radius:9px;background:#142034;color:#eff5f9;text-decoration:none}
+
+/* Prevent MapLibre's initial canvas paint from flashing white. */
+.property-map{background:#0a141d!important}
+.property-map .maplibregl-map,
+.property-map .maplibregl-canvas-container,
+.property-map .maplibregl-canvas{background:#0a141d!important}
+.property-map[data-map-first-paint="pending"] .maplibregl-canvas{
+  opacity:0;
+}
+.property-map[data-map-first-paint="ready"] .maplibregl-canvas{
+  opacity:1;
+  transition:opacity 220ms ease;
+}
+@media (prefers-reduced-motion: reduce){
+  .property-map[data-map-first-paint="ready"] .maplibregl-canvas{transition:none}
+}
+.status-action:disabled{opacity:.5;cursor:default}
