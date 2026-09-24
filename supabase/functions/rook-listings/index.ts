@@ -270,6 +270,29 @@ async function inspectListingUrl(url: string) {
   }
 }
 
+function stripHtml(value: string) {
+  return value.replace(/<script[\s\S]*?<\/script>/gi," ")
+    .replace(/<style[\s\S]*?<\/style>/gi," ")
+    .replace(/<[^>]+>/g," ")
+    .replace(/&nbsp;|&#160;/gi," ")
+    .replace(/&amp;/gi,"&")
+    .replace(/&quot;/gi,'"')
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function searchSnippetContext(html: string, needles: string[]) {
+  const lower = html.toLowerCase();
+  for (const raw of needles) {
+    const needle = String(raw || "").trim().toLowerCase();
+    if (!needle || needle.length < 4) continue;
+    const index = lower.indexOf(needle);
+    if (index < 0) continue;
+    return stripHtml(html.slice(Math.max(0,index-1200), Math.min(html.length,index+2600)));
+  }
+  return "";
+}
+
 async function resolveListing(address: string, label: string, location: string, sourceUrl = "") {
   const checkedAt = new Date().toISOString();
   const citySlug = location.toLowerCase().replace(/,.*$/, "").trim().replace(/[^a-z0-9]+/g, "-");
@@ -357,6 +380,23 @@ async function resolveListing(address: string, label: string, location: string, 
   for (const searchUrl of searchUrls) {
     try {
       const searchHtml = await fetchText(searchUrl);
+
+      const knownHost = (() => { try { return sourceUrl ? new URL(sourceUrl).hostname.replace(/^www\./,"") : ""; } catch { return ""; } })();
+      const snippet = searchSnippetContext(searchHtml, [address, label, knownHost]);
+      if (snippet) {
+        const snippetUrl = sourceUrl || "https://" + (knownHost || "example.com") + "/";
+        const snippetListing = fallbackListingFromText(snippet, snippetUrl, { address, label, source:knownHost || "search-result" });
+        if (snippetListing.price || snippetListing.beds || snippetListing.baths) {
+          return {
+            state:"active",
+            listing:{ ...snippetListing, sourceUrl:sourceUrl || snippetListing.sourceUrl },
+            checkedAt,
+            checkedSources:successfulSources,
+            searchSnippet:true
+          };
+        }
+      }
+
       const hrefs = [
         ...[...searchHtml.matchAll(/href="\/url\?q=([^&"]+)/g)].map(match => {
           try { return decodeURIComponent(match[1]); } catch { return ""; }
