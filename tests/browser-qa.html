@@ -58,6 +58,8 @@ function finish(){
       listingActionsUsable:[...doc.querySelectorAll(".listing-action")].every(el=>el.tagName==="A"||el.classList.contains("listing-closed")||el.classList.contains("listing-resolving")),
       listingActionsCompact:[...doc.querySelectorAll(".listing-action")].every(el=>el.getBoundingClientRect().width<cardRect.width*.38),
       distanceBarsVisible:[...doc.querySelectorAll(".property-card")].every(el=>el.querySelector(".distance-panel")&&el.querySelectorAll(".distance-row").length>=2&&el.querySelectorAll(".distance-row__track").length===el.querySelectorAll(".distance-row").length),
+      distanceBarsLeftOfRightControls:[...doc.querySelectorAll(".property-card")].every(el=>{const p=el.querySelector(".distance-panel")?.getBoundingClientRect();const s=el.querySelector(".save-button")?.getBoundingClientRect();return p&&s&&p.right<s.left-4;}),
+      addressContrast:[...doc.querySelectorAll(".property-card__identity .muted")].every(el=>getComputedStyle(el).backgroundColor!=="rgba(0, 0, 0, 0)"),
       noLegacyBlinkingDistance:!doc.querySelector("[data-primary-distance]"),
       recoverySearchesSeparated:[...doc.querySelectorAll(".listing-recovery-link")].every(link=>!link.classList.contains("source-link")),
       noDeadUnavailableButtons:![...doc.querySelectorAll(".listing-action")].some(el=>/Listing unavailable/i.test(el.textContent||"")),
