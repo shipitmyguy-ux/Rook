@@ -77,59 +77,100 @@ async function geocode(query) {
   return task;
 }
 
-function markerPosition(point, bounds) {
-  const x = ((point.lng - bounds.west) / (bounds.east - bounds.west || 1)) * 100;
-  const y = (1 - (point.lat - bounds.south) / (bounds.north - bounds.south || 1)) * 100;
-  return { x: Math.max(4, Math.min(96, x)), y: Math.max(5, Math.min(95, y)) };
+function haversineMiles(a, b) {
+  const toRad = value => value * Math.PI / 180;
+  const R = 3958.8;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat), lat2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-function mapBounds(points) {
-  const lats = points.map(p => p.lat);
-  const lngs = points.map(p => p.lng);
-  let south = Math.min(...lats), north = Math.max(...lats), west = Math.min(...lngs), east = Math.max(...lngs);
-  const latSpan = Math.max(0.018, north - south);
-  const lngSpan = Math.max(0.026, east - west);
-  const latPad = latSpan * 0.34;
-  const lngPad = lngSpan * 0.34;
-  south -= latPad; north += latPad; west -= lngPad; east += lngPad;
-  return { south, north, west, east };
+function mapZoom(propertyPoint, poiPoints) {
+  const farthest = poiPoints.reduce((max, point) => Math.max(max, haversineMiles(propertyPoint, point)), 0);
+  if (farthest <= 1) return 14;
+  if (farthest <= 2.5) return 13;
+  if (farthest <= 5) return 12;
+  if (farthest <= 10) return 11;
+  return 10;
 }
 
-function osmEmbedUrl(bounds) {
-  const bbox = [bounds.west, bounds.south, bounds.east, bounds.north].join(",");
-  return "https://www.openstreetmap.org/export/embed.html?bbox=" + encodeURIComponent(bbox) + "&layer=mapnik";
+function lonToTileX(lng, zoom) {
+  return ((lng + 180) / 360) * (2 ** zoom);
+}
+
+function latToTileY(lat, zoom) {
+  const rad = lat * Math.PI / 180;
+  return (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * (2 ** zoom);
+}
+
+function tileLayerHtml(center, zoom) {
+  const cx = lonToTileX(center.lng, zoom);
+  const cy = latToTileY(center.lat, zoom);
+  const baseX = Math.floor(cx) - 2;
+  const baseY = Math.floor(cy) - 2;
+  const offsetX = (cx - Math.floor(cx) + 2) * 256;
+  const offsetY = (cy - Math.floor(cy) + 2) * 256;
+  let tiles = "";
+  for (let row = 0; row < 5; row++) {
+    for (let col = 0; col < 5; col++) {
+      const x = baseX + col;
+      const y = baseY + row;
+      const sub = ["a","b","c","d"][(row + col) % 4];
+      const src = `https://${sub}.basemaps.cartocdn.com/dark_nolabels/${zoom}/${x}/${y}@2x.png`;
+      tiles += `<img src="${src}" alt="" loading="lazy" style="left:${col * 256}px;top:${row * 256}px">`;
+    }
+  }
+  return `<div class="card-map-tiles" style="left:calc(50% - ${offsetX}px);top:calc(50% - ${offsetY}px)">${tiles}</div>`;
+}
+
+function markerOffset(point, center, zoom) {
+  const dx = (lonToTileX(point.lng, zoom) - lonToTileX(center.lng, zoom)) * 256;
+  const dy = (latToTileY(point.lat, zoom) - latToTileY(center.lat, zoom)) * 256;
+  return { dx, dy };
 }
 
 export async function renderCardMap(container, property, pointsOfInterest = [], fallbackLocation = "Fort Collins, CO") {
   if (!container || !property) return;
   const propertyQuery = property.address || [property.label, fallbackLocation].filter(Boolean).join(", ");
-  container.innerHTML = `<iframe class="card-map-frame" loading="lazy" referrerpolicy="no-referrer" title="Map for ${String(property.label || "property").replace(/"/g, "&quot;")}" src="${googleMapsEmbedUrl([{ ...property, address: propertyQuery }])}"></iframe><div class="card-map-shade"></div>`;
+  container.innerHTML = `<div class="card-map-loading"></div><div class="card-map-shade"></div>`;
 
   const propertyPoint = property.lat != null && property.lng != null
     ? { lat: Number(property.lat), lng: Number(property.lng), label: property.label || "Property", kind: "property" }
     : await geocode(propertyQuery);
   if (!propertyPoint) return;
-  propertyPoint.label = property.label || "Property";
-  propertyPoint.kind = "property";
 
   const poiPoints = [];
   for (const poi of pointsOfInterest) {
     const query = poi.address || poi.query || poi.location || poi.label;
     if (!query) continue;
-    const point = poi.lat != null && poi.lng != null ? { lat: Number(poi.lat), lng: Number(poi.lng) } : await geocode(query);
+    const point = poi.lat != null && poi.lng != null
+      ? { lat: Number(poi.lat), lng: Number(poi.lng) }
+      : await geocode(query);
     if (!point) continue;
     poiPoints.push({ ...point, label: poi.label || poi.name || "POI", kind: poi.kind || poi.id || "poi" });
   }
 
-  const allPoints = [propertyPoint, ...poiPoints];
-  const bounds = mapBounds(allPoints);
-  const markers = allPoints.map((point, index) => {
-    const pos = markerPosition(point, bounds);
-    const cls = index === 0 ? "map-marker map-marker--property" : "map-marker map-marker--poi";
-    return `<span class="${cls}" style="left:${pos.x}%;top:${pos.y}%" title="${String(point.label).replace(/"/g, "&quot;")}"><span></span><small>${String(point.label)}</small></span>`;
+  const zoom = mapZoom(propertyPoint, poiPoints);
+  const center = poiPoints.length
+    ? {
+        lat: (propertyPoint.lat * 1.6 + poiPoints.reduce((sum, p) => sum + p.lat, 0) / poiPoints.length) / 2.6,
+        lng: (propertyPoint.lng * 1.6 + poiPoints.reduce((sum, p) => sum + p.lng, 0) / poiPoints.length) / 2.6
+      }
+    : propertyPoint;
+
+  const propertyPos = markerOffset(propertyPoint, center, zoom);
+  const propertyMarker = `<span class="map-marker map-marker--property" style="left:calc(50% + ${propertyPos.dx}px);top:calc(50% + ${propertyPos.dy}px)" title="Property"><span></span></span>`;
+
+  const poiMarkers = poiPoints.map(point => {
+    const pos = markerOffset(point, center, zoom);
+    const distance = haversineMiles(propertyPoint, point);
+    const tone = point.kind === "park" ? "park" : point.kind === "school" ? "school" : "poi";
+    return `<span class="map-distance-line" style="--x1:${propertyPos.dx}px;--y1:${propertyPos.dy}px;--x2:${pos.dx}px;--y2:${pos.dy}px"></span><span class="map-marker map-marker--poi map-marker--${tone}" style="left:calc(50% + ${pos.dx}px);top:calc(50% + ${pos.dy}px)" title="${distance.toFixed(distance < 10 ? 1 : 0)} mi"><span></span></span>`;
   }).join("");
 
-  container.innerHTML = `<iframe class="card-map-frame" loading="lazy" referrerpolicy="no-referrer" title="Neighborhood map for ${String(property.label || "property").replace(/"/g, "&quot;")}" src="${osmEmbedUrl(bounds)}"></iframe><div class="card-map-shade"></div><div class="card-map-markers" aria-hidden="true">${markers}</div>`;
+  container.innerHTML = `${tileLayerHtml(center, zoom)}<div class="card-map-shade"></div><div class="card-map-markers" aria-hidden="true">${propertyMarker}${poiMarkers}</div>`;
 }
 
 export function openDirections(property) {
