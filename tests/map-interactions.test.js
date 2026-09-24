@@ -14,7 +14,7 @@ test("overview shows POIs and property details with working actions", async () =
   globalThis.document = { querySelector: () => panel, createElement: element };
   globalThis.localStorage = { getItem: () => "{}" };
   const events = {};
-  let markerPoint, markerElement, fitted;
+  let markerPoint, markerElement, fitted, popupContent;
   const map = {
     on(name, layer, callback) { events[name + (callback ? ":" + layer : "")] = callback || layer; },
     addControl() {}, getSource: () => ({ setData() {} }), getLayer: () => true,
@@ -29,12 +29,12 @@ test("overview shows POIs and property details with working actions", async () =
   }
   globalThis.window = { maplibregl: {
     Map: function () { return map; }, AttributionControl: function () {},
-    Marker, Popup: class { setDOMContent() { return this; } }
+    Marker, Popup: class { setDOMContent(content) { popupContent = content; return this; } setLngLat() { return this; } addTo() { return this; } remove() {} }
   } };
   let action;
   const container = { replaceChildren() {}, dataset: {} };
   renderPropertyMap(container, [{ id: "home", label: "Test home", address: "Test address", lat: 40.5, lng: -105, price: 2100, beds: 2 }], {
-    pointsOfInterest: [{ id: "sil", label: "Sister-in-law", primary: true, lat: 40.55, lng: -105.1 }],
+    pointsOfInterest: [{ id: "address-1", label: "address-1", primary: true, lat: 40.55, lng: -105.1 }],
     onPropertyAction: (...args) => { action = args; }
   });
   await new Promise(resolve => setImmediate(resolve));
@@ -44,7 +44,10 @@ test("overview shows POIs and property details with working actions", async () =
   assert.equal(markerElement.textContent, "★");
   assert.deepEqual(fitted, [[-105.1, 40.5], [-105, 40.55]]);
   events["mouseenter:rook-listings-points"]({ features: [{ properties: { id: "home" } }] });
-  assert.equal(panel.hidden, false);
+  assert.equal(panel.hidden, true);
+  assert.equal(popupContent.children[0].textContent, "Test home");
+  assert.match(popupContent.children[1].textContent, /2,100/);
+  events["click:rook-listings-points"]({ features: [{ properties: { id: "home" } }] });
   assert.equal(panel.children[0].textContent, "Test home");
   assert.match(panel.children[2].textContent, /2,100/);
   events["click:rook-listings-points"]({ features: [{ properties: { id: "home" } }] });
@@ -53,6 +56,7 @@ test("overview shows POIs and property details with working actions", async () =
   panel.children.at(-1).children.find(child => child.textContent === "Close details").handlers.click();
   assert.equal(panel.hidden, true);
 });
+
 
 
 

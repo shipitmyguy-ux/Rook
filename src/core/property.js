@@ -87,3 +87,20 @@ export function applyEvidence(property, evidence = {}) {
   patch.metadata.evidence = [...prior.filter(item => !evidence.id || item.id !== evidence.id), evidence].slice(-20);
   return normalizeProperty({ ...property, ...patch, id: property.id, updatedAt: new Date().toISOString() });
 }
+
+export function ignorePropertyPatch(property, status = PROPERTY_STATUS.REJECTED) {
+  return { status, saved: false, metadata: {
+    ...property.metadata,
+    beforeIgnore: { status: property.status, saved: property.saved }
+  } };
+}
+
+export function restoreIgnoredPatch(property) {
+  const { beforeIgnore, ...metadata } = property.metadata || {};
+  const status = beforeIgnore?.status;
+  return {
+    status: status && ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(status) ? status : PROPERTY_STATUS.NEW,
+    saved: beforeIgnore ? Boolean(beforeIgnore.saved) : Boolean(property.saved),
+    metadata
+  };
+}

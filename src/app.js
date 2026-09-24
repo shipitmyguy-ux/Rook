@@ -1,6 +1,6 @@
 import { properties as seedProperties } from "./data/properties.js";
 import { createPropertyStore } from "./core/store.js";
-import { filterProperties, searchProperties, PROPERTY_STATUS, applyEvidence, classifyPropertyKind } from "./core/property.js";
+import { filterProperties, searchProperties, PROPERTY_STATUS, applyEvidence, classifyPropertyKind, ignorePropertyPatch, restoreIgnoredPatch } from "./core/property.js";
 import { housingEvidence } from "./data/evidence.js";
 import { propertyFromUrl } from "./core/import.js";
 import { googleMapsMultiStopUrl } from "./core/route.js";
@@ -33,7 +33,7 @@ function applySyncedEvidence() {
       const label = String(item.label || "").toLowerCase().replace(/[^a-z0-9]/g, "");
       return hint && ((address.length > 6 && (address.includes(hint) || hint.includes(address))) || (label.length > 6 && (label.includes(hint) || hint.includes(label))));
     });
-    if (property) store.upsert(applyEvidence(property, evidence));
+    if (property && !(property.metadata?.evidence || []).some(item => JSON.stringify(item) === JSON.stringify(evidence))) store.upsert(applyEvidence(property, evidence));
   }
 }
 applySyncedEvidence();
@@ -62,13 +62,11 @@ function propertyKindIcon(kind) {
 
 function cardPointsOfInterest() {
   const primary = {
-    id: "sister-in-law",
+    id: "address-1",
     kind: "primary",
     primary: true,
-    label: "Sister-in-law",
-    address: "938 Ridge Runner Dr, Fort Collins, CO",
-    lat: 40.6001839,
-    lng: -105.0107885
+    label: "Address 1",
+    ...(preferences.address1 || {})
   };
   const configured = Array.isArray(preferences.pointsOfInterest)
     ? preferences.pointsOfInterest.filter(p => p && (p.address || p.query || p.location || (p.lat != null && p.lng != null)))
@@ -77,7 +75,7 @@ function cardPointsOfInterest() {
     { id: "park", kind: "park", label: "Twin Silo Park", query: "Twin Silo Park, Fort Collins, CO" },
     { id: "school", kind: "school", label: "Laurel Elementary", query: "Laurel Elementary School, Fort Collins, CO" }
   ];
-  return [primary, ...secondary.filter(p => p.id !== primary.id && p.address !== primary.address)];
+  return [...(preferences.address1 ? [primary] : []), ...secondary.filter(p => p.id !== primary.id && p.address !== primary.address)];
 }
 
 function icon(name) { const paths = {"pin":"<path d=\"M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z\"/><circle cx=\"12\" cy=\"10\" r=\"2.5\"/>","phone":"<path d=\"m5 3 4 1 1 5-3 2a16 16 0 0 0 6 6l2-3 5 1 1 4c-1 5-8 3-13-2S1 4 5 3Z\"/>","bed":"<path d=\"M3 18V5m18 13V9H3m0 6h18M6 9V6h6v3\"/>","bath":"<path d=\"M3 12h18l-2 7H5Zm3 7-1 3m13-3 1 3M6 12V5a3 3 0 0 1 6 0\"/>","calendar":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M7 2v6m10-6v6M3 11h18\"/>","house":"<path d=\"M2 11 12 2l10 9v11H2Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M6 13h4v4H6zm8 0h4v4h-4zm-3 9v-5h3v5\" stroke=\"#07111b\" fill=\"none\"/>","building":"<path d=\"M5 2h14v20H5Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M8 6h3m2 0h3M8 10h3m2 0h3M8 14h3m2 0h3M10 22v-4h4v4\" stroke=\"#07111b\" fill=\"none\"/>","townhome":"<path d=\"M2 10 7 4l5 6v12H2Zm10 0 5-6 5 6v12H12Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M5 13h4m6 0h4M6 22v-5h2v5m8 0v-5h2v5\" stroke=\"#07111b\" fill=\"none\"/>","tree":"<path d=\"m12 2-7 9h4l-5 7h6v4h4v-4h6l-5-7h4Z\"/>","school":"<path d=\"m2 8 10-5 10 5-10 5Zm4 3v6q6 6 12 0v-6M22 8v9\"/>","star":"<path d=\"m12 2 3 6 7 1-5 5 1 8-6-4-6 4 1-8-5-5 7-1Z\"/>","more":"<circle cx=\"4\" cy=\"12\" r=\"1\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/><circle cx=\"20\" cy=\"12\" r=\"1\"/>"}; return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.house}</svg>`; }
@@ -92,11 +90,11 @@ function propertyCard(property) {
       <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
     <section class="property-card__media" aria-label="Listing image">
       <div class="property-visual ${image ? "" : "property-visual--fallback"}" ${image ? `style="--property-image:url(\'${esc(image)}\')"` : ""} aria-hidden="true">${!image ? `<span class="property-placeholder-icon">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span>` : ""}</div>
-      <div class="property-type-mark" title="${kind}"><span>${propertyKindIcon(kind)}</span><small>${kind}</small></div>
+
     </section>
     <section class="property-card__summary">
-      <header class="property-card__identity"><h2>${esc(property.label)}</h2><p class="muted">${icon("pin")} ${esc(property.address || preferences.location || config.search.location)}</p></header>
-      <div class="property-card__facts"><strong>${property.price ? "$"+property.price.toLocaleString()+(property.listingType==="rent"?"/mo":"") : "Price TBD"}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span><span class="poi-distance-primary" data-primary-distance aria-label="Distance to sister-in-law">SIL —</span></div>
+      <header class="property-card__identity"><span class="property-type-icon" role="img" aria-label="${kind}" title="${kind}">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span><div><h2>${esc(property.label)}</h2><p class="muted">${esc(property.address || preferences.location || config.search.location)}</p></div></header>
+      <div class="property-card__facts"><strong>${property.price ? "$"+property.price.toLocaleString()+(property.listingType==="rent"?"/mo":"") : "Price TBD"}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span><span class="poi-distance-primary" data-primary-distance aria-label="Distance to Address 1">Address 1 —</span></div>
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
         <button class="status-action" data-action="${nextAction}" aria-label="${nextLabel}" title="${nextLabel}"><span>${icon("phone")}</span><b>Contact</b></button>
@@ -105,7 +103,7 @@ function propertyCard(property) {
         <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">${icon("more")}</button>
       </div>
       <div class="property-card__more" hidden>
-        <button data-action="visited">Visited</button><button data-action="contact">Contacted</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Not interested</button><button data-action="archive">Archive</button>
+        <button data-action="visited">Visited</button><button data-action="contact">Contacted</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Ignore</button><button data-action="archive">Archive</button>
       </div>
     </section>
     <div class="fit-ring" title="Match score ${score}" aria-label="Match score ${score}"><span>${score}</span></div>
@@ -137,7 +135,8 @@ async function refreshListings(trigger = "manual") {
   buttons.forEach(button => { button.disabled = true; button.textContent = "Refreshing…"; });
   document.querySelector("#pull-indicator")?.classList.add("refreshing");
   try {
-    const found = await searchProviders({ ...preferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query });
+    const { address1, ...searchPreferences } = preferences;
+    const found = await searchProviders({ ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query });
     store.upsertMany(found);
     recordActivity("provider-refresh", null, { count: found.length, trigger });
     const indicator = document.querySelector("#pull-indicator");
@@ -192,6 +191,7 @@ function renderList() {
     if (cardMap) void renderCardMap(cardMap, property, pois, preferences.location || config.search.location);
   }
   renderActivity();
+  renderIgnoredProperties();
 }
 
 app.innerHTML = `<main class="shell">
@@ -206,12 +206,15 @@ app.innerHTML = `<main class="shell">
 <dialog id="actions-dialog" class="actions-dialog"><form method="dialog"><div class="dialog-heading"><div><p class="eyebrow">ROOK</p><h2>Actions</h2></div><button class="dialog-close" value="cancel" aria-label="Close">×</button></div>
 <label for="property-search">Search properties</label><input id="property-search" type="search" placeholder="Address, neighborhood, property…">
 <nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Favorited</button></nav>
-<div class="action-menu"><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route favorites</button><button type="button" data-refresh-listings>Refresh listings</button><button id="open-settings" type="button">Search preferences</button></div>
+<div class="action-menu"><button id="open-ignored" type="button">Ignored properties</button><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route favorites</button><button type="button" data-refresh-listings>Refresh listings</button><button id="open-settings" type="button">Search preferences</button></div>
 </form></dialog>
 
+<div id="ignore-toast" class="ignore-toast" role="status" hidden><span id="ignore-message"></span><button id="undo-ignore" type="button">Undo</button><button id="dismiss-ignore" type="button" aria-label="Dismiss">×</button></div>
+<dialog id="ignored-dialog"><div class="dialog-heading"><h2>Ignored properties</h2><button id="close-ignored" class="dialog-close" aria-label="Close ignored properties">×</button></div><p>Restore a property to put it back in your results.</p><div id="ignored-list"></div></dialog>
 <dialog id="import-dialog"><form method="dialog"><h2>Add listing</h2><p class="muted">Paste a listing URL. Rook keeps the source and routes it through the shared property model.</p><input id="listing-url" type="url" placeholder="https://…" required /><div class="dialog-actions"><button value="cancel">Cancel</button><button id="import-confirm" value="default">Add</button></div></form></dialog>
 
 <dialog id="settings-dialog"><form method="dialog"><h2>Search preferences</h2>
+<label>Address 1 location<input id="pref-address-1" type="text" placeholder="Paste a Google Maps place link"><small>Saved in this browser only. Leave blank to hide Address 1.</small></label>
 <label>Search location<input id="pref-location" type="text" autocomplete="address-level2" placeholder="Fort Collins, CO"></label>
 <label>Search radius (miles)<input id="pref-radius" type="number" min="1" max="100" step="1"></label>
 <label>Minimum bedrooms<input id="pref-min-beds" type="number" min="0" step="1"></label>
@@ -227,6 +230,46 @@ app.innerHTML = `<main class="shell">
 <label>Visual theme<select id="pref-theme"><option value="default">Default · Twilight</option><option value="warm">Warm</option><option value="night">Night</option><option value="mono">Monochrome</option></select></label>
 <input id="restore-data" type="file" accept="application/json,.json" hidden><div class="dialog-actions"><button id="restore-button" type="button">Restore backup</button><button id="export-data" type="button">Export backup</button><button value="cancel">Cancel</button><button id="save-settings" value="default">Save</button></div></form></dialog>
 </main>`;
+
+
+let lastIgnoredId = null;
+const isIgnored = property => [PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(property.status);
+function renderIgnoredProperties() {
+  const ignored = store.getAll().filter(isIgnored);
+  document.querySelector("#open-ignored").textContent = `Ignored properties (${ignored.length})`;
+  document.querySelector("#ignored-list").innerHTML = ignored.length
+    ? ignored.map(p => `<article class="ignored-property"><div><h3>${esc(p.label)}</h3><p>${esc(p.address)}</p></div><button type="button" data-restore-id="${esc(p.id)}">Restore</button></article>`).join("")
+    : "<p>No ignored properties.</p>";
+}
+function restoreIgnoredProperty(id) {
+  const property = store.getAll().find(p => p.id === id);
+  if (!property || !isIgnored(property)) return;
+  store.update(id, restoreIgnoredPatch(property));
+  recordActivity("restored", property);
+  if (lastIgnoredId === id) {
+    lastIgnoredId = null;
+    document.querySelector("#ignore-toast").hidden = true;
+  }
+  renderActivity();
+}
+document.querySelector("#open-ignored").addEventListener("click", () => {
+  document.querySelector("#actions-dialog").close();
+  renderIgnoredProperties();
+  document.querySelector("#ignored-dialog").showModal();
+});
+document.querySelector("#close-ignored").addEventListener("click", () => document.querySelector("#ignored-dialog").close());
+document.querySelector("#ignored-list").addEventListener("click", event => {
+  const id = event.target.closest("[data-restore-id]")?.dataset.restoreId;
+  if (id) restoreIgnoredProperty(id);
+});
+document.querySelector("#undo-ignore").addEventListener("click", () => restoreIgnoredProperty(lastIgnoredId));
+document.querySelector("#dismiss-ignore").addEventListener("click", () => { document.querySelector("#ignore-toast").hidden = true; });
+function ignoreProperty(property, status) {
+  store.update(property.id, ignorePropertyPatch(property, status));
+  lastIgnoredId = property.id;
+  document.querySelector("#ignore-message").textContent = `${property.label} ignored.`;
+  document.querySelector("#ignore-toast").hidden = false;
+}
 
 document.querySelector("#property-map").addEventListener("rook:map-select", event => {
   const id = event.detail?.id;
@@ -301,7 +344,7 @@ document.querySelector("#property-list").addEventListener("click", e => {
     }
   }
   if (action === "reject") {
-    store.update(p.id, { status: PROPERTY_STATUS.REJECTED, saved: false });
+    ignoreProperty(p, PROPERTY_STATUS.REJECTED);
     recordActivity("rejected", p);
   }
   if (action === "schedule") {
@@ -317,7 +360,7 @@ document.querySelector("#property-list").addEventListener("click", e => {
     }
   }
   if (action === "archive") {
-    store.update(p.id, { status: PROPERTY_STATUS.ARCHIVED, saved: false });
+    ignoreProperty(p, PROPERTY_STATUS.ARCHIVED);
     recordActivity("archived", p);
   }
   renderActivity();
@@ -353,6 +396,7 @@ document.querySelector("#route-shortlist").addEventListener("click", () => {
 document.querySelectorAll("[data-refresh-listings]").forEach(button => button.addEventListener("click", () => refreshListings("manual")));
 
 function openSettings() {
+  document.querySelector("#pref-address-1").value = preferences.address1?.mapLink || "";
   document.querySelector("#pref-location").value = preferences.location || config.search.location;
   document.querySelector("#pref-radius").value = preferences.radiusMiles ?? 15;
   document.querySelector("#pref-min-beds").value = preferences.minBeds ?? 2;
@@ -383,8 +427,17 @@ document.querySelector("#save-settings").addEventListener("click", e => {
     return;
   }
   document.querySelector("#pref-type-apartment").setCustomValidity("");
+  const address1Link = document.querySelector("#pref-address-1").value.trim();
+  const coordinateMatch = address1Link.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/) || address1Link.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  if (address1Link && (!coordinateMatch || Math.abs(Number(coordinateMatch[1])) > 90 || Math.abs(Number(coordinateMatch[2])) > 180)) {
+    document.querySelector("#pref-address-1").setCustomValidity("Paste the full Google Maps place link from the address bar.");
+    document.querySelector("#pref-address-1").reportValidity();
+    return;
+  }
+  document.querySelector("#pref-address-1").setCustomValidity("");
   preferences = {
     ...preferences,
+    address1: coordinateMatch ? { lat: Number(coordinateMatch[1]), lng: Number(coordinateMatch[2]), mapLink: address1Link } : null,
     location: document.querySelector("#pref-location").value.trim() || config.search.location,
     radiusMiles: Math.max(1, Number(document.querySelector("#pref-radius").value) || 15),
     minBeds: Number(document.querySelector("#pref-min-beds").value) || 0,

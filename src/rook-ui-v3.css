@@ -40,3 +40,53 @@ button:focus-visible{outline:3px solid #78ffee;outline-offset:3px}
 .property-map .maplibregl-ctrl-attrib{background:rgba(5,16,24,.8);color:#91aeb7;font-size:9px;line-height:14px;padding:2px 5px}
 .property-map .maplibregl-ctrl-attrib a{color:#91aeb7}
 .property-map .maplibregl-canvas{touch-action:none}
+
+/* Compact identity row; score returns to the lower-right of the composition. */
+.property-card.visual-card{height:auto;min-height:112px}
+.property-card__summary{position:relative;left:auto;top:auto;bottom:auto;margin-left:28%;width:41%;padding:10px 0}
+.property-card__identity{display:flex;align-items:flex-start;gap:7px;padding-right:0}
+.property-card__identity>div{min-width:0}
+.property-type-icon{display:flex;flex:0 0 22px;color:#c9c3eb}
+.property-type-icon svg{width:22px;height:22px}
+.property-card__identity .muted{margin:3px 0 0}
+.compact-actions{margin-top:8px}
+.fit-ring{top:auto;bottom:12px}
+.property-card__more{position:relative;bottom:auto;margin-top:8px}
+.ignored-property{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:12px 0;border-top:1px solid #34495b}
+.ignored-property h3{margin:0 0 4px;font-size:1rem}.ignored-property p{margin:0;font-size:.8rem;color:#b4c5d2}
+.ignored-property button,.ignore-toast button{border:1px solid #536d80;border-radius:8px;padding:8px 12px;background:#183345;color:white}
+.ignore-toast{position:fixed;z-index:40;bottom:18px;left:18px;max-width:calc(100% - 90px);display:flex;align-items:center;gap:10px;padding:10px 12px;background:#142b3b;border:1px solid #5da89d;border-radius:12px;box-shadow:0 8px 24px #0008;font-size:.85rem}
+.ignore-toast[hidden]{display:none}.ignore-toast span{min-width:0}
+@media(max-width:699px){
+.property-card.visual-card{height:auto;min-height:126px}
+.property-card__summary{margin-left:0;width:auto;left:auto;right:auto;top:auto;bottom:auto;padding:12px 64px 10px 10px}
+.property-card__media{inset:0;width:65%;height:100%}
+.property-card__identity h2{font-size:15px;line-height:1.15}
+.property-card__identity .muted{font-size:10px;line-height:1.25}
+.property-card__facts{flex-wrap:wrap;white-space:normal;row-gap:3px;margin-top:6px}
+.property-card__facts strong{font-size:14px}
+.property-card__facts span{font-size:10px;padding-left:5px}
+.property-card__facts svg{width:14px;height:14px}
+.save-button{top:7px;right:9px;width:32px;height:32px}
+.fit-ring{top:auto;bottom:12px;right:12px;left:auto;width:36px}
+.fit-ring span{font-size:14px}
+.compact-actions{gap:6px;margin-top:8px}
+.icon-action{width:26px;height:26px;flex-basis:26px}
+.status-action{height:26px;padding:0 7px}
+.status-action b{font-size:11px}
+.property-card__more{grid-template-columns:repeat(2,minmax(0,1fr));width:calc(100% + 52px)}
+}
+
+/* One map palette for overview, card contexts, labels, and hover details. */
+.maplibregl-popup-content{background:#09212a;color:#dcebee;border:1px solid #3d6372;border-radius:10px;box-shadow:0 8px 24px #0008;font:12px/1.45 system-ui;padding:10px 12px}
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip{border-top-color:#09212a}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip{border-bottom-color:#09212a}
+.maplibregl-popup-anchor-left .maplibregl-popup-tip{border-right-color:#09212a}
+.maplibregl-popup-anchor-right .maplibregl-popup-tip{border-left-color:#09212a}
+.maplibregl-popup-close-button{color:#dcebee}
+.rook-hover-popup{pointer-events:none}
+.map-tooltip strong{display:block;color:#72e5d4;font-size:13px;margin-bottom:3px}
+.map-tooltip small{display:block;color:#93b5bf;margin-top:5px}
+.card-map-art .maplibregl-ctrl-attrib{font-size:7px;line-height:10px;background:#09212acc;color:#91aeb7;padding:1px 3px}
+.card-map-art .maplibregl-ctrl-attrib a{color:#91aeb7}
+.card-map-art .maplibregl-canvas{outline:0}

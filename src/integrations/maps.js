@@ -23,6 +23,33 @@ const overviewState = {
   baseErrorCount: 0
 };
 
+
+let hoverPopup = null;
+function showPropertyTooltip(id, coordinates) {
+  const property = overviewState.latestProperties.find(p => String(p.id) === String(id));
+  if (!property) return;
+  hoverPopup?.remove();
+  const content = document.createElement("div");
+  content.className = "map-tooltip";
+  const title = document.createElement("strong");
+  title.textContent = property.label || property.address;
+  const facts = document.createElement("div");
+  facts.textContent = [
+    property.price ? "$" + Number(property.price).toLocaleString() + (property.listingType === "buy" ? "" : "/mo") : "Price TBD",
+    (property.beds ?? "—") + " bd", (property.baths ?? "—") + " ba"
+  ].join(" · ");
+  const address = document.createElement("div");
+  address.textContent = property.address || "";
+  const hint = document.createElement("small");
+  hint.textContent = "Click for details and actions";
+  content.append(title, facts, address, hint);
+  const point = cachedCoordinates(property, overviewState.latestOptions.location);
+  if (!coordinates && !point) return;
+  hoverPopup = new window.maplibregl.Popup({
+    closeButton: false, closeOnClick: false, offset: 12, maxWidth: "260px", className: "rook-hover-popup"
+  }).setLngLat(coordinates || [point.lng, point.lat]).setDOMContent(content).addTo(overviewState.map);
+}
+
 let detailId = null;
 let pinnedDetails = false;
 let poiRun = 0;
@@ -340,18 +367,21 @@ function installOverviewLayers(map) {
     if (overviewState.hoveredId && overviewState.hoveredId !== id) setFeatureStateSafe(overviewState.hoveredId, { hovered: false });
     overviewState.hoveredId = id == null ? null : String(id);
     if (overviewState.hoveredId) setFeatureStateSafe(overviewState.hoveredId, { hovered: true });
-    if (id != null) showPropertyDetails(String(id));
+    if (id != null) showPropertyTooltip(String(id), event.features?.[0]?.geometry?.coordinates);
   });
 
   map.on("mouseleave", ROOK_LAYER_ID, () => {
     map.getCanvas().style.cursor = "";
     if (overviewState.hoveredId) setFeatureStateSafe(overviewState.hoveredId, { hovered: false });
     overviewState.hoveredId = null;
+    hoverPopup?.remove();
+    hoverPopup = null;
   });
 
   map.on("click", ROOK_LAYER_ID, event => {
     const id = event.features?.[0]?.properties?.id ?? event.features?.[0]?.id;
     if (id == null) return;
+    hoverPopup?.remove();
     selectFeature(String(id));
     showPropertyDetails(String(id), true);
   });
@@ -587,62 +617,69 @@ function markerOffset(point, center, zoom) {
   return { dx, dy };
 }
 
+
+const cardMapViews = new Map();
 export async function renderCardMap(container, property, pointsOfInterest = [], fallbackLocation = "Fort Collins, CO") {
   if (!container || !property) return;
-  const propertyQuery = property.address || [property.label, fallbackLocation].filter(Boolean).join(", ");
-  const fallbackPoint = /fort collins/i.test(fallbackLocation)
-    ? { lat: 40.5853, lng: -105.0844 }
-    : await geocode(fallbackLocation) || { lat: 40.5853, lng: -105.0844 };
-
-  container.innerHTML = `${tileLayerHtml(fallbackPoint, 12)}<div class="card-map-shade"></div>`;
-
-  const resolvedPropertyPoint = property.lat != null && property.lng != null
-    ? { lat: Number(property.lat), lng: Number(property.lng), label: property.label || "Property", kind: "property" }
-    : await geocode(propertyQuery);
-  const propertyPoint = resolvedPropertyPoint || fallbackPoint;
-
-  const poiPoints = [];
-  for (const poi of pointsOfInterest) {
-    const query = poi.address || poi.query || poi.location || poi.label;
-    if (!query) continue;
-    const point = poi.lat != null && poi.lng != null
-      ? { lat: Number(poi.lat), lng: Number(poi.lng) }
-      : await geocode(query);
-    if (!point) continue;
-    poiPoints.push({ ...point, label: poi.label || poi.name || "POI", kind: poi.kind || poi.id || "poi", primary: Boolean(poi.primary) });
+  for (const [element, view] of cardMapViews) {
+    if (!element.isConnected) {
+      view.observer?.disconnect();
+      view.map?.remove();
+      cardMapViews.delete(element);
+    }
   }
-
-  const primaryPoint = poiPoints.find(point => point.primary) || poiPoints[0] || null;
-  const primaryDistance = primaryPoint ? haversineMiles(propertyPoint, primaryPoint) : null;
+  const prior = cardMapViews.get(container);
+  prior?.observer?.disconnect();
+  prior?.map?.remove();
+  const view = { map: null, observer: null };
+  cardMapViews.set(container, view);
+  const fallbackPoint = { lat: 40.5853, lng: -105.0844 };
+  const point = validCoordinates(property) || await geocode(property.address || [property.label, fallbackLocation].join(", "));
+  const propertyPoint = point || fallbackPoint;
+  const pois = [];
+  for (const poi of pointsOfInterest) {
+    const resolved = validCoordinates(poi) || await geocode(poi.address || poi.query || poi.location || poi.label);
+    if (resolved) pois.push({ ...poi, ...resolved });
+  }
+  if (!container.isConnected || cardMapViews.get(container) !== view) return;
+  const primary = pois.find(p => p.primary);
   const distanceTarget = container.closest(".property-card")?.querySelector("[data-primary-distance]");
   if (distanceTarget) {
-    distanceTarget.textContent = primaryDistance == null ? "SIL —" : `SIL ${primaryDistance.toFixed(primaryDistance < 10 ? 1 : 0)} mi`;
-    if (primaryDistance != null) distanceTarget.setAttribute("title", `Sister-in-law · ${primaryDistance.toFixed(primaryDistance < 10 ? 1 : 0)} miles`);
+    const distance = point && primary ? haversineMiles(point, primary) : null;
+    distanceTarget.textContent = distance == null ? "Address 1 —" : "Address 1 " + distance.toFixed(distance < 10 ? 1 : 0) + " mi";
   }
-
-  const zoom = mapZoom(propertyPoint, primaryPoint);
-  const center = primaryPoint
-    ? {
-        lat: (propertyPoint.lat + primaryPoint.lat) / 2,
-        lng: (propertyPoint.lng + primaryPoint.lng) / 2
+  const center = primary ? [(propertyPoint.lng + primary.lng) / 2, (propertyPoint.lat + primary.lat) / 2] : [propertyPoint.lng, propertyPoint.lat];
+  const library = await loadMapLibre();
+  const mount = () => {
+    if (view.map || !container.isConnected) return;
+    container.replaceChildren();
+    const map = new library.Map({
+      container, style: OPENFREEMAP_STYLE_URL, center,
+      zoom: mapZoom(propertyPoint, primary) - 1,
+      interactive: false, attributionControl: false
+    });
+    view.map = map;
+    map.addControl(new library.AttributionControl({ compact: false }), "bottom-right");
+    map.on("style.load", () => {
+      applyReferenceMapTheme(map);
+      for (const p of [...(point ? [{ ...point, kind: "property" }] : []), ...pois]) {
+        const element = document.createElement("span");
+        element.className = "map-marker map-marker--" + (p.kind === "property" ? "property" : p.primary ? "primary" : p.kind || "poi");
+        element.append(document.createElement("span"));
+        new library.Marker({ element }).setLngLat([p.lng, p.lat]).addTo(map);
       }
-    : propertyPoint;
-
-  const propertyPos = markerOffset(propertyPoint, center, zoom);
-  const propertyMarker = `<span class="map-marker map-marker--property" style="left:calc(50% + ${propertyPos.dx}px);top:calc(50% + ${propertyPos.dy}px)" title="Property"><span></span></span>`;
-
-  const poiMarkers = poiPoints.map(point => {
-    const pos = markerOffset(point, center, zoom);
-    const distance = haversineMiles(propertyPoint, point);
-    const tone = point.primary ? "primary" : point.kind === "park" ? "park" : point.kind === "school" ? "school" : "poi";
-    const vx = pos.dx - propertyPos.dx;
-    const vy = pos.dy - propertyPos.dy;
-    const length = Math.sqrt(vx * vx + vy * vy);
-    const angle = Math.atan2(vy, vx) * 180 / Math.PI;
-    return `<span class="map-distance-line" style="left:calc(50% + ${propertyPos.dx}px);top:calc(50% + ${propertyPos.dy}px);width:${length}px;transform:rotate(${angle}deg)"></span><span class="map-marker map-marker--poi map-marker--${tone}" style="left:calc(50% + ${pos.dx}px);top:calc(50% + ${pos.dy}px)" title="${distance.toFixed(distance < 10 ? 1 : 0)} mi"><span></span></span>`;
-  }).join("");
-
-  container.innerHTML = `${tileLayerHtml(center, zoom)}<div class="card-map-shade"></div><div class="card-map-markers" aria-hidden="true">${propertyMarker}${poiMarkers}</div>`;
+    });
+  };
+  if (typeof IntersectionObserver === "undefined") mount();
+  else {
+    view.observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) mount();
+        else if (view.map) { view.map.remove(); view.map = null; }
+      }
+    }, { rootMargin: "150px" });
+    view.observer.observe(container);
+  }
 }
 
 export function openDirections(property) {

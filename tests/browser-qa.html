@@ -18,7 +18,7 @@ function finish(){
     const media=doc.querySelector(".property-card__media");
     const content=doc.querySelector(".property-card__summary");
     const context=doc.querySelector(".property-card__context");
-    const type=doc.querySelector(".property-type-mark");
+    const type=doc.querySelector(".property-type-icon");
     const overview=doc.querySelector(".overview-map");
     const map=doc.querySelector("#property-map");
     if(!card||!media||!content||!context||!type||!overview||!map) throw new Error("missing required UI element");
@@ -33,12 +33,15 @@ function finish(){
     const checks={
       v3:links.some(x=>x.includes("rook-ui-v3.css")),
       cardWide:cardRect.width>viewport*.85,
-      cardHeight:mobile?cardRect.height>=168:cardRect.height>=105,
-      realLayout:Math.abs(mediaRect.left-cardRect.left)<6&&contentRect.top>mediaRect.top&&contextRect.right<=cardRect.right,
-      contentPosition:mobile?contentRect.top>cardRect.top+cardRect.height*.30:contentRect.left>cardRect.left+cardRect.width*.25,
-      contextPosition:mobile?contextRect.top<contentRect.top:contextRect.left>cardRect.left+cardRect.width*.55,
+      cardHeight:mobile?cardRect.height>=120&&cardRect.height<168:cardRect.height>=105,
+      realLayout:Math.abs(mediaRect.left-cardRect.left)<6&&contentRect.top>=mediaRect.top-1&&contextRect.right<=cardRect.right,
+      contentPosition:mobile?contentRect.top<cardRect.top+18:contentRect.left>cardRect.left+cardRect.width*.25,
+      contextPosition:mobile?contextRect.top<=contentRect.top+1:contextRect.left>cardRect.left+cardRect.width*.55,
       continuousSurface:getComputedStyle(content).backgroundColor==='rgba(0, 0, 0, 0)',
       scoreProminent:doc.querySelector('.fit-ring').getBoundingClientRect().width>=30,
+      scoreBelowStar:doc.querySelector('.fit-ring').getBoundingClientRect().top>=doc.querySelector('.save-button').getBoundingClientRect().bottom,
+      ignoredControls:Boolean(doc.querySelector('#open-ignored')&&doc.querySelector('#undo-ignore')),
+      typeIconOnly:!doc.querySelector('.property-type-icon small'),
       saveAtRight:doc.querySelector('.save-button').getBoundingClientRect().left>cardRect.left+cardRect.width*.8,
       fallbackHasTypeIcon:[...doc.querySelectorAll('.property-visual--fallback')].every(el=>Boolean(el.querySelector('.property-placeholder-icon svg'))),
       actionsClear:[...doc.querySelectorAll('.property-card')].every(el=>el.querySelector('.compact-actions').getBoundingClientRect().bottom<=el.getBoundingClientRect().bottom+1),
