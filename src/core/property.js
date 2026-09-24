@@ -39,6 +39,8 @@ export function normalizeProperty(input = {}) {
     note: input.note || "",
     source: input.source || null,
     sourceUrl: input.sourceUrl || null,
+    listingState: ["active","closed","unknown"].includes(input.listingState) ? input.listingState : (input.sourceUrl ? "active" : "unknown"),
+    listingCheckedAt: input.listingCheckedAt || null,
     contactedAt: input.contactedAt || null,
     contactOutcome: input.contactOutcome || null,
     showingAt: input.showingAt || null,
