@@ -323,6 +323,30 @@ function listingFromBrowserIndex(snapshot: any, address: string, label: string, 
   return null;
 }
 
+function listingFromReaderIndex(text: string, address: string, label: string, source: string, pageUrl: string) {
+  const lines = String(text || "").split(/\n+/);
+  const wanted = canonicalAddress(address || label);
+  for (let i = 0; i < lines.length; i += 1) {
+    const context = lines.slice(Math.max(0, i - 2), Math.min(lines.length, i + 3)).join(" ");
+    const token = canonicalAddress(context);
+    if (!wanted || !token || (!token.includes(wanted) && !wanted.includes(token))) continue;
+    const hrefs = [
+      ...[...context.matchAll(/\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1]),
+      ...[...context.matchAll(/(https?:\/\/[^\s<>"')]+)/g)].map(m => m[1])
+    ];
+    for (const href of hrefs) {
+      const candidateUrl = normalizeSearchResultUrl(href);
+      if (!candidateUrl) continue;
+      try {
+        const candidate = new URL(candidateUrl, pageUrl);
+        if (!isAllowedListingHost(candidate.hostname)) continue;
+        return fallbackListingFromText(context, candidate.toString(), { address, label, source:source || candidate.hostname });
+      } catch {}
+    }
+  }
+  return null;
+}
+
 function primaryStatusText(html: string) {
   const parts:string[] = [];
   const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
@@ -467,10 +491,25 @@ async function resolveListing(address: string, label: string, location: string, 
   // listings hidden behind client-rendered cards that do not expose useful JSON-LD
   // to a lightweight fetch, while still requiring an exact address/unit match.
   const browserIndexPages = [
+    { source:"Zillow", url:`https://www.zillow.com/${citySlug}-co/rent-townhomes/` },
     { source:"Zillow", url:`https://www.zillow.com/${citySlug}-co/rentals/` },
+    { source:"Apartments.com", url:`https://www.apartments.com/townhomes/${citySlug}-co/` },
     { source:"Apartments.com", url:`https://www.apartments.com/${citySlug}-co/` }
   ];
   for (const sourcePage of browserIndexPages) {
+    try {
+      const reader = await readerText(sourcePage.url);
+      const readerMatch = listingFromReaderIndex(reader, address, label, sourcePage.source, sourcePage.url);
+      if (readerMatch?.sourceUrl) {
+        return {
+          state:"active",
+          listing:readerMatch,
+          checkedAt,
+          checkedSources:successfulSources,
+          readerIndex:true
+        };
+      }
+    } catch {}
     try {
       const snapshot = await browserSnapshot(sourcePage.url);
       const match = listingFromBrowserIndex(snapshot, address, label, sourcePage.source);
