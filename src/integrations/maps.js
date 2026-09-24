@@ -4,24 +4,46 @@ export function googleMapsDirectionsUrl(property) {
   return "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(destination);
 }
 
-function mapTarget(properties = []) {
-  const usable = properties.filter(property => property.address || (property.lat != null && property.lng != null));
-  const preferred = usable.find(property => property.saved && property.address) || usable.find(property => property.address) || usable[0];
-  return preferred?.address || (preferred ? `${preferred.lat},${preferred.lng}` : "Fort Collins, CO");
+function mapLocation(property) {
+  if (property?.address) return property.address;
+  if (property?.lat != null && property?.lng != null) return `${property.lat},${property.lng}`;
+  return null;
+}
+
+function usableLocations(properties = []) {
+  return [...new Set(properties.map(mapLocation).filter(Boolean))];
 }
 
 export function googleMapsEmbedUrl(properties = []) {
-  // Google Maps' simple embed search ignores z= when the query contains a
-  // multi-address string. Center on one relevant property instead so the
-  // initial viewport is genuinely neighborhood-level.
-  const target = mapTarget(properties);
-  return "https://www.google.com/maps?q=" + encodeURIComponent(target) + "&z=15&output=embed";
+  const locations = usableLocations(properties);
+  if (!locations.length) {
+    return "https://www.google.com/maps?q=" + encodeURIComponent("Fort Collins, CO") + "&z=12&output=embed";
+  }
+
+  if (locations.length === 1) {
+    return "https://www.google.com/maps?q=" + encodeURIComponent(locations[0]) + "&z=15&output=embed";
+  }
+
+  // The simple Maps embed cannot fit multiple search pins. Directions mode
+  // gives every supplied property a visible stop and auto-fits the viewport.
+  const origin = locations[0];
+  const destination = locations[locations.length - 1];
+  const waypoints = locations.slice(1, -1);
+  const params = new URLSearchParams({
+    api: "1",
+    origin,
+    destination,
+    travelmode: "driving",
+    output: "embed"
+  });
+  if (waypoints.length) params.set("waypoints", waypoints.join("|"));
+  return "https://www.google.com/maps/dir/?" + params.toString();
 }
 
 export function renderPropertyMap(frame, properties = []) {
   if (!frame) return;
   frame.src = googleMapsEmbedUrl(properties);
-  frame.title = properties.length ? `Map centered near saved properties` : "Rook property map";
+  frame.title = properties.length > 1 ? `Map showing ${properties.length} properties` : properties.length ? "Property map" : "Rook property map";
 }
 
 export function openDirections(property) {
