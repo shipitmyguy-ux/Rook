@@ -268,6 +268,7 @@ function renderActivity() {
     : '<li class="muted">No activity yet.</li>';
 }
 
+// Rook attempts live source recovery before exposing a manual Find listing search.
 async function resolveUnavailableListings() {
   const candidates = store.getAll().filter(property => {
     if (safeListingUrl(property.sourceUrl) || property.listingState === "closed") return false;
