@@ -176,7 +176,7 @@ function renderList() {
     onPropertyAction(action, id) {
       const property = store.getAll().find(p => String(p.id) === id);
       if (!property) return;
-      const card = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+      const card = document.querySelector(`#property-list [data-id="${CSS.escape(id)}"]`);
       if (action === "directions") return openDirections(property);
       if (action === "view") {
         card?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -273,10 +273,15 @@ function ignoreProperty(property, status) {
 }
 
 document.querySelector("#property-map").addEventListener("rook:map-select", event => {
-  const id = event.detail?.id;
+  const id = String(event.detail?.id || "");
   if (!id) return;
-  const card = document.querySelector(`[data-id="${CSS.escape(String(id))}"]`);
-  card?.scrollIntoView({ behavior: "smooth", block: "center" });
+  const property = store.getAll().find(p => String(p.id) === id);
+  const panel = document.querySelector("#map-details");
+  if (!property || !panel) return;
+  panel.innerHTML = propertyCard(property);
+  panel.hidden = false;
+  const cardMap = panel.querySelector(`[data-card-map="${CSS.escape(property.id)}"]`);
+  if (cardMap) void renderCardMap(cardMap, property, cardPointsOfInterest(), preferences.location || config.search.location);
 });
 document.querySelector("#more-button").addEventListener("click", () => document.querySelector("#actions-dialog").showModal());
 document.querySelector("#property-search").addEventListener("input", e => { query = e.target.value; renderList(); });
@@ -315,6 +320,18 @@ function openPropertySummary(id) {
   document.querySelector("#property-summary-dialog").showModal();
 }
 document.querySelector("#close-property-summary").addEventListener("click", () => document.querySelector("#property-summary-dialog").close());
+document.querySelector("#map-details").addEventListener("click", event => {
+  const card = event.target.closest(".property-card");
+  if (!card) return;
+  const actionButton = event.target.closest("[data-action]");
+  if (actionButton) {
+    const sourceCard = document.querySelector(`#property-list [data-id="${CSS.escape(card.dataset.id)}"]`);
+    sourceCard?.querySelector(`[data-action="${CSS.escape(actionButton.dataset.action)}"]`)?.click();
+    return;
+  }
+  if (!event.target.closest("button,a,input,select,textarea")) openPropertySummary(card.dataset.id);
+});
+
 document.querySelector("#property-list").addEventListener("keydown", event => {
   if (event.target.matches(".property-card") && ["Enter", " "].includes(event.key)) {
     event.preventDefault();
