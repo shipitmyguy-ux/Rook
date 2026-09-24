@@ -9,7 +9,7 @@ const ROOK_HALO_LAYER_ID = "rook-listings-halo";
 const FORT_COLLINS_CENTER = [-105.0844, 40.5853];
 
 let maplibrePromise = null;
-// Pan, zoom, hover, selection, and map filter state are intentionally session-only; OpenFreeMap base layers are required for QA and MapLibre v5 uses its browser bundle.
+// Pan, zoom, hover, selection, and map filter state are intentionally session-only; OpenFreeMap base layers are required for QA and property markers use WebGL symbol icons.
 const overviewState = {
   map: null,
   container: null,
