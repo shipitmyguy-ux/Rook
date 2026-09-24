@@ -126,17 +126,35 @@ function sameAddress(a: unknown, b: unknown) {
   return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
 }
 
-function looksClosedText(text: string) {
-  return /\b(off market|no longer available|not available|listing removed|listing is no longer|rented|leased|sold|pending application|application pending)\b/i.test(text);
+function primaryStatusText(html: string) {
+  const parts:string[] = [];
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+  const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1];
+  const description = html.match(/<meta[^>]+(?:name|property)=["'](?:description|og:description|og:title)["'][^>]+content=["']([^"']+)["'][^>]*>/i)?.[1]
+    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:name|property)=["'](?:description|og:description|og:title)["'][^>]*>/i)?.[1];
+  for (const value of [title,h1,description]) if (value) parts.push(value.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim());
+
+  const statusFields = [...html.matchAll(/"(?:homeStatus|listingStatus|availability|status)"\s*:\s*"([^"]+)"/gi)]
+    .map(match => match[1]).slice(0,20);
+  parts.push(...statusFields);
+  return parts.join(" | ");
+}
+
+function closedStatusReason(html: string) {
+  const primary = primaryStatusText(html);
+  const strong = primary.match(/\b(off[- ]?market|no longer available|listing removed|listing is no longer available|currently unavailable|rented|leased|sold|out of stock|discontinued)\b/i);
+  return strong ? strong[1].toLowerCase() : null;
 }
 
 async function inspectListingUrl(url: string) {
   try {
     const html = await fetchText(url);
-    return { reachable: true, closed: looksClosedText(html), html };
+    const reason = closedStatusReason(html);
+    return { reachable: true, closed: Boolean(reason), reason, html };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { reachable: false, closed: /^(404|410)$/.test(message), html: "" };
+    const closed = /^(404|410)$/.test(message);
+    return { reachable: false, closed, reason: closed ? "http-404-410" : null, html: "" };
   }
 }
 
@@ -163,7 +181,7 @@ async function resolveListing(address: string, label: string, location: string) 
           return { state:"active", listing:match, checkedAt, checkedSources:successfulSources };
         }
         if (inspected.closed) {
-          closedEvidence.push({ source:sourcePage.source, url:match.sourceUrl, reason:inspected.reachable ? "page-status-text" : "http-404-410" });
+          closedEvidence.push({ source:sourcePage.source, url:match.sourceUrl, reason:inspected.reason || "direct-status" });
         }
       }
     } catch {}
@@ -190,7 +208,7 @@ async function resolveListing(address: string, label: string, location: string) 
           return { state:"active", listing:{ ...match, sourceUrl:candidate.toString() }, checkedAt, checkedSources:successfulSources };
         }
         if (match && inspected.closed) {
-          closedEvidence.push({ source:candidate.hostname, url:candidate.toString(), reason:inspected.reachable ? "page-status-text" : "http-404-410" });
+          closedEvidence.push({ source:candidate.hostname, url:candidate.toString(), reason:inspected.reason || "direct-status" });
         }
       } catch {}
     }
