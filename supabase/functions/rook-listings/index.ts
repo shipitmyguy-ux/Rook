@@ -56,9 +56,9 @@ async function fetchText(url: string) {
 const PROJECT_URL = Deno.env.get("SUPABASE_URL") || "https://umvmilulnqnmeqvfoxxc.supabase.co";
 const BROWSER_WORKER_URL = PROJECT_URL + "/functions/v1/rook-browser-worker";
 
-async function readerText(url: string) {
+async function readerText(url: string, timeoutMs = 14000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 14000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch("https://r.jina.ai/" + url, {
       signal: controller.signal,
@@ -254,9 +254,21 @@ function canonicalAddress(value: unknown) {
     .replace(/[^a-z0-9]/g,"");
 }
 
+function addressCore(value: unknown) {
+  const firstLine = String(value || "").split(/[,\n|]/)[0] || "";
+  return canonicalAddress(firstLine);
+}
+
 function sameAddress(a: unknown, b: unknown) {
   const left = canonicalAddress(a), right = canonicalAddress(b);
-  return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
+  if (!left || !right) return false;
+  if (left === right || left.includes(right) || right.includes(left)) return true;
+  const leftCore = addressCore(a), rightCore = addressCore(b);
+  return Boolean(
+    leftCore && rightCore &&
+    Math.min(leftCore.length, rightCore.length) >= 8 &&
+    (leftCore === rightCore || left.includes(rightCore) || right.includes(leftCore))
+  );
 }
 
 const ALLOWED_LISTING_HOSTS = [
@@ -487,44 +499,6 @@ async function resolveListing(address: string, label: string, location: string, 
     } catch {}
   }
 
-  // High-value rendered rental indexes are the next recovery tier. This catches
-  // listings hidden behind client-rendered cards that do not expose useful JSON-LD
-  // to a lightweight fetch, while still requiring an exact address/unit match.
-  const browserIndexPages = [
-    { source:"Zillow", url:`https://www.zillow.com/${citySlug}-co/rent-townhomes/` },
-    { source:"Zillow", url:`https://www.zillow.com/${citySlug}-co/rentals/` },
-    { source:"Apartments.com", url:`https://www.apartments.com/townhomes/${citySlug}-co/` },
-    { source:"Apartments.com", url:`https://www.apartments.com/${citySlug}-co/` }
-  ];
-  for (const sourcePage of browserIndexPages) {
-    try {
-      const reader = await readerText(sourcePage.url);
-      const readerMatch = listingFromReaderIndex(reader, address, label, sourcePage.source, sourcePage.url);
-      if (readerMatch?.sourceUrl) {
-        return {
-          state:"active",
-          listing:readerMatch,
-          checkedAt,
-          checkedSources:successfulSources,
-          readerIndex:true
-        };
-      }
-    } catch {}
-    try {
-      const snapshot = await browserSnapshot(sourcePage.url);
-      const match = listingFromBrowserIndex(snapshot, address, label, sourcePage.source);
-      if (match?.sourceUrl) {
-        return {
-          state:"active",
-          listing:match,
-          checkedAt,
-          checkedSources:successfulSources,
-          browserIndex:true
-        };
-      }
-    } catch {}
-  }
-
   // Search-engine HTML is discovery only. Try more than one engine because any
   // individual search endpoint can block automated requests or omit a live result.
   const query = [address || label, location, "rental listing"].filter(Boolean).join(" ");
@@ -613,6 +587,29 @@ async function resolveListing(address: string, label: string, location: string, 
     } catch {}
   }
 
+  // Reader-backed exact-address search is the last cheap discovery tier before
+  // opening a real browser. It is bounded so a missing listing cannot stall Rook.
+  const exactQuery = ['"' + (address || label) + '"', location, "rental"].filter(Boolean).join(" ");
+  const readerSearchUrls = [
+    "https://www.google.com/search?q=" + encodeURIComponent(exactQuery),
+    "https://www.bing.com/search?q=" + encodeURIComponent(exactQuery)
+  ];
+  for (const searchUrl of readerSearchUrls) {
+    try {
+      const reader = await readerText(searchUrl, 5000);
+      const match = listingFromReaderIndex(reader, address, label, "search-result", searchUrl);
+      if (match?.sourceUrl) {
+        return {
+          state:"active",
+          listing:match,
+          checkedAt,
+          checkedSources:successfulSources,
+          readerSearch:true
+        };
+      }
+    } catch {}
+  }
+
   // If lightweight search endpoints are blocked or inconclusive, use Rook's real
   // browser worker once before exposing a manual Find listing fallback.
   try {
@@ -665,6 +662,26 @@ async function resolveListing(address: string, label: string, location: string, 
       } catch {}
     }
   } catch {}
+
+  // One targeted ZIP index is a bounded provider fallback. Exact street/unit
+  // matching is still required, and it runs only after exact-address search.
+  const postalCode = String(address || "").match(/\b(\d{5})(?:-\d{4})?\b/)?.[1] || "";
+  if (postalCode) {
+    const zipIndexUrl = `https://www.zillow.com/${citySlug}-co-${postalCode}/rentals/`;
+    try {
+      const reader = await readerText(zipIndexUrl, 5000);
+      const match = listingFromReaderIndex(reader, address, label, "Zillow", zipIndexUrl);
+      if (match?.sourceUrl) {
+        return {
+          state:"active",
+          listing:match,
+          checkedAt,
+          checkedSources:successfulSources,
+          readerIndex:true
+        };
+      }
+    } catch {}
+  }
 
   // Absence from search/index pages is never closure evidence. Only an exact
   // property page with a direct unavailable/off-market signal may mark closed.
