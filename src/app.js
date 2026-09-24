@@ -121,30 +121,45 @@ function distanceLabel(distance) {
   return distance < 10 ? distance.toFixed(1) : String(Math.round(distance));
 }
 
-function distanceStrip(property) {
+function distancePanel(property) {
   const points = cardPointsOfInterest();
   const cached = getCachedPropertyDistances(property, points, preferences.location || config.search.location);
-  const items = cached.map((item, index) => {
+  const numeric = cached.map(item => item.distance).filter(Number.isFinite);
+  const maxDistance = numeric.length ? Math.max(...numeric, 1) : 1;
+  const rows = cached.map((item, index) => {
     const short = /^Address\s+(\d+)$/i.exec(item.label)?.[1] || String(index + 1);
     const tone = item.resolved ? distanceTone(item.distance) : "pending";
     const value = item.resolved ? distanceLabel(item.distance) : "—";
-    return `<span class="distance-chip distance-${tone}" data-distance-id="${esc(item.id)}" title="${esc(item.label)} distance"><i aria-hidden="true"></i><b>A${esc(short)}</b><em>${esc(value)}${value !== "—" ? " mi" : ""}</em></span>`;
+    const ratio = Number.isFinite(item.distance) ? Math.max(0.08, Math.min(1, item.distance / maxDistance)) : 0;
+    return `<div class="distance-row distance-${tone}" data-distance-id="${esc(item.id)}" title="${esc(item.label)} distance">
+      <b>A${esc(short)}</b>
+      <span class="distance-row__value">${esc(value)}${value !== "—" ? " mi" : ""}</span>
+      <span class="distance-row__track" aria-hidden="true"><i style="--distance-ratio:${ratio}"></i></span>
+    </div>`;
   }).join("");
   const allResolved = cached.length > 0 && cached.every(item => item.resolved);
-  return `<div class="distance-strip" data-poi-distances data-distance-resolved="${allResolved}" aria-label="Distances to saved addresses">${items}</div>`;
+  return `<aside class="distance-panel" data-poi-distances data-distance-resolved="${allResolved}" aria-label="Distances to saved addresses">${rows}</aside>`;
 }
 
 function renderResolvedDistances(target, distances = []) {
-  for (const [index, item] of distances.entries()) {
-    const chip = target.querySelector(`[data-distance-id="${CSS.escape(String(item.id))}"]`);
-    if (!chip) continue;
+  const numeric = distances.map(item => item.distance).filter(Number.isFinite);
+  const maxDistance = numeric.length ? Math.max(...numeric, 1) : 1;
+  for (const item of distances) {
+    const row = target.querySelector(`[data-distance-id="${CSS.escape(String(item.id))}"]`);
+    if (!row) continue;
     const value = distanceLabel(item.distance);
-    chip.className = `distance-chip distance-${distanceTone(item.distance)}`;
-    const em = chip.querySelector("em");
-    if (em) em.textContent = value + (value !== "—" ? " mi" : "");
+    row.className = `distance-row distance-${distanceTone(item.distance)}`;
+    const valueEl = row.querySelector(".distance-row__value");
+    if (valueEl) valueEl.textContent = value + (value !== "—" ? " mi" : "");
+    const bar = row.querySelector(".distance-row__track i");
+    if (bar) {
+      const ratio = Number.isFinite(item.distance) ? Math.max(0.08, Math.min(1, item.distance / maxDistance)) : 0;
+      bar.style.setProperty("--distance-ratio", String(ratio));
+    }
   }
   target.dataset.distanceResolved = "true";
 }
+
 
 function propertyContactMethods(property) {
   const metadata = property?.metadata || {};
@@ -268,7 +283,6 @@ function propertyCard(property) {
     <section class="property-card__summary">
       <header class="property-card__identity"><span class="property-type-icon" role="img" aria-label="${kind}" title="${kind}">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span><div><h2>${esc(property.label)}</h2><p class="muted">${esc(displayAddress)}</p></div></header>
       <div class="property-card__facts"><strong>${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span></div>
-      ${distanceStrip(property)}
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
         ${listing.url
@@ -290,6 +304,7 @@ function propertyCard(property) {
         <button data-action="visited">Visited</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Ignore</button><button data-action="archive">Archive</button>
       </div>
     </section>
+    ${distancePanel(property)}
     <div class="fit-ring" title="Match score ${score}" aria-label="Match score ${score}"><span>${score}</span></div>
     <aside class="property-card__context" aria-label="Neighborhood context">
 
