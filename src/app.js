@@ -10,7 +10,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl } from "./integrations/providers.js";
-import { openDirections, renderPropertyMap, renderCardMap, focusPropertyOnMap } from "./integrations/maps.js?v=detail-labels-v2";
+import { openDirections, renderPropertyMap, renderCardMap, focusPropertyOnMap } from "./integrations/maps.js?v=selection-only-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js";
 import { config } from "./config.js";
 
@@ -405,6 +405,7 @@ document.querySelector("#property-map").addEventListener("rook:map-select", even
   if (!property || !panel) return;
   panel.innerHTML = propertyCard(property);
   panel.hidden = false;
+  panel.dataset.selectedPropertyId = id;
   const cardMap = panel.querySelector(`[data-card-map="${CSS.escape(property.id)}"]`);
   if (cardMap) void renderCardMap(cardMap, property, cardPointsOfInterest(), preferences.location || config.search.location);
 });
@@ -482,7 +483,8 @@ function handlePropertyCardKeydown(event) {
 
 function handlePropertyCardClick(e) {
   const summaryCard = e.target.closest(".property-card");
-  if (summaryCard && !e.target.closest("button,a,input,select,textarea")) {
+  const inMapPreview = Boolean(e.currentTarget?.matches?.("#map-details"));
+  if (summaryCard && !inMapPreview && !e.target.closest("button,a,input,select,textarea")) {
     openPropertySummary(summaryCard.dataset.id);
     return;
   }
