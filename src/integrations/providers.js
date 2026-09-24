@@ -35,11 +35,32 @@ export function listingIdentity(input = {}) {
   return input.sourceUrl || input.url || input.id || input.label || null;
 }
 
+export function firstImageUrl(input = {}) {
+  const candidates = [
+    input.primaryImageUrl, input.imageUrl, input.image, input.photo, input.thumbnail, input.thumbnailUrl,
+    input.metadata?.image, input.metadata?.imageUrl, input.metadata?.photo, input.metadata?.thumbnail,
+    ...(Array.isArray(input.images) ? input.images : []),
+    ...(Array.isArray(input.photos) ? input.photos : []),
+    ...(Array.isArray(input.media) ? input.media : [])
+  ];
+  for (const value of candidates) {
+    if (!value) continue;
+    const candidate = typeof value === "string" ? value : value.url || value.src || value.contentUrl || value["@id"];
+    if (typeof candidate !== "string") continue;
+    try {
+      const url = new URL(candidate, input.sourceUrl || input.url || (typeof window !== "undefined" ? window.location.href : "https://example.com/"));
+      if (["http:", "https:"].includes(url.protocol)) return url.toString();
+    } catch {}
+  }
+  return null;
+}
+
 export function normalizeProviderResult(input = {}, provider = {}) {
   const price = Number(input.price);
   const beds = Number(input.beds);
   const baths = Number(input.baths);
   const sourceUrl = input.sourceUrl || input.url || null;
+  const image = firstImageUrl({ ...input, sourceUrl });
   const stableKey = listingIdentity(input);
   return {
     ...input,
@@ -53,7 +74,10 @@ export function normalizeProviderResult(input = {}, provider = {}) {
     baths: Number.isFinite(baths) ? baths : null,
     source: input.source || provider.label || provider.id || null,
     sourceUrl,
-    metadata: { ...(input.metadata || {}), providerId: provider.id || null }
+    image,
+    imageUrl: image,
+    primaryImageUrl: image,
+    metadata: { ...(input.metadata || {}), image: image || input.metadata?.image || null, providerId: provider.id || null }
   };
 }
 
