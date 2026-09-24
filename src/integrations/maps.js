@@ -602,6 +602,15 @@ function markerOffset(point, center, zoom) {
 
 
 const cardMapViews = new Map();
+export async function updateCardDistance(target, property, primary, fallbackLocation = "Fort Collins, CO") {
+  if (!target || !property || !primary) return;
+  const propertyPoint = validCoordinates(property) || await geocode(property.address || [property.label, fallbackLocation].filter(Boolean).join(", "));
+  const primaryPoint = validCoordinates(primary) || await geocode(primary.address || primary.query || primary.location || primary.label);
+  if (!target.isConnected) return;
+  const distance = propertyPoint && primaryPoint ? haversineMiles(propertyPoint, primaryPoint) : null;
+  target.textContent = distance == null ? "Address 1 —" : "Address 1 " + distance.toFixed(distance < 10 ? 1 : 0) + " mi";
+}
+
 export async function renderCardMap(container, property, pointsOfInterest = [], fallbackLocation = "Fort Collins, CO") {
   if (!container || !property) return;
   for (const [element, view] of cardMapViews) {
