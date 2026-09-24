@@ -364,16 +364,17 @@ function applyReferenceMapTheme(map) {
     const id = layer.id.toLowerCase();
     if (id === ROOK_LAYER_ID) continue;
     if (layer.type === "symbol") {
-      const streetLabel = /road|street|transportation|highway|path|bridge|tunnel/.test(id);
-      const poiLabel = /poi|place|amenity|shop|restaurant|cafe|school|park|hospital|station|airport|attraction/.test(id);
-      const addressLabel = /house|address|housenumber/.test(id);
-      if (streetLabel || poiLabel || addressLabel) {
+      const hasText = layer.layout && layer.layout["text-field"] != null;
+      if (hasText) {
         map.setLayoutProperty(layer.id, "visibility", "visible");
-        const minZoom = addressLabel ? 17 : poiLabel ? 16 : 15;
-        map.setLayerZoomRange(layer.id, Math.max(Number(layer.minzoom) || 0, minZoom), Number.isFinite(layer.maxzoom) ? layer.maxzoom : 24);
-        if (map.getPaintProperty(layer.id, "text-color") !== undefined) map.setPaintProperty(layer.id, "text-color", "#b8c8ce");
-        if (map.getPaintProperty(layer.id, "text-halo-color") !== undefined) map.setPaintProperty(layer.id, "text-halo-color", "#09212a");
-        if (map.getPaintProperty(layer.id, "text-halo-width") !== undefined) map.setPaintProperty(layer.id, "text-halo-width", 1.2);
+        map.setLayerZoomRange(
+          layer.id,
+          Math.max(Number(layer.minzoom) || 0, 15),
+          Number.isFinite(layer.maxzoom) ? layer.maxzoom : 24
+        );
+        try { map.setPaintProperty(layer.id, "text-color", "#b8c8ce"); } catch {}
+        try { map.setPaintProperty(layer.id, "text-halo-color", "#09212a"); } catch {}
+        try { map.setPaintProperty(layer.id, "text-halo-width", 1.2); } catch {}
       } else {
         map.setLayoutProperty(layer.id, "visibility", "none");
       }
