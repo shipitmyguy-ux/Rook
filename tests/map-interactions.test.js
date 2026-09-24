@@ -47,7 +47,7 @@ test("overview shows POIs and property details with working actions", async () =
   events["style.load"]();
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(markerPoint, [-105.1, 40.55]);
-  assert.equal(markerElement.textContent, "★");
+  assert.equal(markerElement.innerHTML, "★");
   assert.deepEqual(fitted, [[-105.1, 40.5], [-105, 40.55]]);
   events["mouseenter:rook-listings-points"]({ features: [{ properties: { id: "home" } }] });
   assert.equal(panel.hidden, true);
