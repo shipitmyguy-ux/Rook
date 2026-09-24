@@ -51,11 +51,8 @@ function followUpBadge(property) {
   return `<span class="status-chip ${next.kind}">${esc(label)}${detail ? " · " + esc(detail) : ""}</span>`;
 }
 
-function primaryAction(property) {
-  if ([PROPERTY_STATUS.NEW, PROPERTY_STATUS.VIEWED, PROPERTY_STATUS.SHORTLISTED].includes(property.status)) return ["contact", "☎", "Contact"];
-  if (property.status === PROPERTY_STATUS.CONTACTED) return ["showing", "◫", "Request showing"];
-  if ([PROPERTY_STATUS.SHOWING_REQUESTED, PROPERTY_STATUS.SHOWING_SCHEDULED].includes(property.status)) return ["visited", "✓", "Mark visited"];
-  return ["note", "✎", "Notes"];
+function primaryAction() {
+  return ["contact", "☎", "Contact"];
 }
 
 function propertyKindIcon(kind) {
@@ -90,7 +87,7 @@ function propertyCard(property) {
       <div class="property-card__facts"><strong>${property.price ? "$"+property.price.toLocaleString()+(property.listingType==="rent"?"/mo":"") : "Price TBD"}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span></div>
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
-        <button class="status-action" data-action="${nextAction}" aria-label="${nextLabel}" title="${nextLabel}"><span>${icon("calendar")}</span><b>${esc(property.status.replaceAll(/[_-]/g," "))}</b></button>
+        <button class="status-action" data-action="${nextAction}" aria-label="${nextLabel}" title="${nextLabel}"><span>${icon("phone")}</span><b>Contact</b></button>
         <button class="icon-action" data-action="map" aria-label="Focus on map" title="Focus on map">${icon("pin")}</button>
         <button class="icon-action" data-action="contact" aria-label="Contact" title="Contact">${icon("phone")}</button>
         <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">${icon("more")}</button>
@@ -178,8 +175,8 @@ app.innerHTML = `<main class="shell">
 <button id="more-button" class="more-button" aria-label="Open Rook actions" aria-haspopup="dialog">•••</button>
 <dialog id="actions-dialog" class="actions-dialog"><form method="dialog"><div class="dialog-heading"><div><p class="eyebrow">ROOK</p><h2>Actions</h2></div><button class="dialog-close" value="cancel" aria-label="Close">×</button></div>
 <label for="property-search">Search properties</label><input id="property-search" type="search" placeholder="Address, neighborhood, property…">
-<nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Shortlist</button></nav>
-<div class="action-menu"><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route shortlist</button><button type="button" data-refresh-listings>Refresh listings</button><button id="open-settings" type="button">Search preferences</button></div>
+<nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Favorited</button></nav>
+<div class="action-menu"><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route favorites</button><button type="button" data-refresh-listings>Refresh listings</button><button id="open-settings" type="button">Search preferences</button></div>
 </form></dialog>
 
 <dialog id="import-dialog"><form method="dialog"><h2>Add listing</h2><p class="muted">Paste a listing URL. Rook keeps the source and routes it through the shared property model.</p><input id="listing-url" type="url" placeholder="https://…" required /><div class="dialog-actions"><button value="cancel">Cancel</button><button id="import-confirm" value="default">Add</button></div></form></dialog>
@@ -241,7 +238,7 @@ document.querySelector("#property-list").addEventListener("click", e => {
 
   if (action === "save") {
     store.toggleSaved(p.id);
-    recordActivity(p.saved ? "removed-shortlist" : "saved", p);
+    recordActivity(p.saved ? "unfavorited" : "favorited", p);
   }
   if (action === "map") {
     recordActivity("focused-map", p);
