@@ -294,6 +294,7 @@ function propertyCard(property) {
               : `<a class="status-action listing-action listing-recovery-link" href="${esc(listing.searchUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Find a current listing for ${esc(property.label)}" title="Rook already checked live sources — search manually"><span aria-hidden="true">⌕</span><b>Find listing</b></a>`}
         <button class="icon-action" data-action="map" aria-label="Focus on map" title="Focus on map">${icon("pin")}</button>
         <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">${icon("more")}</button>
+        ${distancePanel(property)}
       </div>
       <div class="property-card__more" hidden>
         ${listing.url
@@ -304,7 +305,6 @@ function propertyCard(property) {
         <button data-action="visited">Visited</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Ignore</button><button data-action="archive">Archive</button>
       </div>
     </section>
-    ${distancePanel(property)}
     <div class="fit-ring" title="Match score ${score}" aria-label="Match score ${score}"><span>${score}</span></div>
     <aside class="property-card__context" aria-label="Neighborhood context">
 
