@@ -56,6 +56,24 @@ async function fetchText(url: string) {
 const PROJECT_URL = Deno.env.get("SUPABASE_URL") || "https://umvmilulnqnmeqvfoxxc.supabase.co";
 const BROWSER_WORKER_URL = PROJECT_URL + "/functions/v1/rook-browser-worker";
 
+async function readerText(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 14000);
+  try {
+    const response = await fetch("https://r.jina.ai/" + url, {
+      signal: controller.signal,
+      headers: { "accept":"text/plain", "user-agent":"Rook/1.0 listing-enrichment" }
+    });
+    if (!response.ok) return "";
+    const text = await response.text();
+    return text.slice(0, 60000);
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function browserWorker(body: Record<string, unknown>) {
   const response = await fetch(BROWSER_WORKER_URL, {
     method:"POST",
@@ -329,6 +347,17 @@ async function resolveListing(address: string, label: string, location: string, 
         };
       }
       if (!inspected.reachable) {
+        const reader = await readerText(direct.toString());
+        if (reader && !looksLikeBrowserChallenge(reader)) {
+          const readerListing = fallbackListingFromText(reader, direct.toString(), { address, label, source:direct.hostname });
+          return {
+            state:"active",
+            listing:readerListing,
+            checkedAt,
+            checkedSources:1,
+            readerFallback:true
+          };
+        }
         try {
           const snapshot = await browserSnapshot(direct.toString());
           const text = String(snapshot?.text || "");
@@ -416,7 +445,6 @@ async function resolveListing(address: string, label: string, location: string, 
           seenCandidates.add(normalizedCandidate);
 
           const inspected = await inspectListingUrl(normalizedCandidate);
-          if (!inspected.reachable && !inspected.closed) continue;
           const rows = inspected.html ? jsonLdListings(inspected.html, candidate.hostname, normalizedCandidate) : [];
           const match = rows.find(row => sameAddress(row.address, address) || (!address && canonicalAddress(row.label) === canonicalAddress(label)));
           if (inspected.reachable && !inspected.closed) {
@@ -430,6 +458,21 @@ async function resolveListing(address: string, label: string, location: string, 
                 checkedAt,
                 checkedSources:successfulSources
               };
+            }
+          }
+          if (!inspected.reachable && !inspected.closed) {
+            const reader = await readerText(normalizedCandidate);
+            if (reader && !looksLikeBrowserChallenge(reader)) {
+              const resolved = fallbackListingFromText(reader, normalizedCandidate, { address, label, source:candidate.hostname });
+              if (resolved.price || resolved.beds || resolved.baths) {
+                return {
+                  state:"active",
+                  listing:resolved,
+                  checkedAt,
+                  checkedSources:successfulSources,
+                  readerFallback:true
+                };
+              }
             }
           }
           if (match && inspected.closed) {
