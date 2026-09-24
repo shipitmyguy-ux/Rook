@@ -113,7 +113,7 @@ button:focus-visible{outline:3px solid #78ffee;outline-offset:3px}
 .overview-poi__dot{font-size:10px;line-height:1;opacity:.9}
 .overview-poi__label{font:600 11px/1 system-ui;white-space:nowrap}
 
-.listing-action{flex:0 0 auto;width:max-content;max-width:100%;text-decoration:none;cursor:pointer}.listing-recovery-link{border-color:#657081aa;background:rgba(10,18,29,.78);color:#d8e0e8;box-shadow:none}.listing-recovery-link:hover{border-color:#8d9bab;color:#fff}
+.listing-action{flex:0 0 auto;width:max-content;max-width:100%;text-decoration:none;cursor:pointer}.listing-recovery-link{border-color:#657081aa;background:rgba(10,18,29,.78);color:#d8e0e8;box-shadow:none}.listing-recovery-link:hover{border-color:#8d9bab;color:#fff}.listing-closed{border-color:#59636d;background:rgba(23,29,36,.72);color:#8f9aa5;box-shadow:none;cursor:default}.listing-resolving{border-color:#536a76;background:rgba(11,25,32,.72);color:#9fb3bd;box-shadow:none;cursor:wait}
 
 .workflow-dialog{width:min(92vw,520px);border:1px solid #405266;border-radius:18px;background:#0b1421;color:#edf5f8;padding:18px;box-shadow:0 20px 60px #000b}
 .workflow-property{margin:2px 0 16px;color:#aebbc5}
