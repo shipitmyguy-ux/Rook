@@ -69,10 +69,13 @@ function propertyCard(property) {
   const image = property.image || property.imageUrl || property.metadata?.image || "";
   const [nextAction, nextIcon, nextLabel] = primaryAction(property);
   return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" style="--score:${score}">
-    <div class="property-visual ${image ? "" : "property-visual--fallback"}" ${image ? `style="--property-image:url(\'${esc(image)}\')"` : ""} aria-hidden="true"><span class="fallback-house">⌂</span></div>
-    <div class="property-card__content">
+    <section class="property-card__media" aria-label="Listing image">
+      <div class="property-visual ${image ? "" : "property-visual--fallback"}" ${image ? `style="--property-image:url(\'${esc(image)}\')"` : ""} aria-hidden="true"></div>
       <div class="property-type-mark" title="${kind}"><span>${propertyKindIcon(kind)}</span><small>${kind}</small></div>
-      <div class="property-card__identity"><h2>${esc(property.label)}</h2><p class="muted">⌖ ${esc(property.address || "")}</p></div>
+      <button class="save-button" data-action="save" aria-label="Save ${esc(property.label)}">${saved ? "★" : "☆"}</button>
+    </section>
+    <section class="property-card__summary">
+      <header class="property-card__identity"><h2>${esc(property.label)}</h2><p class="muted">⌖ ${esc(property.address || "")}</p></header>
       <div class="property-card__facts"><strong>${property.price ? "$"+property.price.toLocaleString()+(property.listingType==="rent"?"/mo":"") : "Price TBD"}</strong><span>▰ ${property.beds ?? "—"} bd</span><span>♨ ${property.baths ?? "—"} ba</span></div>
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
@@ -84,10 +87,12 @@ function propertyCard(property) {
       <div class="property-card__more" hidden>
         <button data-action="visited">Visited</button><button data-action="contact">Contacted</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Not interested</button><button data-action="archive">Archive</button>
       </div>
-    </div>
-    <div class="fit-ring" aria-label="Match score ${score}"><span>${score}</span></div>
-    <button class="save-button" data-action="save" aria-label="Save ${esc(property.label)}">${saved ? "★" : "☆"}</button>
-    <div class="card-map-art" aria-hidden="true"><div class="map-grid"></div><span class="poi property-pin">⌂</span><span class="poi family-pin">⌂</span><span class="poi park-pin">♠</span><span class="poi school-pin">◆</span></div>
+    </section>
+    <aside class="property-card__context" aria-label="Neighborhood context">
+      <div class="context-heading"><span>AREA FIT</span><div class="fit-ring" aria-label="Match score ${score}"><span>${score}</span></div></div>
+      <div class="card-map-art" aria-hidden="true"><div class="map-grid"></div><span class="poi property-pin">⌂</span><span class="poi family-pin">⌂</span><span class="poi park-pin">♠</span><span class="poi school-pin">◆</span></div>
+      <p>Nearby places at a glance</p>
+    </aside>
   </article>`;
 }
 

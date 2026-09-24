@@ -15,15 +15,17 @@ function finish(){
   try{
     const win=frame.contentWindow, doc=frame.contentDocument;
     const card=doc.querySelector(".property-card.visual-card");
-    const content=doc.querySelector(".property-card__content");
-    const art=doc.querySelector(".card-map-art");
+    const media=doc.querySelector(".property-card__media");
+    const content=doc.querySelector(".property-card__summary");
+    const context=doc.querySelector(".property-card__context");
     const type=doc.querySelector(".property-type-mark");
     const overview=doc.querySelector(".overview-map");
     const map=doc.querySelector("#property-map");
-    if(!card||!content||!art||!type||!overview||!map) throw new Error("missing required UI element");
+    if(!card||!media||!content||!context||!type||!overview||!map) throw new Error("missing required UI element");
     const cardRect=card.getBoundingClientRect();
     const contentRect=content.getBoundingClientRect();
-    const artRect=art.getBoundingClientRect();
+    const mediaRect=media.getBoundingClientRect();
+    const contextRect=context.getBoundingClientRect();
     const typeRect=type.getBoundingClientRect();
     const viewport=win.innerWidth;
     const mobile=viewport<700;
@@ -32,8 +34,9 @@ function finish(){
       v3:links.some(x=>x.includes("rook-ui-v3.css")),
       cardWide:mobile?cardRect.width>300:cardRect.width>900,
       cardHeight:mobile?cardRect.height>=400:cardRect.height>=300,
-      contentPosition:mobile?contentRect.top>cardRect.top+cardRect.height*.35:contentRect.left>cardRect.left+cardRect.width*.24,
-      mapArtPosition:mobile?artRect.top<cardRect.top+cardRect.height*.1:artRect.left>cardRect.left+cardRect.width*.55,
+      realLayout:mobile?Math.abs(mediaRect.top-cardRect.top)<3&&contentRect.top>mediaRect.top:Math.abs(mediaRect.left-cardRect.left)<3&&contentRect.left>mediaRect.left&&contextRect.left>contentRect.left,
+      contentPosition:mobile?contentRect.top>cardRect.top+cardRect.height*.30:contentRect.left>cardRect.left+cardRect.width*.25,
+      contextPosition:mobile?Math.abs(contextRect.bottom-cardRect.bottom)<3:contextRect.left>cardRect.left+cardRect.width*.60,
       typeVisible:typeRect.width>20&&typeRect.height>15,
       overviewVisible:getComputedStyle(overview).display!=="none"&&overview.getBoundingClientRect().height>200,
       mapHasSrc:Boolean(map.getAttribute("src")),
