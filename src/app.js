@@ -273,11 +273,13 @@ function renderActivity() {
 // Rook attempts live source recovery before exposing a manual Find listing search.
 async function resolveUnavailableListings() {
   const candidates = store.getAll().filter(property => {
-    if (safeListingUrl(property.sourceUrl)) return false;
-    if (!property.address && !property.label) return false;
+    if (!property.address && !property.label && !safeListingUrl(property.sourceUrl)) return false;
     const confirmedClosed = property.listingState === "closed" && property.metadata?.listingClosedEvidence?.confirmed === true;
     if (confirmedClosed) return false;
     if (property.listingState === "closed") return true; // legacy closed states are invalidated and rechecked immediately
+    const missingAddress = !String(property.address || "").trim();
+    const missingSource = !safeListingUrl(property.sourceUrl);
+    if (!missingAddress && !missingSource) return false;
     const checkedAt = property.listingCheckedAt ? new Date(property.listingCheckedAt).getTime() : 0;
     return !checkedAt || Date.now() - checkedAt > 6 * 60 * 60 * 1000;
   }).slice(0, 12);
