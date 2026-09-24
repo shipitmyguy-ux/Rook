@@ -1,3 +1,5 @@
+import { normalizePointStyles } from "./poi-style.js";
+
 const KEY = "rook.preferences.v1";
 
 export const defaultPreferences = Object.freeze({
@@ -10,7 +12,8 @@ export const defaultPreferences = Object.freeze({
   excludeMobileHomes: true,
   kidFriendlyPriority: true,
   schoolPriority: true,
-  visualTheme: "default"
+  visualTheme: "default",
+  pointStyles: {}
 });
 
 export function normalizePreferences(value = {}) {
@@ -26,7 +29,8 @@ export function normalizePreferences(value = {}) {
     excludeIncomeRestricted: value.excludeIncomeRestricted !== false,
     excludeMobileHomes: value.excludeMobileHomes !== false,
     kidFriendlyPriority: value.kidFriendlyPriority !== false,
-    schoolPriority: value.schoolPriority !== false
+    schoolPriority: value.schoolPriority !== false,
+    pointStyles: normalizePointStyles(value.pointStyles)
   };
 }
 export function loadPreferences() {
