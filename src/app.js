@@ -28,6 +28,7 @@ let pullStartY = null;
 let pullDistance = 0;
 let renderQueued = false;
 let distanceObserver = null;
+const LISTING_RESOLVER_VERSION = 2;
 registerConfiguredProviders();
 
 function applySyncedEvidence() {
@@ -96,11 +97,12 @@ function propertyListingUrl(property) {
   const direct = safeListingUrl(property?.sourceUrl);
   const confirmedClosed = property?.listingState === "closed" && property?.metadata?.listingClosedEvidence?.confirmed === true;
   const legacyClosedNeedsRecheck = property?.listingState === "closed" && !confirmedClosed;
+  const staleResolverState = Number(property?.metadata?.listingResolverVersion || 0) < LISTING_RESOLVER_VERSION;
   return {
     url: direct,
     direct: Boolean(direct),
     closed: confirmedClosed,
-    resolving: !direct && (legacyClosedNeedsRecheck || (!confirmedClosed && !property?.listingCheckedAt)),
+    resolving: !direct && (staleResolverState || legacyClosedNeedsRecheck || (!confirmedClosed && !property?.listingCheckedAt)),
     searchUrl: propertySearchUrl(property)
   };
 }
@@ -285,6 +287,8 @@ async function resolveUnavailableListings() {
     const missingImage = !firstImageUrl(property);
     const needsEnrichment = missingAddress || missingSource || missingPrice || missingBeds || missingBaths || missingImage;
     if (!needsEnrichment) return false;
+    const staleResolverState = Number(property.metadata?.listingResolverVersion || 0) < LISTING_RESOLVER_VERSION;
+    if (staleResolverState) return true;
     const checkedAt = property.listingCheckedAt ? new Date(property.listingCheckedAt).getTime() : 0;
     return !checkedAt || Date.now() - checkedAt > 30 * 60 * 1000;
   }).slice(0, 12);
@@ -300,11 +304,16 @@ async function resolveUnavailableListings() {
           status: property.status,
           note: property.note,
           listingState: "active",
-          listingCheckedAt: result.checkedAt
+          listingCheckedAt: result.checkedAt,
+          metadata: {
+            ...(property.metadata || {}),
+            ...(result.listing.metadata || {}),
+            listingResolverVersion: LISTING_RESOLVER_VERSION
+          }
         });
         recordActivity("listing-recovered", property, { sourceUrl: result.url });
       } else {
-        const nextMetadata = { ...(property.metadata || {}) };
+        const nextMetadata = { ...(property.metadata || {}), listingResolverVersion: LISTING_RESOLVER_VERSION };
         if (result.state === "closed" && result.evidence?.confirmed === true) {
           nextMetadata.listingClosedEvidence = result.evidence;
         } else {
