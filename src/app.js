@@ -141,9 +141,9 @@ function renderList() {
   const visible = visibleProperties();
   document.querySelector("#property-count").textContent = `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`;
   document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("");
-  const savedProperties = store.getAll().filter(p => p.saved && p.status !== PROPERTY_STATUS.ARCHIVED);
-  document.querySelector("#map-summary").textContent = `${savedProperties.length} saved properties`;
-  renderPropertyMap(document.querySelector("#property-map"), savedProperties);
+  const mappedProperties = store.getAll().filter(p => ![PROPERTY_STATUS.ARCHIVED, PROPERTY_STATUS.REJECTED].includes(p.status));
+  document.querySelector("#map-summary").textContent = `${mappedProperties.length} properties`;
+  renderPropertyMap(document.querySelector("#property-map"), mappedProperties);
   renderActivity();
 }
 
