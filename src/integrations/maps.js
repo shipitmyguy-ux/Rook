@@ -86,8 +86,8 @@ async function updateOverviewPois() {
   poiMarkers = points.map(point => {
     const element = document.createElement("button");
     element.type = "button";
-    element.className = "overview-poi" + (point.primary ? " overview-poi--primary" : "");
-    element.textContent = point.primary ? "★" : "●";
+    element.className = "overview-poi" + (point.primary ? " overview-poi--primary" : " overview-poi--neutral");
+    element.innerHTML = point.primary ? "★" : `<span class="overview-poi__dot" aria-hidden="true">●</span><span class="overview-poi__label">${point.label || "POI"}</span>`;
     element.title = point.label || "Point of interest";
     element.setAttribute("aria-label", point.label || "Point of interest");
     const popupContent = document.createElement("div");
