@@ -1,4 +1,5 @@
 import { classifyPropertyKind } from "../core/property.js";
+import { resolvePoiStyle, poiGlyph, poiColorHex } from "../core/poi-style.js";
 
 const MAPLIBRE_SCRIPT_URL = "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js";
 const OPENFREEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
@@ -84,15 +85,19 @@ async function updateOverviewPois() {
   }
   if (run !== poiRun || !overviewState.map) return;
   poiMarkers.forEach(marker => marker.remove());
-  poiMarkers = points.map(point => {
+  poiMarkers = points.map((point, index) => {
     const element = document.createElement("button");
     element.type = "button";
     element.className = "overview-poi" + (point.primary ? " overview-poi--primary" : " overview-poi--neutral");
-    element.innerHTML = point.primary ? "★" : `<span class="overview-poi__dot" aria-hidden="true">●</span><span class="overview-poi__label">${point.label || "POI"}</span>`;
-    element.title = point.label || "Point of interest";
-    element.setAttribute("aria-label", point.label || "Point of interest");
+    const style = resolvePoiStyle(point, index);
+    const glyph = point.primary ? "★" : poiGlyph(style.icon);
+    const displayAddress = point.address || point.query || point.location || point.label || "Saved address";
+    element.textContent = glyph;
+    element.style.setProperty("--poi-color", poiColorHex(style.color));
+    element.title = displayAddress;
+    element.setAttribute("aria-label", displayAddress);
     const popupContent = document.createElement("div");
-    popupContent.textContent = [point.label, point.address || point.query || point.location].filter(Boolean).join(" · ");
+    popupContent.textContent = displayAddress;
     const popup = new window.maplibregl.Popup({ offset: 18 }).setDOMContent(popupContent);
     return new window.maplibregl.Marker({ element })
       .setLngLat([point.lng, point.lat]).setPopup(popup).addTo(overviewState.map);
@@ -834,9 +839,13 @@ export function getCachedPropertyDistances(property, pointsOfInterest = [], fall
   return pointsOfInterest.map((poi, index) => {
     const key = distanceKey(property, poi, fallbackLocation);
     const value = cachedDistanceValue(key);
+    const style = resolvePoiStyle(poi, index);
     return {
       id: poi.id || `address-${index + 1}`,
       label: poi.label || `Address ${index + 1}`,
+      address: poi.address || poi.query || poi.location || "",
+      icon: style.icon,
+      color: style.color,
       distance: value === undefined ? null : value,
       resolved: value !== undefined
     };
@@ -849,21 +858,31 @@ export async function resolvePropertyDistances(property, pointsOfInterest = [], 
   return Promise.all(pointsOfInterest.map(async (poi, index) => {
     const key = distanceKey(property, poi, fallbackLocation);
     const cached = cachedDistanceValue(key);
-    if (cached !== undefined) return {
-      id: poi.id || `address-${index + 1}`,
-      label: poi.label || `Address ${index + 1}`,
-      distance: cached,
-      resolved: true
-    };
+    if (cached !== undefined) {
+      const style = resolvePoiStyle(poi, index);
+      return {
+        id: poi.id || `address-${index + 1}`,
+        label: poi.label || `Address ${index + 1}`,
+        address: poi.address || poi.query || poi.location || "",
+        icon: style.icon,
+        color: style.color,
+        distance: cached,
+        resolved: true
+      };
+    }
     if (distanceInflight.has(key)) return distanceInflight.get(key);
 
     const task = (async () => {
       const poiPoint = validCoordinates(poi) || await geocode(poi.address || poi.query || poi.location || poi.label);
       const distance = propertyPoint && poiPoint ? haversineMiles(propertyPoint, poiPoint) : null;
       storeDistanceValue(key, distance);
+      const style = resolvePoiStyle(poi, index);
       return {
         id: poi.id || `address-${index + 1}`,
         label: poi.label || `Address ${index + 1}`,
+        address: poi.address || poi.query || poi.location || "",
+        icon: style.icon,
+        color: style.color,
         distance,
         resolved: true
       };
@@ -925,10 +944,16 @@ export async function renderCardMap(container, property, pointsOfInterest = [], 
     addRequiredMapAttribution(map);
     map.on("style.load", () => {
       applyReferenceMapTheme(map);
-      for (const p of [...(point ? [{ ...point, kind: "property" }] : []), ...pois]) {
+      for (const [index, p] of [...(point ? [{ ...point, kind: "property" }] : []), ...pois].entries()) {
         const element = document.createElement("span");
         element.className = "map-marker map-marker--" + (p.kind === "property" ? "property" : p.primary ? "primary" : p.kind || "poi");
-        element.append(document.createElement("span"));
+        const marker = document.createElement("span");
+        if (p.kind !== "property") {
+          const style = resolvePoiStyle(p, Math.max(0, index - (point ? 1 : 0)));
+          marker.textContent = p.primary ? "★" : poiGlyph(style.icon);
+          marker.style.setProperty("--poi-color", poiColorHex(style.color));
+        }
+        element.append(marker);
         new library.Marker({ element }).setLngLat([p.lng, p.lat]).addTo(map);
       }
     });
