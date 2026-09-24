@@ -112,3 +112,5 @@ button:focus-visible{outline:3px solid #78ffee;outline-offset:3px}
 }
 .overview-poi__dot{font-size:10px;line-height:1;opacity:.9}
 .overview-poi__label{font:600 11px/1 system-ui;white-space:nowrap}
+
+.listing-action{text-decoration:none;cursor:pointer}
