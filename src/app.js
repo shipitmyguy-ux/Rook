@@ -28,6 +28,7 @@ let pullStartY = null;
 let pullDistance = 0;
 let renderQueued = false;
 let distanceObserver = null;
+const BROWSER_QA_MODE = typeof location !== "undefined" && new URLSearchParams(location.search).has("browser-qa");
 const LISTING_RESOLVER_VERSION = 2;
 registerConfiguredProviders();
 
@@ -897,7 +898,7 @@ document.addEventListener("touchend", () => {
 
 store.subscribe(scheduleRenderList);
 renderList();
-queueMicrotask(() => refreshListings("startup"));
+if (!BROWSER_QA_MODE) queueMicrotask(() => refreshListings("startup"));
 
 
 
