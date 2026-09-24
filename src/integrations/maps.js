@@ -64,63 +64,10 @@ function showPropertyDetails(id, pinned = false) {
   if (pinnedDetails && !pinned && detailId !== String(id)) return;
   detailId = String(id);
   pinnedDetails = pinnedDetails || pinned;
-  panel.replaceChildren();
   panel.hidden = false;
-  const title = document.createElement("h3");
-  title.textContent = property.label || property.address || "Property";
-  const address = document.createElement("p");
-  address.textContent = property.address || "Address unavailable";
-  const facts = document.createElement("p");
-  facts.textContent = [
-    property.price ? "$" + Number(property.price).toLocaleString() + (property.listingType === "buy" ? "" : "/mo") : "Price TBD",
-    (property.beds ?? "—") + " bd",
-    (property.baths ?? "—") + " ba",
-    (property.status || "new").replaceAll("-", " ")
-  ].join(" · ");
-  panel.append(title, address, facts);
-  if (property.note) {
-    const note = document.createElement("p");
-    note.textContent = property.note;
-    panel.append(note);
-  }
-  const actions = document.createElement("div");
-  actions.className = "map-detail-actions";
-  for (const [action, label] of [
-    ["save", property.saved ? "Unsave" : "Save"],
-    ["note", "Notes"], ["contact", "Mark contacted"], ["showing", "Request showing"],
-    ["directions", "Directions"], ["view", "View property"]
-  ]) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = label;
-    button.addEventListener("click", () => {
-      pinnedDetails = true;
-      overviewState.latestOptions.onPropertyAction?.(action, String(property.id));
-    });
-    actions.append(button);
-  }
-  try {
-    const url = new URL(property.sourceUrl);
-    if (["https:", "http:"].includes(url.protocol)) {
-      const link = document.createElement("a");
-      link.href = url.href;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = "Open listing";
-      actions.append(link);
-    }
-  } catch {}
-  const close = document.createElement("button");
-  close.type = "button";
-  close.textContent = "Close details";
-  close.addEventListener("click", () => {
-    detailId = null;
-    pinnedDetails = false;
-    panel.hidden = true;
-    clearSelectionState();
-  });
-  actions.append(close);
-  panel.append(actions);
+  overviewState.container?.dispatchEvent(new CustomEvent("rook:map-select", {
+    detail: { id: String(property.id) }
+  }));
 }
 
 async function updateOverviewPois() {
