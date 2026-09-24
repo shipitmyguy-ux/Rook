@@ -708,6 +708,30 @@ async function resolveListing(address: string, label: string, location: string, 
           readerIndex:true
         };
       }
+
+      // Some provider indexes expose the full active listing facts but hide the
+      // property-page href from reader/search output. An exact street+unit match
+      // on the live rental index is still positive availability evidence. Use the
+      // index itself as the source instead of incorrectly falling through to the
+      // manual "Find listing" state.
+      const lines = String(reader || "").split(/\n+/);
+      for (let i = 0; i < lines.length; i += 1) {
+        const context = lines.slice(Math.max(0, i - 4), Math.min(lines.length, i + 8)).join(" ");
+        if (!contextMatchesAddress(context, address, label)) continue;
+        const indexed = fallbackListingFromText(context, zipIndexUrl, { address, label, source:"Zillow" });
+        return {
+          state:"active",
+          listing:{
+            ...indexed,
+            sourceUrl:zipIndexUrl,
+            metadata:{ ...(indexed.metadata || {}), exactIndexMatch:true }
+          },
+          checkedAt,
+          checkedSources:successfulSources,
+          readerIndex:true,
+          exactIndexMatch:true
+        };
+      }
     } catch {}
   }
 
