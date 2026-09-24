@@ -17,7 +17,7 @@ export function classifyPropertyKind(property = {}) {
     .toLowerCase();
 
   if (/\btown\s*home\b|\btownhouse\b/.test(haystack)) return "townhome";
-  if (/\bapartment\b|\bapt\b|\bcondo(?:minium)?\b|\bflats?\b|\bapartment complex\b/.test(haystack)) return "apartment";
+  if (/\bapartments?\b|\bapt\b|\bcondo(?:minium)?s?\b|\bflats?\b|\bapartment complex\b/.test(haystack)) return "apartment";
   if (/\bsingle[-\s]?family\b|\bdetached\b|\bhouse\b|\bsingle family home\b/.test(haystack)) return "house";
   return "rental";
 }
