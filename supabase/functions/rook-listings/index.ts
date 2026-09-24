@@ -104,7 +104,7 @@ function fallbackListingFromText(text: string, pageUrl: string, known: { address
     price, beds, baths,
     source:known.source || new URL(pageUrl).hostname,
     sourceUrl:pageUrl,
-    metadata:{ enrichedFromBrowser:true }
+    metadata:{ enrichedFromBrowser:true, browserTextSample: text.slice(0,1200) }
   };
 }
 
