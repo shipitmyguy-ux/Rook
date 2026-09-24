@@ -183,6 +183,7 @@ export async function resolveMissingListing(property = {}, criteria = {}, fetchI
   return {
     state: payload?.state === "closed" ? "closed" : "unknown",
     url: null,
+    evidence: payload?.evidence || null,
     checkedAt: payload?.checkedAt || new Date().toISOString()
   };
 }
