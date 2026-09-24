@@ -31,10 +31,27 @@ jobs:
         run: |
           test -f index.html
           test -f src/app.js
-          test -f src/styles.css
+          test -f src/rook-ui-v3.css
+          grep -q 'rook-ui-v3.css' index.html
           grep -q 'viewport' index.html
           grep -q 'pref-location' src/app.js
           grep -q 'pref-type-townhome' src/app.js
+      - name: Rendered UI QA in headless Chrome
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/rook-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID || true' EXIT
+          for i in {1..20}; do curl -fsS http://127.0.0.1:4173/ >/dev/null && break; sleep .25; done
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          test -n "$CHROME"
+          "$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=7000 --window-size=1440,1000 --dump-dom http://127.0.0.1:4173/tests/browser-qa.html > /tmp/rook-desktop.html
+          grep -q 'data-qa="pass"' /tmp/rook-desktop.html
+          grep -q '"v3":true' /tmp/rook-desktop.html
+          "$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=7000 --window-size=390,900 --dump-dom http://127.0.0.1:4173/tests/browser-qa.html > /tmp/rook-mobile.html
+          grep -q 'data-qa="pass"' /tmp/rook-mobile.html
+          grep -q '"noHorizontalOverflow":true' /tmp/rook-mobile.html
+          echo "Desktop QA:" && grep -o '{"pass"[^<]*' /tmp/rook-desktop.html | tail -1
+          echo "Mobile QA:" && grep -o '{"pass"[^<]*' /tmp/rook-mobile.html | tail -1
       - name: Smoke test live Fort Collins listing backend
         run: |
           curl --fail --retry 2 --max-time 30 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?location=Fort%20Collins%2C%20CO&minBeds=2" -o /tmp/rook-listings.json
