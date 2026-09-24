@@ -114,3 +114,10 @@ button:focus-visible{outline:3px solid #78ffee;outline-offset:3px}
 .overview-poi__label{font:600 11px/1 system-ui;white-space:nowrap}
 
 .listing-action{text-decoration:none;cursor:pointer}
+
+.workflow-dialog{width:min(92vw,520px);border:1px solid #405266;border-radius:18px;background:#0b1421;color:#edf5f8;padding:18px;box-shadow:0 20px 60px #000b}
+.workflow-property{margin:2px 0 16px;color:#aebbc5}
+.workflow-actions{display:grid;gap:9px}
+.workflow-action{display:flex;align-items:center;justify-content:flex-start;min-height:46px;padding:10px 13px;border:1px solid #344a5d;border-radius:10px;background:#142034;color:#eff5f9;text-decoration:none;font:600 14px/1.25 system-ui;cursor:pointer}
+.workflow-action:hover{background:#192940}
+.more-listing-link{display:grid;place-items:center;min-height:40px;border:1px solid #344a5d;border-radius:9px;background:#142034;color:#eff5f9;text-decoration:none}
