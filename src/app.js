@@ -55,6 +55,7 @@ function primaryAction() {
   return ["contact", "☎", "Contact"];
 }
 
+// Generic no-photo silhouettes use solid bodies with recessed window/door lines.
 function propertyKindIcon(kind) {
   return kind === "apartment" ? "▦" : kind === "townhome" ? "▥" : kind === "house" ? "⌂" : "◇";
 }
