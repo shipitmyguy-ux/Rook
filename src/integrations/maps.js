@@ -1,6 +1,6 @@
 import { classifyPropertyKind } from "../core/property.js";
 
-const MAPLIBRE_MODULE_URL = "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.mjs";
+const MAPLIBRE_SCRIPT_URL = "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js";
 const OPENFREEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const OPENFREEMAP_FALLBACK_STYLE_URL = "https://tiles.openfreemap.org/styles/bright";
 const ROOK_SOURCE_ID = "rook-listings";
@@ -24,7 +24,25 @@ const overviewState = {
 };
 
 function loadMapLibre() {
-  if (!maplibrePromise) maplibrePromise = import(MAPLIBRE_MODULE_URL);
+  if (typeof window !== "undefined" && window.maplibregl?.Map) return Promise.resolve(window.maplibregl);
+  if (!maplibrePromise) {
+    maplibrePromise = new Promise((resolve, reject) => {
+      if (typeof document === "undefined") return reject(new Error("MapLibre requires a browser"));
+      const existing = document.querySelector('script[data-rook-maplibre]');
+      if (existing) {
+        existing.addEventListener("load", () => window.maplibregl?.Map ? resolve(window.maplibregl) : reject(new Error("MapLibre did not initialize")), { once: true });
+        existing.addEventListener("error", () => reject(new Error("MapLibre script failed to load")), { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = MAPLIBRE_SCRIPT_URL;
+      script.async = true;
+      script.dataset.rookMaplibre = "true";
+      script.onload = () => window.maplibregl?.Map ? resolve(window.maplibregl) : reject(new Error("MapLibre did not initialize"));
+      script.onerror = () => reject(new Error("MapLibre script failed to load"));
+      document.head.appendChild(script);
+    });
+  }
   return maplibrePromise;
 }
 
