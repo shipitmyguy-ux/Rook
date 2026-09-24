@@ -24,6 +24,8 @@ export function canonicalAddress(value = "") {
     .replace(/\b(road)\b/g, "rd").replace(/\b(drive)\b/g, "dr")
     .replace(/\b(lane)\b/g, "ln").replace(/\b(court)\b/g, "ct")
     .replace(/\b(boulevard)\b/g, "blvd")
+    .replace(/\b(?:apartment|apt|unit|suite|ste)\s*#?\s*([a-z0-9-]+)\b/g, "unit$1")
+    .replace(/#\s*([a-z0-9-]+)\b/g, "unit$1")
     .replace(/[^a-z0-9]/g, "");
 }
 
