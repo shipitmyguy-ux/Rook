@@ -9,7 +9,7 @@ import { rankProperties, rankProperty } from "./core/ranking.js";
 import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
-import { searchProviders, registerConfiguredProviders } from "./integrations/providers.js";
+import { searchProviders, registerConfiguredProviders, firstImageUrl } from "./integrations/providers.js";
 import { openDirections, renderPropertyMap, renderCardMap } from "./integrations/maps.js";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js";
 import { config } from "./config.js";
@@ -74,7 +74,7 @@ function propertyCard(property) {
   const saved = property.saved || property.status === PROPERTY_STATUS.SHORTLISTED;
   const score = Math.max(0, Math.min(100, rankProperty(property, preferences)));
   const kind = classifyPropertyKind(property);
-  const image = property.image || property.imageUrl || property.metadata?.image || "";
+  const image = firstImageUrl(property) || "";
   const [nextAction, nextIcon, nextLabel] = primaryAction(property);
   return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" style="--score:${score}">
       <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
