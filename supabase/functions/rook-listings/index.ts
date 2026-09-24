@@ -261,14 +261,19 @@ function addressCore(value: unknown) {
 
 function sameAddress(a: unknown, b: unknown) {
   const left = canonicalAddress(a), right = canonicalAddress(b);
-  if (!left || !right) return false;
-  if (left === right || left.includes(right) || right.includes(left)) return true;
-  const leftCore = addressCore(a), rightCore = addressCore(b);
-  return Boolean(
-    leftCore && rightCore &&
-    Math.min(leftCore.length, rightCore.length) >= 8 &&
-    (leftCore === rightCore || left.includes(rightCore) || right.includes(leftCore))
-  );
+  return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
+}
+
+function contextMatchesAddress(context: unknown, address = "", label = "") {
+  const text = canonicalAddress(context);
+  if (!text) return false;
+  for (const target of [address, label]) {
+    if (!target) continue;
+    if (sameAddress(context, target)) return true;
+    const core = addressCore(target);
+    if (core.length >= 8 && text.includes(core)) return true;
+  }
+  return false;
 }
 
 const ALLOWED_LISTING_HOSTS = [
@@ -316,9 +321,7 @@ function listingFromBrowserIndex(snapshot: any, address: string, label: string, 
   const links = Array.isArray(snapshot?.links) ? snapshot.links : [];
   for (const link of links) {
     const context = [link?.text, link?.context].filter(Boolean).join(" ");
-    const matchesAddress = Boolean(address && sameAddress(context, address));
-    const matchesLabel = Boolean(label && sameAddress(context, label));
-    if (!matchesAddress && !matchesLabel) continue;
+    if (!contextMatchesAddress(context, address, label)) continue;
 
     const candidateUrl = normalizeSearchResultUrl(link?.href);
     if (!candidateUrl) continue;
@@ -340,8 +343,7 @@ function listingFromReaderIndex(text: string, address: string, label: string, so
   const wanted = canonicalAddress(address || label);
   for (let i = 0; i < lines.length; i += 1) {
     const context = lines.slice(Math.max(0, i - 2), Math.min(lines.length, i + 3)).join(" ");
-    const token = canonicalAddress(context);
-    if (!wanted || !token || (!token.includes(wanted) && !wanted.includes(token))) continue;
+    if (!wanted || !contextMatchesAddress(context, address, label)) continue;
     const hrefs = [
       ...[...context.matchAll(/\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1]),
       ...[...context.matchAll(/(https?:\/\/[^\s<>"')]+)/g)].map(m => m[1])
@@ -432,7 +434,7 @@ async function resolveListing(address: string, label: string, location: string, 
         const match = rows.find(row =>
           (address && sameAddress(row.address, address)) ||
           (!address && canonicalAddress(row.label) === canonicalAddress(label))
-        ) || rows[0] || fallbackListingFromHtml(inspected.html, direct.toString(), { address, label, source:direct.hostname });
+        ) || fallbackListingFromHtml(inspected.html, direct.toString(), { address, label, source:direct.hostname });
         return {
           state:"active",
           listing:{ ...match, address:match.address || address, label:match.label || label || address, sourceUrl:direct.toString() },
