@@ -113,12 +113,97 @@ function keyOf(row: Listing) {
   return address || row.sourceUrl || row.id;
 }
 
+
+function canonicalAddress(value: unknown) {
+  return String(value || "").toLowerCase()
+    .replace(/\b(street)\b/g,"st").replace(/\b(avenue)\b/g,"ave").replace(/\b(road)\b/g,"rd")
+    .replace(/\b(drive)\b/g,"dr").replace(/\b(lane)\b/g,"ln").replace(/\b(court)\b/g,"ct")
+    .replace(/\b(boulevard)\b/g,"blvd").replace(/[^a-z0-9]/g,"");
+}
+
+function sameAddress(a: unknown, b: unknown) {
+  const left = canonicalAddress(a), right = canonicalAddress(b);
+  return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
+}
+
+function looksClosedText(text: string) {
+  return /\b(off market|no longer available|not available|listing removed|listing is no longer|rented|leased|sold|pending application|application pending)\b/i.test(text);
+}
+
+async function inspectListingUrl(url: string) {
+  try {
+    const html = await fetchText(url);
+    return { reachable: true, closed: looksClosedText(html), html };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { reachable: false, closed: /^(404|410)$/.test(message), html: "" };
+  }
+}
+
+async function resolveListing(address: string, label: string, location: string) {
+  const checkedAt = new Date().toISOString();
+  const citySlug = location.toLowerCase().replace(/,.*$/, "").trim().replace(/[^a-z0-9]+/g, "-");
+  const encoded = encodeURIComponent(address || label);
+  const sourcePages = [
+    { id:"realtor", source:"Realtor.com", url:`https://www.realtor.com/apartments/${citySlug}_CO` },
+    { id:"rent", source:"Rent.com", url:`https://www.rent.com/colorado/${citySlug}-apartments` },
+    { id:"apartmentlist", source:"Apartment List", url:`https://www.apartmentlist.com/co/${citySlug}` }
+  ];
+
+  let successfulSources = 0;
+  for (const sourcePage of sourcePages) {
+    try {
+      const html = await fetchText(sourcePage.url);
+      successfulSources += 1;
+      const rows = jsonLdListings(html, sourcePage.source, sourcePage.url);
+      const match = rows.find(row => sameAddress(row.address, address) || (!address && canonicalAddress(row.label) === canonicalAddress(label)));
+      if (match?.sourceUrl) {
+        const inspected = await inspectListingUrl(match.sourceUrl);
+        if (inspected.reachable && !inspected.closed) return { state:"active", listing:match, checkedAt, checkedSources:successfulSources };
+      }
+    } catch {}
+  }
+
+  // Search-engine HTML is a discovery fallback only. Any candidate still has to
+  // resolve to a supported property portal and survive an availability check.
+  try {
+    const query = [address || label, location, "rental listing"].filter(Boolean).join(" ");
+    const searchHtml = await fetchText("https://www.google.com/search?q=" + encodeURIComponent(query));
+    const hrefs = [...searchHtml.matchAll(/href="\/url\?q=([^&"]+)/g)].map(match => {
+      try { return decodeURIComponent(match[1]); } catch { return ""; }
+    });
+    const allowedHosts = /(realtor\.com|rent\.com|apartmentlist\.com|zillow\.com|trulia\.com|apartments\.com)$/i;
+    for (const href of hrefs) {
+      try {
+        const candidate = new URL(href);
+        if (!allowedHosts.test(candidate.hostname.replace(/^www\./,""))) continue;
+        const inspected = await inspectListingUrl(candidate.toString());
+        if (!inspected.reachable || inspected.closed) continue;
+        const rows = jsonLdListings(inspected.html, candidate.hostname, candidate.toString());
+        const match = rows.find(row => sameAddress(row.address, address));
+        if (match) return { state:"active", listing:{ ...match, sourceUrl:candidate.toString() }, checkedAt, checkedSources:successfulSources };
+      } catch {}
+    }
+  } catch {}
+
+  // "Closed" is intentionally conservative: only mark it when at least two live
+  // source searches completed and the exact address is absent from all of them.
+  return { state: successfulSources >= 2 ? "closed" : "unknown", listing:null, checkedAt, checkedSources:successfulSources };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "GET") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
 
   const url = new URL(req.url);
   const location = url.searchParams.get("location") || "Fort Collins, CO";
+  if (url.searchParams.get("resolve") === "1") {
+    const address = (url.searchParams.get("address") || "").trim();
+    const label = (url.searchParams.get("label") || "").trim();
+    if (!address && !label) return new Response(JSON.stringify({ state:"unknown", listing:null, checkedAt:new Date().toISOString(), error:"address or label required" }), { status:400, headers:corsHeaders });
+    const result = await resolveListing(address, label, location);
+    return new Response(JSON.stringify(result), { headers:corsHeaders });
+  }
   const minBeds = Number(url.searchParams.get("minBeds") || "2");
   const maxPrice = Number(url.searchParams.get("maxPrice") || "0");
   const query = (url.searchParams.get("query") || "").trim().toLowerCase();
