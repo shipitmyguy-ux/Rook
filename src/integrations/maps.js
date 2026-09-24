@@ -667,7 +667,42 @@ const LEGACY_GEOCODE_CACHE_KEY = "rook.geocode-cache.v1";
 const GEOCODE_MISS_TTL_MS = 20 * 60 * 1000;
 let geocodeQueue = Promise.resolve();
 const geocodeInflight = new Map();
+const DISTANCE_CACHE_KEY = "rook.distance-cache.v1";
 const distanceCache = new Map();
+const distanceInflight = new Map();
+
+function readDistanceCache() {
+  try { return JSON.parse(localStorage.getItem(DISTANCE_CACHE_KEY) || "{}"); }
+  catch { return {}; }
+}
+
+function writeDistanceCache(cache) {
+  try { localStorage.setItem(DISTANCE_CACHE_KEY, JSON.stringify(cache)); }
+  catch {}
+}
+
+function distanceKey(property, poi, fallbackLocation = "Fort Collins, CO") {
+  const propertyQuery = mapLocationQuery(property, fallbackLocation);
+  const poiPoint = validCoordinates(poi);
+  const poiQuery = poiPoint ? `${poiPoint.lat},${poiPoint.lng}` : (poi.address || poi.query || poi.location || poi.label || poi.id || "");
+  return `${normalizeQuery(propertyQuery)}|${normalizeQuery(poiQuery)}`;
+}
+
+function cachedDistanceValue(key) {
+  if (distanceCache.has(key)) return distanceCache.get(key);
+  const persisted = readDistanceCache();
+  if (!Object.prototype.hasOwnProperty.call(persisted, key)) return undefined;
+  const value = persisted[key];
+  distanceCache.set(key, value);
+  return value;
+}
+
+function storeDistanceValue(key, value) {
+  distanceCache.set(key, value);
+  const persisted = readDistanceCache();
+  persisted[key] = value;
+  writeDistanceCache(persisted);
+}
 
 function readGeocodeCache() {
   try {
@@ -794,24 +829,57 @@ function markerOffset(point, center, zoom) {
 
 
 const cardMapViews = new Map();
-export async function updateCardDistance(target, property, primary, fallbackLocation = "Fort Collins, CO") {
-  if (!target || !property || !primary) return;
-  const propertyQuery = mapLocationQuery(property, fallbackLocation);
-  const primaryPointDirect = validCoordinates(primary);
-  const primaryQuery = primaryPointDirect ? `${primaryPointDirect.lat},${primaryPointDirect.lng}` : (primary.address || primary.query || primary.location || primary.label);
-  const cacheKey = `${normalizeQuery(propertyQuery)}|${normalizeQuery(primaryQuery)}`;
-  if (distanceCache.has(cacheKey)) {
-    const cachedDistance = distanceCache.get(cacheKey);
-    if (target.isConnected) target.textContent = cachedDistance == null ? "Address 1 —" : "Address 1 " + cachedDistance.toFixed(cachedDistance < 10 ? 1 : 0) + " mi";
-    return;
-  }
-  const propertyPoint = cachedCoordinates(property, fallbackLocation) || await geocode(propertyQuery);
-  const primaryPoint = primaryPointDirect || await geocode(primaryQuery);
-  const distance = propertyPoint && primaryPoint ? haversineMiles(propertyPoint, primaryPoint) : null;
-  distanceCache.set(cacheKey, distance);
-  if (!target.isConnected) return;
-  target.textContent = distance == null ? "Address 1 —" : "Address 1 " + distance.toFixed(distance < 10 ? 1 : 0) + " mi";
+export function getCachedPropertyDistances(property, pointsOfInterest = [], fallbackLocation = "Fort Collins, CO") {
+  return pointsOfInterest.map((poi, index) => {
+    const key = distanceKey(property, poi, fallbackLocation);
+    const value = cachedDistanceValue(key);
+    return {
+      id: poi.id || `address-${index + 1}`,
+      label: poi.label || `Address ${index + 1}`,
+      distance: value === undefined ? null : value,
+      resolved: value !== undefined
+    };
+  });
 }
+
+export async function resolvePropertyDistances(property, pointsOfInterest = [], fallbackLocation = "Fort Collins, CO") {
+  if (!property || !pointsOfInterest.length) return [];
+  const propertyPoint = cachedCoordinates(property, fallbackLocation) || await geocodeProperty(property, fallbackLocation);
+  return Promise.all(pointsOfInterest.map(async (poi, index) => {
+    const key = distanceKey(property, poi, fallbackLocation);
+    const cached = cachedDistanceValue(key);
+    if (cached !== undefined) return {
+      id: poi.id || `address-${index + 1}`,
+      label: poi.label || `Address ${index + 1}`,
+      distance: cached,
+      resolved: true
+    };
+    if (distanceInflight.has(key)) return distanceInflight.get(key);
+
+    const task = (async () => {
+      const poiPoint = validCoordinates(poi) || await geocode(poi.address || poi.query || poi.location || poi.label);
+      const distance = propertyPoint && poiPoint ? haversineMiles(propertyPoint, poiPoint) : null;
+      storeDistanceValue(key, distance);
+      return {
+        id: poi.id || `address-${index + 1}`,
+        label: poi.label || `Address ${index + 1}`,
+        distance,
+        resolved: true
+      };
+    })().finally(() => distanceInflight.delete(key));
+    distanceInflight.set(key, task);
+    return task;
+  }));
+}
+
+export async function updateCardDistances(target, property, pointsOfInterest = [], fallbackLocation = "Fort Collins, CO") {
+  if (!target || !property || !pointsOfInterest.length || target.dataset.distanceResolved === "true") return;
+  const distances = await resolvePropertyDistances(property, pointsOfInterest, fallbackLocation);
+  if (!target.isConnected) return;
+  target.dispatchEvent(new CustomEvent("rook:distances-resolved", { bubbles: true, detail: { distances, propertyId: String(property.id) } }));
+  target.dataset.distanceResolved = "true";
+}
+
 
 export async function renderCardMap(container, property, pointsOfInterest = [], fallbackLocation = "Fort Collins, CO") {
   if (!container || !property) return;
