@@ -113,6 +113,7 @@ jobs:
           curl --fail --retry 1 --max-time 35 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?resolve=1&address=702%20E%20Myrtle%20St%2C%20Fort%20Collins%2C%20CO%2080524&label=702%20E%20Myrtle%20St&location=Fort%20Collins%2C%20CO" -o /tmp/rook-resolver.json
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-resolver.json","utf8"));if(p.state==="closed"&&p.evidence?.confirmed!==true)process.exit(1);if(!["active","closed","unknown"].includes(p.state))process.exit(1)'
           curl --fail --retry 1 --max-time 35 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?resolve=1&address=303%20W%20Prospect%20Rd%2C%20Fort%20Collins%2C%20CO%2080526&label=Prospect%20Station&sourceUrl=https%3A%2F%2Fwww.prospectstation.com%2Ffloorplans%2F303-w-prospect-rd-2-bed%252C-2-bath&location=Fort%20Collins%2C%20CO" -o /tmp/rook-prospect.json
+          echo "Prospect resolver:" && cat /tmp/rook-prospect.json
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-prospect.json","utf8"));if(p.state!=="active"||!p.listing?.sourceUrl||!(Number(p.listing?.price)>0))process.exit(1)'
 
   deploy-visual:
