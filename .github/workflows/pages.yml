@@ -97,6 +97,7 @@ jobs:
           CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
           test -n "$CHROME"
           "$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=7000 --window-size=1440,1000 --dump-dom http://127.0.0.1:4173/tests/browser-qa.html > /tmp/rook-desktop.html
+          echo "Desktop QA raw:" && grep -o '{"pass"[^<]*' /tmp/rook-desktop.html | tail -1 || true
           grep -q 'data-qa="pass"' /tmp/rook-desktop.html
           grep -q '"v3":true' /tmp/rook-desktop.html
           "$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=7000 --window-size=390,900 --dump-dom http://127.0.0.1:4173/tests/browser-qa.html > /tmp/rook-mobile.html
