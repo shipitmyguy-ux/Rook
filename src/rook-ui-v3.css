@@ -138,3 +138,6 @@ button:focus-visible{outline:3px solid #78ffee;outline-offset:3px}
   .property-map[data-map-first-paint="ready"] .maplibregl-canvas{transition:none}
 }
 .status-action:disabled{opacity:.5;cursor:default}
+
+/* Per-card maps are intentionally disabled until their rendering path is revisited. */
+.card-map-art--disabled{display:none!important}
