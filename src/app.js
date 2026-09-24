@@ -86,6 +86,7 @@ function propertyCard(property) {
   const score = Math.max(0, Math.min(100, rankProperty(property, preferences)));
   const kind = classifyPropertyKind(property);
   const image = firstImageUrl(property) || "";
+  const listingUrl = safeListingUrl(property.sourceUrl);
   const [nextAction, nextIcon, nextLabel] = primaryAction(property);
   return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" tabindex="0" aria-label="View summary for ${esc(property.label)}" aria-haspopup="dialog" style="--score:${score}">
       <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
@@ -99,6 +100,7 @@ function propertyCard(property) {
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
         <button class="status-action" data-action="${nextAction}" aria-label="${nextLabel}" title="${nextLabel}"><span>${icon("phone")}</span><b>Contact</b></button>
+        ${listingUrl ? `<a class="status-action listing-action source-link" href="${esc(listingUrl)}" target="_blank" rel="noopener noreferrer" aria-label="View listing for ${esc(property.label)}" title="View listing"><span aria-hidden="true">↗</span><b>Listing</b></a>` : ""}
         <button class="icon-action" data-action="map" aria-label="Focus on map" title="Focus on map">${icon("pin")}</button>
         <button class="icon-action" data-action="contact" aria-label="Contact" title="Contact">${icon("phone")}</button>
         <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">${icon("more")}</button>
@@ -321,45 +323,35 @@ function openPropertySummary(id) {
   document.querySelector("#property-summary-dialog").showModal();
 }
 document.querySelector("#close-property-summary").addEventListener("click", () => document.querySelector("#property-summary-dialog").close());
-document.querySelector("#map-details").addEventListener("click", event => {
-  const card = event.target.closest(".property-card");
-  if (!card) return;
-  const actionButton = event.target.closest("[data-action]");
-  if (actionButton) {
-    const sourceCard = document.querySelector(`#property-list [data-id="${CSS.escape(card.dataset.id)}"]`);
-    sourceCard?.querySelector(`[data-action="${CSS.escape(actionButton.dataset.action)}"]`)?.click();
-    return;
-  }
-  if (!event.target.closest("button,a,input,select,textarea")) openPropertySummary(card.dataset.id);
-});
-
-document.querySelector("#property-list").addEventListener("keydown", event => {
+function handlePropertyCardKeydown(event) {
   if (event.target.matches(".property-card") && ["Enter", " "].includes(event.key)) {
     event.preventDefault();
     openPropertySummary(event.target.dataset.id);
   }
-});
+}
 
-document.querySelector("#property-list").addEventListener("click", e => {
+function handlePropertyCardClick(e) {
   const summaryCard = e.target.closest(".property-card");
   if (summaryCard && !e.target.closest("button,a,input,select,textarea")) {
     openPropertySummary(summaryCard.dataset.id);
     return;
   }
+
   const sourceLink = e.target.closest(".source-link");
   if (sourceLink) {
     const sourceCard = e.target.closest("[data-id]");
-    const sourceProperty = sourceCard && store.getAll().find(x => x.id === sourceCard.dataset.id);
+    const sourceProperty = sourceCard && store.getAll().find(x => String(x.id) === String(sourceCard.dataset.id));
     if (sourceProperty?.status === PROPERTY_STATUS.NEW) {
       store.update(sourceProperty.id, { status: PROPERTY_STATUS.VIEWED });
       recordActivity("viewed", sourceProperty);
     }
     return;
   }
+
   const action = e.target.closest("[data-action]")?.dataset.action;
   const card = e.target.closest("[data-id]");
   if (!action || !card) return;
-  const p = store.getAll().find(x => x.id === card.dataset.id);
+  const p = store.getAll().find(x => String(x.id) === String(card.dataset.id));
   if (!p) return;
 
   if (action === "expand") {
@@ -421,7 +413,12 @@ document.querySelector("#property-list").addEventListener("click", e => {
     recordActivity("archived", p);
   }
   renderActivity();
-});
+}
+
+document.querySelector("#property-list").addEventListener("keydown", handlePropertyCardKeydown);
+document.querySelector("#map-details").addEventListener("keydown", handlePropertyCardKeydown);
+document.querySelector("#property-list").addEventListener("click", handlePropertyCardClick);
+document.querySelector("#map-details").addEventListener("click", handlePropertyCardClick);
 
 document.querySelector("#add-listing").addEventListener("click", () => document.querySelector("#import-dialog").showModal());
 document.querySelector("#import-confirm").addEventListener("click", e => {
