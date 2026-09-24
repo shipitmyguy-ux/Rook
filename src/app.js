@@ -9,7 +9,7 @@ import { rankProperties, rankProperty } from "./core/ranking.js";
 import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
-import { searchProviders, registerConfiguredProviders, firstImageUrl } from "./integrations/providers.js";
+import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing } from "./integrations/providers.js";
 import { openDirections, renderPropertyMap, updateCardDistance, focusPropertyOnMap } from "./integrations/maps.js?v=qa-rootfix-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js";
 import { config } from "./config.js";
@@ -97,6 +97,8 @@ function propertyListingUrl(property) {
   return {
     url: direct,
     direct: Boolean(direct),
+    closed: property?.listingState === "closed",
+    resolving: !direct && property?.listingState !== "closed" && !property?.listingCheckedAt,
     searchUrl: propertySearchUrl(property)
   };
 }
@@ -227,12 +229,20 @@ function propertyCard(property) {
       <div class="property-card__actions compact-actions">
         ${listing.url
           ? `<a class="status-action listing-action source-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer" aria-label="View source listing for ${esc(property.label)}" title="View source listing"><span aria-hidden="true">↗</span><b>View listing</b></a>`
-          : `<a class="status-action listing-action listing-recovery-link" href="${esc(listing.searchUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Find a current listing for ${esc(property.label)}" title="Original listing unavailable — search for a current listing"><span aria-hidden="true">⌕</span><b>Find listing</b></a>`}
+          : listing.closed
+            ? `<span class="status-action listing-action listing-closed" aria-label="Listing closed" title="Rook could not find a current listing after checking live sources"><span aria-hidden="true">×</span><b>Closed</b></span>`
+            : listing.resolving
+              ? `<span class="status-action listing-action listing-resolving" aria-label="Rook is looking for this listing" title="Rook is checking live sources"><span aria-hidden="true">…</span><b>Finding…</b></span>`
+              : `<a class="status-action listing-action listing-recovery-link" href="${esc(listing.searchUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Find a current listing for ${esc(property.label)}" title="Rook already checked live sources — search manually"><span aria-hidden="true">⌕</span><b>Find listing</b></a>`}
         <button class="icon-action" data-action="map" aria-label="Focus on map" title="Focus on map">${icon("pin")}</button>
         <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">${icon("more")}</button>
       </div>
       <div class="property-card__more" hidden>
-        <a class="${listing.url ? "source-link " : "listing-recovery-link "}more-listing-link" href="${esc(listing.url || listing.searchUrl)}" target="_blank" rel="noopener noreferrer">${listing.url ? "View listing" : "Find listing"}</a>
+        ${listing.url
+          ? `<a class="source-link more-listing-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer">View listing</a>`
+          : listing.closed
+            ? `<span class="more-listing-link listing-closed">Closed</span>`
+            : `<a class="listing-recovery-link more-listing-link" href="${esc(listing.searchUrl)}" target="_blank" rel="noopener noreferrer">Find listing</a>`}
         <button data-action="visited">Visited</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Ignore</button><button data-action="archive">Archive</button>
       </div>
     </section>
@@ -258,6 +268,38 @@ function renderActivity() {
     : '<li class="muted">No activity yet.</li>';
 }
 
+async function resolveUnavailableListings() {
+  const candidates = store.getAll().filter(property => {
+    if (safeListingUrl(property.sourceUrl) || property.listingState === "closed") return false;
+    if (!property.address && !property.label) return false;
+    const checkedAt = property.listingCheckedAt ? new Date(property.listingCheckedAt).getTime() : 0;
+    return !checkedAt || Date.now() - checkedAt > 6 * 60 * 60 * 1000;
+  }).slice(0, 8);
+
+  for (const property of candidates) {
+    try {
+      const result = await resolveMissingListing(property, { location: preferences.location || config.search.location });
+      if (result.state === "active" && result.listing) {
+        store.upsert({
+          ...result.listing,
+          id: property.id,
+          saved: property.saved,
+          status: property.status,
+          note: property.note,
+          listingState: "active",
+          listingCheckedAt: result.checkedAt
+        });
+        recordActivity("listing-recovered", property, { sourceUrl: result.url });
+      } else {
+        store.update(property.id, { listingState: result.state, listingCheckedAt: result.checkedAt });
+        if (result.state === "closed") recordActivity("listing-closed", property);
+      }
+    } catch (error) {
+      recordActivity("listing-resolve-error", property, { message: String(error?.message || error) });
+    }
+  }
+}
+
 async function refreshListings(trigger = "manual") {
   if (refreshInFlight) return;
   refreshInFlight = true;
@@ -268,6 +310,7 @@ async function refreshListings(trigger = "manual") {
     const { address1, ...searchPreferences } = preferences;
     const found = await searchProviders({ ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query });
     store.upsertMany(found);
+    await resolveUnavailableListings();
     recordActivity("provider-refresh", null, { count: found.length, trigger });
     const indicator = document.querySelector("#pull-indicator");
     if (indicator) indicator.textContent = found.length ? `Found ${found.length} listings` : "No new listings found";
