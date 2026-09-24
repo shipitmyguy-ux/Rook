@@ -279,9 +279,14 @@ async function resolveUnavailableListings() {
     if (property.listingState === "closed") return true; // legacy closed states are invalidated and rechecked immediately
     const missingAddress = !String(property.address || "").trim();
     const missingSource = !safeListingUrl(property.sourceUrl);
-    if (!missingAddress && !missingSource) return false;
+    const missingPrice = !(Number.isFinite(Number(property.price)) && Number(property.price) > 0) && !property.metadata?.priceLabel;
+    const missingBeds = property.beds == null;
+    const missingBaths = property.baths == null;
+    const missingImage = !firstImageUrl(property);
+    const needsEnrichment = missingAddress || missingSource || missingPrice || missingBeds || missingBaths || missingImage;
+    if (!needsEnrichment) return false;
     const checkedAt = property.listingCheckedAt ? new Date(property.listingCheckedAt).getTime() : 0;
-    return !checkedAt || Date.now() - checkedAt > 6 * 60 * 60 * 1000;
+    return !checkedAt || Date.now() - checkedAt > 30 * 60 * 1000;
   }).slice(0, 12);
 
   for (const property of candidates) {
@@ -331,7 +336,7 @@ async function refreshListings(trigger = "manual") {
     await resolveUnavailableListings();
     recordActivity("provider-refresh", null, { count: found.length, trigger });
     const indicator = document.querySelector("#pull-indicator");
-    if (indicator) indicator.textContent = found.length ? `Found ${found.length} listings` : "No new listings found";
+    if (indicator) indicator.textContent = found.length ? `Found ${found.length} listings · details refreshed` : "Listings checked · details refreshed";
   } catch (error) {
     recordActivity("provider-refresh-error", null, { trigger, message: String(error?.message || error) });
     const indicator = document.querySelector("#pull-indicator");
