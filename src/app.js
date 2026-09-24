@@ -226,12 +226,12 @@ function propertyCard(property) {
       <div class="property-card__actions compact-actions">
         ${listing.url
           ? `<a class="status-action listing-action source-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer" aria-label="View source listing for ${esc(property.label)}" title="View source listing"><span aria-hidden="true">↗</span><b>View listing</b></a>`
-          : `<a class="status-action listing-action listing-recovery-link source-link" href="${esc(listing.searchUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Find a current listing for ${esc(property.label)}" title="Original listing unavailable — search for a current listing"><span aria-hidden="true">⌕</span><b>Find listing</b></a>`}
+          : `<a class="status-action listing-action listing-recovery-link" href="${esc(listing.searchUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Find a current listing for ${esc(property.label)}" title="Original listing unavailable — search for a current listing"><span aria-hidden="true">⌕</span><b>Find listing</b></a>`}
         <button class="icon-action" data-action="map" aria-label="Focus on map" title="Focus on map">${icon("pin")}</button>
         <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">${icon("more")}</button>
       </div>
       <div class="property-card__more" hidden>
-        <a class="source-link more-listing-link" href="${esc(listing.url || listing.searchUrl)}" target="_blank" rel="noopener noreferrer">${listing.url ? "View listing" : "Find listing"}</a>
+        <a class="${listing.url ? "source-link " : "listing-recovery-link "}more-listing-link" href="${esc(listing.url || listing.searchUrl)}" target="_blank" rel="noopener noreferrer">${listing.url ? "View listing" : "Find listing"}</a>
         <button data-action="visited">Visited</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Ignore</button><button data-action="archive">Archive</button>
       </div>
     </section>
@@ -579,6 +579,17 @@ function handlePropertyCardKeydown(event) {
 }
 
 function handlePropertyCardClick(e) {
+  const recoveryLink = e.target.closest(".listing-recovery-link");
+  if (recoveryLink) {
+    const recoveryCard = e.target.closest("[data-id]");
+    const recoveryProperty = recoveryCard && store.getAll().find(x => String(x.id) === String(recoveryCard.dataset.id));
+    if (recoveryProperty) {
+      if (recoveryProperty.status === PROPERTY_STATUS.NEW) store.update(recoveryProperty.id, { status: PROPERTY_STATUS.VIEWED });
+      recordActivity("listing-search", recoveryProperty, { query: recoveryLink.href });
+    }
+    return;
+  }
+
   const sourceLink = e.target.closest(".source-link");
   if (sourceLink) {
     const sourceCard = e.target.closest("[data-id]");
