@@ -10,7 +10,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing } from "./integrations/providers.js";
-import { openDirections, renderPropertyMap, updateCardDistance, focusPropertyOnMap } from "./integrations/maps.js?v=qa-rootfix-v1";
+import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap } from "./integrations/maps.js?v=distance-strip-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js";
 import { config } from "./config.js";
 
@@ -106,6 +106,43 @@ function propertyListingUrl(property) {
     resolving: !direct && (staleResolverState || legacyClosedNeedsRecheck || (!confirmedClosed && !property?.listingCheckedAt)),
     searchUrl: propertySearchUrl(property)
   };
+}
+
+function distanceTone(distance) {
+  if (!Number.isFinite(distance)) return "unknown";
+  if (distance <= 3) return "near";
+  if (distance <= 7) return "mid";
+  return "far";
+}
+
+function distanceLabel(distance) {
+  if (!Number.isFinite(distance)) return "—";
+  return distance < 10 ? distance.toFixed(1) : String(Math.round(distance));
+}
+
+function distanceStrip(property) {
+  const points = cardPointsOfInterest();
+  const cached = getCachedPropertyDistances(property, points, preferences.location || config.search.location);
+  const items = cached.map((item, index) => {
+    const short = /^Address\s+(\d+)$/i.exec(item.label)?.[1] || String(index + 1);
+    const tone = item.resolved ? distanceTone(item.distance) : "pending";
+    const value = item.resolved ? distanceLabel(item.distance) : "—";
+    return `<span class="distance-chip distance-${tone}" data-distance-id="${esc(item.id)}" title="${esc(item.label)} distance"><i aria-hidden="true"></i><b>A${esc(short)}</b><em>${esc(value)}${value !== "—" ? " mi" : ""}</em></span>`;
+  }).join("");
+  const allResolved = cached.length > 0 && cached.every(item => item.resolved);
+  return `<div class="distance-strip" data-poi-distances data-distance-resolved="${allResolved}" aria-label="Distances to saved addresses">${items}</div>`;
+}
+
+function renderResolvedDistances(target, distances = []) {
+  for (const [index, item] of distances.entries()) {
+    const chip = target.querySelector(`[data-distance-id="${CSS.escape(String(item.id))}"]`);
+    if (!chip) continue;
+    const value = distanceLabel(item.distance);
+    chip.className = `distance-chip distance-${distanceTone(item.distance)}`;
+    const em = chip.querySelector("em");
+    if (em) em.textContent = value + (value !== "—" ? " mi" : "");
+  }
+  target.dataset.distanceResolved = "true";
 }
 
 function propertyContactMethods(property) {
@@ -229,7 +266,8 @@ function propertyCard(property) {
     </section>
     <section class="property-card__summary">
       <header class="property-card__identity"><span class="property-type-icon" role="img" aria-label="${kind}" title="${kind}">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span><div><h2>${esc(property.label)}</h2><p class="muted">${esc(displayAddress)}</p></div></header>
-      <div class="property-card__facts"><strong>${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span><span class="poi-distance-primary" data-primary-distance aria-label="Distance to Address 1">Address 1 —</span></div>
+      <div class="property-card__facts"><strong>${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span></div>
+      ${distanceStrip(property)}
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
         ${listing.url
@@ -412,32 +450,31 @@ function ensureDistanceObserver() {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
       distanceObserver.unobserve(entry.target);
+      if (entry.target.dataset.distanceResolved === "true") continue;
       const card = entry.target.closest("[data-id]");
       const property = card && store.getAll().find(p => String(p.id) === String(card.dataset.id));
-      const primary = cardPointsOfInterest().find(p => p.primary);
-      if (property && primary) void updateCardDistance(entry.target, property, primary, preferences.location || config.search.location);
+      if (property) void updateCardDistances(entry.target, property, cardPointsOfInterest(), preferences.location || config.search.location);
     }
   }, { rootMargin: "200px" });
   return distanceObserver;
 }
 
 function queueDistanceUpdates(root = document) {
-  const targets = root.querySelectorAll?.("[data-primary-distance]") || [];
-  const primary = cardPointsOfInterest().find(p => p.primary);
-  if (!primary) {
-    targets.forEach(target => { target.textContent = "Address 1 —"; });
-    return;
-  }
+  const targets = root.querySelectorAll?.("[data-poi-distances]") || [];
+  const points = cardPointsOfInterest();
+  if (!points.length) return;
   const observer = ensureDistanceObserver();
   for (const target of targets) {
+    if (target.dataset.distanceResolved === "true") continue;
     if (observer) observer.observe(target);
     else {
       const card = target.closest("[data-id]");
       const property = card && store.getAll().find(p => String(p.id) === String(card.dataset.id));
-      if (property) void updateCardDistance(target, property, primary, preferences.location || config.search.location);
+      if (property) void updateCardDistances(target, property, points, preferences.location || config.search.location);
     }
   }
 }
+
 
 function scheduleRenderList() {
   if (renderQueued) return;
@@ -573,6 +610,15 @@ function ignoreProperty(property, status) {
   document.querySelector("#ignore-message").textContent = `${property.label} ignored.`;
   document.querySelector("#ignore-toast").hidden = false;
 }
+
+document.querySelector("#property-list").addEventListener("rook:distances-resolved", event => {
+  const target = event.target.closest?.("[data-poi-distances]") || event.target;
+  if (target?.matches?.("[data-poi-distances]")) renderResolvedDistances(target, event.detail?.distances || []);
+});
+document.querySelector("#map-selected-card").addEventListener("rook:distances-resolved", event => {
+  const target = event.target.closest?.("[data-poi-distances]") || event.target;
+  if (target?.matches?.("[data-poi-distances]")) renderResolvedDistances(target, event.detail?.distances || []);
+});
 
 document.querySelector("#property-map").addEventListener("rook:map-select", event => {
   const id = String(event.detail?.id || "");
