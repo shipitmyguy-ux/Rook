@@ -51,6 +51,9 @@ function finish(){
       mapHostIsDiv:map.tagName==="DIV",
       baseMapLoaded:Number(map.dataset.baseLayerCount||0)>5&&Number(map.dataset.baseSourceCount||0)>0,
       cardMapLabelFree:!doc.querySelector(".card-map-frame")&&!doc.querySelector(".map-marker small"),
+      noPrimaryContact:[...doc.querySelectorAll(".compact-actions")].every(el=>!/\bContact\b/i.test(el.textContent||"")),
+      noCardMapRuntime:!doc.querySelector(".property-card .maplibregl-map,.property-card canvas"),
+      strictSourceLinks:[...doc.querySelectorAll(".source-link")].every(link=>{try{const u=new URL(link.href);return !/google\.com$/i.test(u.hostname)&&!u.pathname.includes("/search");}catch{return false}}),
       noHorizontalOverflow:doc.documentElement.scrollWidth<=viewport+2
     };
     const pass=Object.values(checks).every(Boolean);
