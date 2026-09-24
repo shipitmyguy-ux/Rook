@@ -98,6 +98,59 @@ function jsonLdListings(html: string, source: string, pageUrl: string): Listing[
   return rows;
 }
 
+function firstMatchNumber(html: string, patterns: RegExp[]) {
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    const value = match?.[1] ?? match?.[0];
+    if (!value) continue;
+    const parsed = num(value);
+    if (parsed != null) return parsed;
+  }
+  return null;
+}
+
+function fallbackListingFromHtml(html: string, pageUrl: string, known: { address?: string; label?: string; source?: string } = {}) {
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim() || "";
+  const ogTitle = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1]
+    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i)?.[1] || "";
+  const metaDescription = html.match(/<meta[^>]+(?:name|property)=["'](?:description|og:description)["'][^>]+content=["']([^"']+)["']/i)?.[1]
+    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:name|property)=["'](?:description|og:description)["']/i)?.[1] || "";
+
+  const price = firstMatchNumber(html, [
+    /"(?:price|rent|monthlyRent|listPrice)"\s*:\s*"?\$?([\d,]+(?:\.\d+)?)/i,
+    /\$([\d,]{3,})(?:\s*\/\s*mo|\s*per\s*month|\s*monthly)/i,
+    /(?:rent|price)[^\d$]{0,30}\$([\d,]{3,})/i
+  ]);
+  const beds = firstMatchNumber(html, [
+    /"(?:beds|bedrooms|numberOfBedrooms)"\s*:\s*"?([\d.]+)/i,
+    /([\d.]+)\s*(?:bed|beds|bedroom|bedrooms)\b/i
+  ]);
+  const baths = firstMatchNumber(html, [
+    /"(?:baths|bathrooms|numberOfBathrooms|numberOfBathroomsTotal)"\s*:\s*"?([\d.]+)/i,
+    /([\d.]+)\s*(?:bath|baths|bathroom|bathrooms)\b/i
+  ]);
+  const image = imageUrl(
+    html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1]
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1],
+    pageUrl
+  );
+
+  const address = known.address || "";
+  const label = known.label || ogTitle || title || address;
+  return {
+    id: pageUrl || address || label,
+    label,
+    address,
+    type: "Property",
+    listingType: "rent",
+    price, beds, baths,
+    source: known.source || new URL(pageUrl).hostname,
+    sourceUrl: pageUrl,
+    image, imageUrl:image, primaryImageUrl:image,
+    metadata: { description: metaDescription || null, image, enrichedFromPage:true }
+  };
+}
+
 async function sourceAdapter(id: string, source: string, url: string): Promise<AdapterResult> {
   try {
     const html = await fetchText(url);
@@ -176,15 +229,13 @@ async function resolveListing(address: string, label: string, location: string, 
         const match = rows.find(row =>
           (address && sameAddress(row.address, address)) ||
           (!address && canonicalAddress(row.label) === canonicalAddress(label))
-        ) || rows[0];
-        if (match) {
-          return {
-            state:"active",
-            listing:{ ...match, sourceUrl:direct.toString() },
-            checkedAt,
-            checkedSources:1
-          };
-        }
+        ) || rows[0] || fallbackListingFromHtml(inspected.html, direct.toString(), { address, label, source:direct.hostname });
+        return {
+          state:"active",
+          listing:{ ...match, address:match.address || address, label:match.label || label || address, sourceUrl:direct.toString() },
+          checkedAt,
+          checkedSources:1
+        };
       }
       if (inspected.closed) {
         return {
@@ -223,9 +274,12 @@ async function resolveListing(address: string, label: string, location: string, 
   try {
     const query = [address || label, location, "rental listing"].filter(Boolean).join(" ");
     const searchHtml = await fetchText("https://www.google.com/search?q=" + encodeURIComponent(query));
-    const hrefs = [...searchHtml.matchAll(/href="\/url\?q=([^&"]+)/g)].map(match => {
-      try { return decodeURIComponent(match[1]); } catch { return ""; }
-    });
+    const hrefs = [
+      ...[...searchHtml.matchAll(/href="\/url\?q=([^&"]+)/g)].map(match => {
+        try { return decodeURIComponent(match[1]); } catch { return ""; }
+      }),
+      ...[...searchHtml.matchAll(/href=["'](https?:\/\/[^"'<> ]+)["']/g)].map(match => match[1])
+    ];
     const allowedHosts = /(realtor\.com|rent\.com|apartmentlist\.com|zillow\.com|trulia\.com|apartments\.com)$/i;
     for (const href of hrefs) {
       try {
