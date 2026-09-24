@@ -53,6 +53,61 @@ async function fetchText(url: string) {
   } finally { clearTimeout(timeout); }
 }
 
+const PROJECT_URL = Deno.env.get("SUPABASE_URL") || "https://umvmilulnqnmeqvfoxxc.supabase.co";
+const BROWSER_WORKER_URL = PROJECT_URL + "/functions/v1/rook-browser-worker";
+
+async function browserWorker(body: Record<string, unknown>) {
+  const response = await fetch(BROWSER_WORKER_URL, {
+    method:"POST",
+    headers:{ "content-type":"application/json", "x-rook-client":"rook-web-v1" },
+    body:JSON.stringify(body)
+  });
+  const payload = await response.json().catch(()=>({}));
+  if (!response.ok || payload?.ok === false) throw new Error(payload?.error || "browser worker failed");
+  return payload;
+}
+
+async function browserSnapshot(url: string) {
+  let sessionId = "";
+  try {
+    const started = await browserWorker({ action:"start" });
+    sessionId = String(started.sessionId || "");
+    if (!sessionId) throw new Error("browser session unavailable");
+    await browserWorker({ action:"open", sessionId, url });
+    await browserWorker({ action:"wait", sessionId, ms:1600 });
+    const snap = await browserWorker({ action:"snapshot", sessionId });
+    return snap?.snapshot || null;
+  } finally {
+    if (sessionId) {
+      try { await browserWorker({ action:"stop", sessionId }); } catch {}
+    }
+  }
+}
+
+function fallbackListingFromText(text: string, pageUrl: string, known: { address?: string; label?: string; source?: string } = {}) {
+  const price = firstMatchNumber(text, [
+    /\$([\d,]{3,})(?:\.\d+)?\s*(?:\/\s*mo|per\s*month|monthly)?/i,
+    /(?:rent|price)[^\d$]{0,30}\$([\d,]{3,})/i
+  ]);
+  const beds = firstMatchNumber(text, [
+    /([\d.]+)\s*(?:bed|beds|bedroom|bedrooms)\b/i
+  ]);
+  const baths = firstMatchNumber(text, [
+    /([\d.]+)\s*(?:bath|baths|bathroom|bathrooms)\b/i
+  ]);
+  return {
+    id:pageUrl || known.address || known.label,
+    label:known.label || known.address || pageUrl,
+    address:known.address || "",
+    type:"Property",
+    listingType:"rent",
+    price, beds, baths,
+    source:known.source || new URL(pageUrl).hostname,
+    sourceUrl:pageUrl,
+    metadata:{ enrichedFromBrowser:true }
+  };
+}
+
 function jsonLdListings(html: string, source: string, pageUrl: string): Listing[] {
   const rows: Listing[] = [];
   const scripts = [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
@@ -246,6 +301,22 @@ async function resolveListing(address: string, label: string, location: string, 
           evidence:{ confirmed:true, kind:"direct-listing-status", matches:[{ source:direct.hostname, url:direct.toString(), reason:inspected.reason || "direct-status" }] }
         };
       }
+      if (!inspected.reachable) {
+        try {
+          const snapshot = await browserSnapshot(direct.toString());
+          const text = String(snapshot?.text || "");
+          if (text) {
+            const browserListing = fallbackListingFromText(text, direct.toString(), { address, label, source:direct.hostname });
+            return {
+              state:"active",
+              listing:browserListing,
+              checkedAt,
+              checkedSources:1,
+              browserFallback:true
+            };
+          }
+        } catch {}
+      }
     } catch {}
   }
 
@@ -324,6 +395,43 @@ async function resolveListing(address: string, label: string, location: string, 
       }
     } catch {}
   }
+
+  // If lightweight search endpoints are blocked or inconclusive, use Rook's real
+  // browser worker once before exposing a manual Find listing fallback.
+  try {
+    const snapshot = await browserSnapshot("https://www.google.com/search?q=" + encodeURIComponent(query));
+    const links = Array.isArray(snapshot?.links) ? snapshot.links : [];
+    for (const link of links) {
+      try {
+        const candidate = new URL(String(link?.href || ""));
+        const hostname = candidate.hostname.replace(/^www\./,"");
+        if (!allowedHosts.test(hostname)) continue;
+        const linkText = String(link?.text || "").toLowerCase();
+        const addressToken = canonicalAddress(address || label);
+        const textToken = canonicalAddress(linkText);
+        if (addressToken && textToken && !textToken.includes(addressToken) && !addressToken.includes(textToken)) {
+          if (label && !linkText.includes(String(label).toLowerCase())) continue;
+        }
+
+        let snapshotListing: Listing | null = null;
+        try {
+          const listingSnapshot = await browserSnapshot(candidate.toString());
+          const listingText = String(listingSnapshot?.text || "");
+          if (!listingText) continue;
+          snapshotListing = fallbackListingFromText(listingText, candidate.toString(), { address, label, source:candidate.hostname });
+        } catch {}
+        if (snapshotListing) {
+          return {
+            state:"active",
+            listing:snapshotListing,
+            checkedAt,
+            checkedSources:successfulSources,
+            browserFallback:true
+          };
+        }
+      } catch {}
+    }
+  } catch {}
 
   // Absence from search/index pages is never closure evidence. Only an exact
   // property page with a direct unavailable/off-market signal may mark closed.
