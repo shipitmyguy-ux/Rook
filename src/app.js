@@ -10,7 +10,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl } from "./integrations/providers.js";
-import { openDirections, renderPropertyMap, renderCardMap } from "./integrations/maps.js";
+import { openDirections, renderPropertyMap, renderCardMap, focusPropertyOnMap } from "./integrations/maps.js";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js";
 import { config } from "./config.js";
 
@@ -166,7 +166,13 @@ function renderList() {
   document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("");
   const mappedProperties = store.getAll().filter(p => ![PROPERTY_STATUS.ARCHIVED, PROPERTY_STATUS.REJECTED].includes(p.status));
   document.querySelector("#map-summary").textContent = `${mappedProperties.length} properties`;
-  renderPropertyMap(document.querySelector("#property-map"), mappedProperties);
+  renderPropertyMap(document.querySelector("#property-map"), mappedProperties, {
+    activeFilter,
+    propertyTypes: preferences.propertyTypes,
+    minBeds: preferences.minBeds,
+    maxPrice: preferences.maxPrice,
+    location: preferences.location || config.search.location
+  });
   const pois = cardPointsOfInterest();
   for (const property of visible) {
     const cardMap = document.querySelector(`[data-card-map="${CSS.escape(property.id)}"]`);
@@ -178,7 +184,7 @@ function renderList() {
 app.innerHTML = `<main class="shell">
 <header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></header>
 <div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div>
-<section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><iframe id="property-map" class="property-map" loading="eager" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe><div class="map-caption"><strong>Map</strong><span id="map-summary">Saved properties</span></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
+<section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><div id="property-map" class="property-map" role="region" aria-label="Interactive property map"></div><div class="map-caption"><strong>Map</strong><span id="map-summary">Saved properties</span></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
 <section class="results"><div class="section-heading"><h2>Properties</h2><span id="property-count"></span></div><div id="property-list"></div></section>
 <section class="activity-panel"><div class="section-heading"><h2>Recent activity</h2></div><ul id="activity-list"></ul></section>
 
@@ -208,6 +214,12 @@ app.innerHTML = `<main class="shell">
 <input id="restore-data" type="file" accept="application/json,.json" hidden><div class="dialog-actions"><button id="restore-button" type="button">Restore backup</button><button id="export-data" type="button">Export backup</button><button value="cancel">Cancel</button><button id="save-settings" value="default">Save</button></div></form></dialog>
 </main>`;
 
+document.querySelector("#property-map").addEventListener("rook:map-select", event => {
+  const id = event.detail?.id;
+  if (!id) return;
+  const card = document.querySelector(`[data-id="${CSS.escape(String(id))}"]`);
+  card?.scrollIntoView({ behavior: "smooth", block: "center" });
+});
 document.querySelector("#more-button").addEventListener("click", () => document.querySelector("#actions-dialog").showModal());
 document.querySelector("#property-search").addEventListener("input", e => { query = e.target.value; renderList(); });
 
@@ -252,7 +264,7 @@ document.querySelector("#property-list").addEventListener("click", e => {
   }
   if (action === "map") {
     recordActivity("focused-map", p);
-    renderPropertyMap(document.querySelector("#property-map"), [p]);
+    void focusPropertyOnMap(p);
     document.querySelector(".map-shell")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   if (action === "visited") {
