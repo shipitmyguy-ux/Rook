@@ -47,7 +47,7 @@ async function act(a:string,b:any){
       await c.send("Page.enable",{},s);await c.send("Page.navigate",{url:u},s);return{ok:true,action:a,url:u};
     }
     if(a==="wait"){const ms=Math.max(0,Math.min(10000,Number(b.ms||500)));await new Promise(r=>setTimeout(r,ms));return{ok:true,action:a,ms}}
-    if(a==="snapshot"){const v=await ev(c,s,`JSON.stringify({url:location.href,title:document.title,text:(document.body?.innerText||'').slice(0,30000),links:[...document.querySelectorAll('a[href]')].slice(0,160).map(a=>({text:(a.innerText||a.textContent||'').trim().slice(0,180),href:a.href,context:(a.closest('div,li,article')?.innerText||a.parentElement?.innerText||'').trim().slice(0,600)})).filter(x=>/^https?:/i.test(x.href))})`);return{ok:true,action:a,snapshot:JSON.parse(v||"{}")}}
+    if(a==="snapshot"){const v=await ev(c,s,`JSON.stringify({url:location.href,title:document.title,text:(document.body?.innerText||'').slice(0,30000),links:[...document.querySelectorAll('a[href]')].slice(0,800).map(a=>({text:(a.innerText||a.textContent||'').trim().slice(0,240),href:a.href,context:(a.closest('div,li,article')?.innerText||a.parentElement?.innerText||'').trim().slice(0,1200)})).filter(x=>/^https?:/i.test(x.href))})`);return{ok:true,action:a,snapshot:JSON.parse(v||"{}")}}
     if(a==="screenshot"){await c.send("Page.enable",{},s);const r=await c.send("Page.captureScreenshot",{format:"png",fromSurface:true},s);return{ok:true,action:a,mime:"image/png",data:r.data,bytes:Math.round((r.data?.length||0)*.75)}}
 
     const selector=String(b.selector||"");if(!selector)throw Error("selector required");const sel=JSON.stringify(selector);
