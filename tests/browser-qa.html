@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Rook browser QA</title>
+<style>
+  html,body{margin:0;width:100%;height:100%;overflow:hidden}
+  iframe{display:block;width:100%;height:100%;border:0}
+  #result{position:absolute;left:-9999px;top:-9999px}
+</style>
+<iframe id="rook" src="../index.html?browser-qa=1"></iframe>
+<pre id="result">waiting</pre>
+<script>
+const frame=document.querySelector("#rook");
+const result=document.querySelector("#result");
+function finish(){
+  try{
+    const win=frame.contentWindow, doc=frame.contentDocument;
+    const card=doc.querySelector(".property-card.visual-card");
+    const content=doc.querySelector(".property-card__content");
+    const art=doc.querySelector(".card-map-art");
+    const type=doc.querySelector(".property-type-mark");
+    const overview=doc.querySelector(".overview-map");
+    const map=doc.querySelector("#property-map");
+    if(!card||!content||!art||!type||!overview||!map) throw new Error("missing required UI element");
+    const cardRect=card.getBoundingClientRect();
+    const contentRect=content.getBoundingClientRect();
+    const artRect=art.getBoundingClientRect();
+    const typeRect=type.getBoundingClientRect();
+    const viewport=win.innerWidth;
+    const mobile=viewport<700;
+    const links=[...doc.querySelectorAll('link[rel="stylesheet"]')].map(x=>x.getAttribute("href")||"");
+    const checks={
+      v3:links.some(x=>x.includes("rook-ui-v3.css")),
+      cardWide:mobile?cardRect.width>300:cardRect.width>900,
+      cardHeight:mobile?cardRect.height>=400:cardRect.height>=300,
+      contentPosition:mobile?contentRect.top>cardRect.top+cardRect.height*.35:contentRect.left>cardRect.left+cardRect.width*.24,
+      mapArtPosition:mobile?artRect.top<cardRect.top+cardRect.height*.1:artRect.left>cardRect.left+cardRect.width*.55,
+      typeVisible:typeRect.width>20&&typeRect.height>15,
+      overviewVisible:getComputedStyle(overview).display!=="none"&&overview.getBoundingClientRect().height>200,
+      mapHasSrc:Boolean(map.getAttribute("src")),
+      noHorizontalOverflow:doc.documentElement.scrollWidth<=viewport+2
+    };
+    const pass=Object.values(checks).every(Boolean);
+    result.textContent=JSON.stringify({pass,viewport,checks,card:{w:Math.round(cardRect.width),h:Math.round(cardRect.height)}});
+    document.body.dataset.qa=pass?"pass":"fail";
+  }catch(error){
+    result.textContent=JSON.stringify({pass:false,error:String(error&&error.message||error)});
+    document.body.dataset.qa="fail";
+  }
+}
+frame.addEventListener("load",()=>setTimeout(finish,1200),{once:true});
+setTimeout(()=>{if(!document.body.dataset.qa)finish()},5000);
+</script>
