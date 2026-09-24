@@ -429,3 +429,4 @@ document.addEventListener("touchend", () => {
 
 store.subscribe(renderList);
 renderList();
+queueMicrotask(() => refreshListings("startup"));
