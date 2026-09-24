@@ -57,6 +57,7 @@ let poiMarkers = [];
 let poiFitted = false;
 let userMovedMap = false;
 
+// Map selection is surfaced to app.js, which renders the standard Rook property card.
 function showPropertyDetails(id, pinned = false) {
   const property = overviewState.latestProperties.find(p => String(p.id) === String(id));
   const panel = document.querySelector("#map-details");
