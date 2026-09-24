@@ -15,8 +15,6 @@ import { googleCalendarShowingUrl } from "./integrations/calendar.js";
 import { config } from "./config.js";
 
 const app = document.querySelector("#app");
-window.addEventListener("error", event => { if (app) app.dataset.runtimeError = String(event.error?.stack || event.message || "runtime error").slice(0,500); });
-window.addEventListener("unhandledrejection", event => { if (app) app.dataset.runtimeError = String(event.reason?.stack || event.reason || "unhandled rejection").slice(0,500); });
 const store = createPropertyStore(seedProperties);
 let activeFilter = "all";
 let query = "";
@@ -32,7 +30,7 @@ let renderQueued = false;
 let distanceObserver = null;
 const BROWSER_QA_MODE = typeof location !== "undefined" && new URLSearchParams(location.search).has("browser-qa");
 const LISTING_RESOLVER_VERSION = 2;
-// Distance values are derived once per property/address pair and persisted; rerenders only read the cache. The compact strip scales to every configured address and never resets during ordinary card rerenders. Runtime QA diagnostics are temporary and inert in normal use.
+// Distance values are derived once per property/address pair and persisted; rerenders only read the cache. The compact strip scales to every configured address and never resets during ordinary card rerenders.
 registerConfiguredProviders();
 
 function applySyncedEvidence() {
@@ -614,11 +612,7 @@ function ignoreProperty(property, status) {
   document.querySelector("#ignore-toast").hidden = false;
 }
 
-document.querySelector("#property-list").addEventListener("rook:distances-resolved", event => {
-  const target = event.target.closest?.("[data-poi-distances]") || event.target;
-  if (target?.matches?.("[data-poi-distances]")) renderResolvedDistances(target, event.detail?.distances || []);
-});
-document.querySelector("#map-selected-card").addEventListener("rook:distances-resolved", event => {
+document.addEventListener("rook:distances-resolved", event => {
   const target = event.target.closest?.("[data-poi-distances]") || event.target;
   if (target?.matches?.("[data-poi-distances]")) renderResolvedDistances(target, event.detail?.distances || []);
 });
