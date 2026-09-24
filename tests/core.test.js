@@ -107,12 +107,28 @@ test("missing listing resolver distinguishes recovered closed and unknown states
   assert.equal(recovered.state, "active");
   assert.equal(recovered.url, "https://example.test/listing");
 
-  const closed = await resolveMissingListing(
+  const unconfirmedClosed = await resolveMissingListing(
     { address:"123 Main St, Fort Collins, CO" },
     { location:"Fort Collins, CO" },
     async () => ({ ok:true, json:async()=>({ state:"closed", checkedAt:"2026-09-24T17:00:00Z", listing:null }) })
   );
-  assert.equal(closed.state, "closed");
+  assert.equal(unconfirmedClosed.state, "unknown");
+
+  const confirmedClosed = await resolveMissingListing(
+    { address:"123 Main St, Fort Collins, CO" },
+    { location:"Fort Collins, CO" },
+    async () => ({ ok:true, json:async()=>({ state:"closed", checkedAt:"2026-09-24T17:00:00Z", listing:null, evidence:{ confirmed:true, kind:"direct-listing-status" } }) })
+  );
+  assert.equal(confirmedClosed.state, "closed");
+  assert.equal(confirmedClosed.evidence.confirmed, true);
+});
+
+test("live source URL overrides a stale closed state during dedupe", () => {
+  const live = normalizeProperty({ id:"live", address:"123 Main St, Fort Collins, CO", sourceUrl:"https://example.test/live", listingState:"active" });
+  const stale = normalizeProperty({ id:"stale", address:"123 Main Street, Fort Collins, CO", listingState:"closed", metadata:{ listingClosedEvidence:{ confirmed:true } } });
+  const [merged] = dedupeProperties([live, stale]);
+  assert.equal(merged.sourceUrl, "https://example.test/live");
+  assert.equal(merged.listingState, "active");
 });
 
 test("provider results normalize into the shared property model", () => {
