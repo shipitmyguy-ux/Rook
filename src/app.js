@@ -82,9 +82,22 @@ function cardPointsOfInterest() {
 
 function icon(name) { const paths = {"pin":"<path d=\"M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z\"/><circle cx=\"12\" cy=\"10\" r=\"2.5\"/>","phone":"<path d=\"m5 3 4 1 1 5-3 2a16 16 0 0 0 6 6l2-3 5 1 1 4c-1 5-8 3-13-2S1 4 5 3Z\"/>","bed":"<path d=\"M3 18V5m18 13V9H3m0 6h18M6 9V6h6v3\"/>","bath":"<path d=\"M3 12h18l-2 7H5Zm3 7-1 3m13-3 1 3M6 12V5a3 3 0 0 1 6 0\"/>","calendar":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M7 2v6m10-6v6M3 11h18\"/>","house":"<path d=\"M2 11 12 2l10 9v11H2Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M6 13h4v4H6zm8 0h4v4h-4zm-3 9v-5h3v5\" stroke=\"#07111b\" fill=\"none\"/>","building":"<path d=\"M5 2h14v20H5Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M8 6h3m2 0h3M8 10h3m2 0h3M8 14h3m2 0h3M10 22v-4h4v4\" stroke=\"#07111b\" fill=\"none\"/>","townhome":"<path d=\"M2 10 7 4l5 6v12H2Zm10 0 5-6 5 6v12H12Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M5 13h4m6 0h4M6 22v-5h2v5m8 0v-5h2v5\" stroke=\"#07111b\" fill=\"none\"/>","tree":"<path d=\"m12 2-7 9h4l-5 7h6v4h4v-4h6l-5-7h4Z\"/>","school":"<path d=\"m2 8 10-5 10 5-10 5Zm4 3v6q6 6 12 0v-6M22 8v9\"/>","star":"<path d=\"m12 2 3 6 7 1-5 5 1 8-6-4-6 4 1-8-5-5 7-1Z\"/>","more":"<circle cx=\"4\" cy=\"12\" r=\"1\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/><circle cx=\"20\" cy=\"12\" r=\"1\"/>"}; return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.house}</svg>`; }
 
+function propertySearchUrl(property) {
+  return "https://www.google.com/search?q=" + encodeURIComponent([
+    property?.address ? `"${property.address}"` : null,
+    property?.label && property?.label !== property?.address ? property.label : null,
+    preferences.location || config.search.location,
+    property?.listingType === "buy" ? "real estate listing" : "rental listing"
+  ].filter(Boolean).join(" "));
+}
+
 function propertyListingUrl(property) {
   const direct = safeListingUrl(property?.sourceUrl);
-  return direct ? { url: direct, direct: true } : { url: null, direct: false };
+  return {
+    url: direct,
+    direct: Boolean(direct),
+    searchUrl: propertySearchUrl(property)
+  };
 }
 
 function propertyContactMethods(property) {
@@ -213,12 +226,12 @@ function propertyCard(property) {
       <div class="property-card__actions compact-actions">
         ${listing.url
           ? `<a class="status-action listing-action source-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer" aria-label="View source listing for ${esc(property.label)}" title="View source listing"><span aria-hidden="true">↗</span><b>View listing</b></a>`
-          : `<button class="status-action listing-action" type="button" disabled aria-label="Source listing unavailable" title="Source listing unavailable"><span aria-hidden="true">↗</span><b>Listing unavailable</b></button>`}
+          : `<a class="status-action listing-action listing-recovery-link source-link" href="${esc(listing.searchUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Find a current listing for ${esc(property.label)}" title="Original listing unavailable — search for a current listing"><span aria-hidden="true">⌕</span><b>Find listing</b></a>`}
         <button class="icon-action" data-action="map" aria-label="Focus on map" title="Focus on map">${icon("pin")}</button>
         <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">${icon("more")}</button>
       </div>
       <div class="property-card__more" hidden>
-        ${listing.url ? `<a class="source-link more-listing-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer">View listing</a>` : ""}
+        <a class="source-link more-listing-link" href="${esc(listing.url || listing.searchUrl)}" target="_blank" rel="noopener noreferrer">${listing.url ? "View listing" : "Find listing"}</a>
         <button data-action="visited">Visited</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Ignore</button><button data-action="archive">Archive</button>
       </div>
     </section>
@@ -519,7 +532,7 @@ function openPropertySummary(id) {
   if (!property) return;
   const url = safeListingUrl(property.sourceUrl);
   const price = property.price ? "$" + Number(property.price).toLocaleString() + (property.listingType === "buy" ? "" : "/mo") : "Price TBD";
-  const searchUrl = "https://www.google.com/search?q=" + encodeURIComponent([property.label, property.address, preferences.location, "rental listing"].filter(Boolean).join(" "));
+  const searchUrl = propertySearchUrl(property);
   document.querySelector("#property-summary-title").textContent = property.label || "Property summary";
   document.querySelector("#property-summary-content").innerHTML = `
     <p>${esc(property.address || "Address unavailable")}</p>
