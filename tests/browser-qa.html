@@ -57,7 +57,7 @@ function finish(){
       strictSourceLinks:[...doc.querySelectorAll(".source-link")].every(link=>{try{const u=new URL(link.href);return !/google\.com$/i.test(u.hostname)&&!u.pathname.includes("/search");}catch{return false}}),
       listingActionsUsable:[...doc.querySelectorAll(".listing-action")].every(el=>el.tagName==="A"||el.classList.contains("listing-closed")||el.classList.contains("listing-resolving")),
       listingActionsCompact:[...doc.querySelectorAll(".listing-action")].every(el=>el.getBoundingClientRect().width<cardRect.width*.38),
-      distanceStripVisible:[...doc.querySelectorAll(".property-card")].every(el=>el.querySelector(".distance-strip")&&el.querySelectorAll(".distance-chip").length>=2),
+      distanceBarsVisible:[...doc.querySelectorAll(".property-card")].every(el=>el.querySelector(".distance-panel")&&el.querySelectorAll(".distance-row").length>=2&&el.querySelectorAll(".distance-row__track").length===el.querySelectorAll(".distance-row").length),
       noLegacyBlinkingDistance:!doc.querySelector("[data-primary-distance]"),
       recoverySearchesSeparated:[...doc.querySelectorAll(".listing-recovery-link")].every(link=>!link.classList.contains("source-link")),
       noDeadUnavailableButtons:![...doc.querySelectorAll(".listing-action")].some(el=>/Listing unavailable/i.test(el.textContent||"")),
