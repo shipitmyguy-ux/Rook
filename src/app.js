@@ -5,6 +5,7 @@ import { housingEvidence } from "./data/evidence.js";
 import { propertyFromUrl } from "./core/import.js";
 import { googleMapsMultiStopUrl } from "./core/route.js";
 import { loadPreferences, savePreferences } from "./core/preferences.js";
+import { POI_ICON_OPTIONS, POI_COLOR_OPTIONS, resolvePoiStyle, poiGlyph, poiColorHex } from "./core/poi-style.js";
 import { rankProperties, rankProperty } from "./core/ranking.js";
 import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
@@ -70,6 +71,8 @@ function cardPointsOfInterest() {
     kind: "primary",
     primary: true,
     label: "Address 1",
+    icon: "star",
+    color: "gold",
     ...(preferences.address1 || {})
   };
   const configured = Array.isArray(preferences.pointsOfInterest)
@@ -79,8 +82,39 @@ function cardPointsOfInterest() {
     { id: "address-2", kind: "poi", label: "Address 2", lat: 40.57589, lng: -105.06223, address: "1000 Locust St, Fort Collins, CO 80524" },
     { id: "address-3", kind: "poi", label: "Address 3", lat: 40.5104806, lng: -105.0171262, address: "5480 Ziegler Rd, Fort Collins, CO 80528" }
   ];
-  const secondary = [...fixed, ...configured.filter(p => !fixed.some(f => f.id === p.id))];
-  return [...(preferences.address1 ? [primary] : []), ...secondary.filter(p => p.id !== primary.id && p.address !== primary.address)];
+  const secondary = [...fixed, ...configured.filter(p => !fixed.some(f => f.id === p.id))]
+    .filter(p => p.id !== primary.id && p.address !== primary.address)
+    .map((point, index) => ({ ...point, ...resolvePoiStyle(point, index, preferences.pointStyles) }));
+  return [...(preferences.address1 ? [primary] : []), ...secondary];
+}
+
+function poiDisplayName(point = {}) {
+  const label = String(point.label || "").trim();
+  return point.address || point.query || point.location || (/^Address\s+\d+$/i.test(label) ? "Saved address" : label) || "Saved address";
+}
+
+function poiStyleOptions(options, selected, glyphs = false) {
+  return options.map(option => {
+    const prefix = glyphs ? option.glyph + " " : "";
+    return `<option value="${esc(option.value)}"${option.value === selected ? " selected" : ""}>${esc(prefix + option.label)}</option>`;
+  }).join("");
+}
+
+function renderPoiStyleSettings() {
+  const target = document.querySelector("#pref-poi-styles");
+  if (!target) return;
+  const points = cardPointsOfInterest().filter(point => !point.primary);
+  target.innerHTML = points.length ? points.map((point, index) => {
+    const style = resolvePoiStyle(point, index, preferences.pointStyles);
+    const glyph = poiGlyph(style.icon);
+    const color = poiColorHex(style.color);
+    return `<div class="poi-style-row" data-poi-style-id="${esc(point.id || "poi-" + index)}">
+      <span class="poi-style-preview" style="--poi-color:${esc(color)}" aria-hidden="true">${esc(glyph)}</span>
+      <span class="poi-style-address" title="${esc(poiDisplayName(point))}">${esc(poiDisplayName(point))}</span>
+      <label>Icon<select data-poi-icon>${poiStyleOptions(POI_ICON_OPTIONS, style.icon, true)}</select></label>
+      <label>Color<select data-poi-color>${poiStyleOptions(POI_COLOR_OPTIONS, style.color)}</select></label>
+    </div>`;
+  }).join("") : '<p class="poi-style-empty">No secondary addresses configured.</p>';
 }
 
 function icon(name) { const paths = {"pin":"<path d=\"M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z\"/><circle cx=\"12\" cy=\"10\" r=\"2.5\"/>","phone":"<path d=\"m5 3 4 1 1 5-3 2a16 16 0 0 0 6 6l2-3 5 1 1 4c-1 5-8 3-13-2S1 4 5 3Z\"/>","bed":"<path d=\"M3 18V5m18 13V9H3m0 6h18M6 9V6h6v3\"/>","bath":"<path d=\"M3 12h18l-2 7H5Zm3 7-1 3m13-3 1 3M6 12V5a3 3 0 0 1 6 0\"/>","calendar":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M7 2v6m10-6v6M3 11h18\"/>","house":"<path d=\"M2 11 12 2l10 9v11H2Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M6 13h4v4H6zm8 0h4v4h-4zm-3 9v-5h3v5\" stroke=\"#07111b\" fill=\"none\"/>","building":"<path d=\"M5 2h14v20H5Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M8 6h3m2 0h3M8 10h3m2 0h3M8 14h3m2 0h3M10 22v-4h4v4\" stroke=\"#07111b\" fill=\"none\"/>","townhome":"<path d=\"M2 10 7 4l5 6v12H2Zm10 0 5-6 5 6v12H12Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M5 13h4m6 0h4M6 22v-5h2v5m8 0v-5h2v5\" stroke=\"#07111b\" fill=\"none\"/>","tree":"<path d=\"m12 2-7 9h4l-5 7h6v4h4v-4h6l-5-7h4Z\"/>","school":"<path d=\"m2 8 10-5 10 5-10 5Zm4 3v6q6 6 12 0v-6M22 8v9\"/>","star":"<path d=\"m12 2 3 6 7 1-5 5 1 8-6-4-6 4 1-8-5-5 7-1Z\"/>","more":"<circle cx=\"4\" cy=\"12\" r=\"1\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/><circle cx=\"20\" cy=\"12\" r=\"1\"/>"}; return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.house}</svg>`; }
@@ -127,12 +161,14 @@ function distancePanel(property) {
   const numeric = cached.map(item => item.distance).filter(Number.isFinite);
   const maxDistance = numeric.length ? Math.max(...numeric, 1) : 1;
   const rows = cached.map((item, index) => {
-    const short = /^Address\s+(\d+)$/i.exec(item.label)?.[1] || String(index + 1);
     const tone = item.resolved ? distanceTone(item.distance) : "pending";
     const value = item.resolved ? distanceLabel(item.distance) : "—";
     const ratio = Number.isFinite(item.distance) ? Math.max(0.08, Math.min(1, item.distance / maxDistance)) : 0;
-    return `<div class="distance-row distance-${tone}" data-distance-id="${esc(item.id)}" title="${esc(item.label)} distance">
-      <b>A${esc(short)}</b>
+    const glyph = poiGlyph(item.icon || (index === 0 ? "star" : "circle"));
+    const color = poiColorHex(item.color || (index === 0 ? "gold" : "slate"));
+    const title = item.address || item.label || "Saved address";
+    return `<div class="distance-row distance-${tone}" data-distance-id="${esc(item.id)}" title="${esc(title)} distance">
+      <b class="poi-distance-icon" style="--poi-color:${esc(color)}" aria-label="${esc(title)}">${esc(glyph)}</b>
       <span class="distance-row__value">${esc(value)}${value !== "—" ? " mi" : ""}</span>
       <span class="distance-row__track" aria-hidden="true"><i style="--distance-ratio:${ratio}"></i></span>
     </div>`;
@@ -571,6 +607,7 @@ app.innerHTML = `<main class="shell">
 
 <dialog id="settings-dialog"><form method="dialog"><h2>Search preferences</h2>
 <label>Address 1 location<input id="pref-address-1" type="text" placeholder="Paste a Google Maps place link"><small>Saved in this browser only. Leave blank to hide Address 1.</small></label>
+<fieldset class="poi-style-options"><legend>Map address markers</legend><div id="pref-poi-styles"></div><small>Choose a predefined symbol and color for each saved secondary address. The map shows only the symbol.</small></fieldset>
 <label>Search location<input id="pref-location" type="text" autocomplete="address-level2" placeholder="Fort Collins, CO"></label>
 <label>Search radius (miles)<input id="pref-radius" type="number" min="1" max="100" step="1"></label>
 <label>Minimum bedrooms<input id="pref-min-beds" type="number" min="0" step="1"></label>
@@ -835,6 +872,7 @@ document.querySelectorAll("[data-refresh-listings]").forEach(button => button.ad
 
 function openSettings() {
   document.querySelector("#pref-address-1").value = preferences.address1?.mapLink || "";
+  renderPoiStyleSettings();
   document.querySelector("#pref-location").value = preferences.location || config.search.location;
   document.querySelector("#pref-radius").value = preferences.radiusMiles ?? 15;
   document.querySelector("#pref-min-beds").value = preferences.minBeds ?? 2;
@@ -850,6 +888,17 @@ function openSettings() {
   document.querySelector("#pref-theme").value = preferences.visualTheme || "default";
   document.querySelector("#settings-dialog").showModal();
 }
+document.querySelector("#pref-poi-styles").addEventListener("change", event => {
+  const row = event.target.closest("[data-poi-style-id]");
+  if (!row) return;
+  const iconValue = row.querySelector("[data-poi-icon]")?.value || "circle";
+  const colorValue = row.querySelector("[data-poi-color]")?.value || "slate";
+  const preview = row.querySelector(".poi-style-preview");
+  if (preview) {
+    preview.textContent = poiGlyph(iconValue);
+    preview.style.setProperty("--poi-color", poiColorHex(colorValue));
+  }
+});
 document.querySelector("#settings-button").addEventListener("click", openSettings);
 document.querySelector("#open-settings").addEventListener("click", () => {
   document.querySelector("#actions-dialog").close();
@@ -873,9 +922,19 @@ document.querySelector("#save-settings").addEventListener("click", e => {
     return;
   }
   document.querySelector("#pref-address-1").setCustomValidity("");
+  const pointStyles = { ...(preferences.pointStyles || {}) };
+  document.querySelectorAll("[data-poi-style-id]").forEach(row => {
+    const id = row.dataset.poiStyleId;
+    if (!id) return;
+    pointStyles[id] = {
+      icon: row.querySelector("[data-poi-icon]")?.value || "circle",
+      color: row.querySelector("[data-poi-color]")?.value || "slate"
+    };
+  });
   preferences = {
     ...preferences,
     address1: coordinateMatch ? { lat: Number(coordinateMatch[1]), lng: Number(coordinateMatch[2]), mapLink: address1Link } : null,
+    pointStyles,
     location: document.querySelector("#pref-location").value.trim() || config.search.location,
     radiusMiles: Math.max(1, Number(document.querySelector("#pref-radius").value) || 15),
     minBeds: Number(document.querySelector("#pref-min-beds").value) || 0,
