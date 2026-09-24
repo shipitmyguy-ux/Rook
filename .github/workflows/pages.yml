@@ -110,6 +110,8 @@ jobs:
         run: |
           curl --fail --retry 2 --max-time 30 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?location=Fort%20Collins%2C%20CO&minBeds=2" -o /tmp/rook-listings.json
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-listings.json","utf8"));if(!Array.isArray(p.listings)||!Array.isArray(p.meta?.adapters)||p.listings.length<1||!p.meta.adapters.some(a=>a.ok&&a.count>0))process.exit(1)'
+          curl --fail --retry 1 --max-time 35 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?resolve=1&address=702%20E%20Myrtle%20St%2C%20Fort%20Collins%2C%20CO%2080524&label=702%20E%20Myrtle%20St&location=Fort%20Collins%2C%20CO" -o /tmp/rook-resolver.json
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-resolver.json","utf8"));if(p.state==="closed"&&p.evidence?.confirmed!==true)process.exit(1);if(!["active","closed","unknown"].includes(p.state))process.exit(1)'
 
   deploy-visual:
     needs: detect
