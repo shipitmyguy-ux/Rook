@@ -152,6 +152,41 @@ export function dedupeProviderResults(rows = []) {
   return [...merged.values()];
 }
 
+
+function sameListingAddress(a = "", b = "") {
+  const left = canonicalAddress(a), right = canonicalAddress(b);
+  return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
+}
+
+export async function resolveMissingListing(property = {}, criteria = {}, fetchImpl = fetch) {
+  if (!property?.address && !property?.label) return { state: "unknown", url: null, checkedAt: new Date().toISOString() };
+  const endpoint = config.listings?.endpoint;
+  if (!endpoint) return { state: "unknown", url: null, checkedAt: new Date().toISOString() };
+  const url = new URL(endpoint, typeof window !== "undefined" ? window.location.href : "http://localhost/");
+  url.searchParams.set("resolve", "1");
+  if (property.address) url.searchParams.set("address", property.address);
+  if (property.label) url.searchParams.set("label", property.label);
+  url.searchParams.set("listingType", property.listingType === "buy" ? "buy" : "rent");
+  if (criteria.location) url.searchParams.set("location", criteria.location);
+  const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(`Listing resolver returned ${response.status}`);
+  const payload = await response.json();
+  const candidate = payload?.listing || null;
+  if (candidate?.sourceUrl && (!property.address || sameListingAddress(candidate.address, property.address))) {
+    return {
+      state: "active",
+      url: candidate.sourceUrl,
+      listing: normalizeProviderResult(candidate, { id: "rook-resolver", label: candidate.source || "Recovered listing" }),
+      checkedAt: payload.checkedAt || new Date().toISOString()
+    };
+  }
+  return {
+    state: payload?.state === "closed" ? "closed" : "unknown",
+    url: null,
+    checkedAt: payload?.checkedAt || new Date().toISOString()
+  };
+}
+
 export async function searchProviders(criteria = {}) {
   const active = [...providers.values()].filter(provider => provider.enabled !== false);
   const settled = await Promise.allSettled(active.map(async provider => {
