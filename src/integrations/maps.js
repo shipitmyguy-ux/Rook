@@ -88,12 +88,12 @@ function haversineMiles(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-function mapZoom(propertyPoint, poiPoints) {
-  const farthest = poiPoints.reduce((max, point) => Math.max(max, haversineMiles(propertyPoint, point)), 0);
-  if (farthest <= 1) return 14;
-  if (farthest <= 2.5) return 13;
-  if (farthest <= 5) return 12;
-  if (farthest <= 10) return 11;
+function mapZoom(propertyPoint, primaryPoint) {
+  const distance = primaryPoint ? haversineMiles(propertyPoint, primaryPoint) : 0;
+  if (distance <= 1) return 14;
+  if (distance <= 2.5) return 13;
+  if (distance <= 5) return 12;
+  if (distance <= 10) return 11;
   return 10;
 }
 
@@ -155,14 +155,22 @@ export async function renderCardMap(container, property, pointsOfInterest = [], 
       ? { lat: Number(poi.lat), lng: Number(poi.lng) }
       : await geocode(query);
     if (!point) continue;
-    poiPoints.push({ ...point, label: poi.label || poi.name || "POI", kind: poi.kind || poi.id || "poi" });
+    poiPoints.push({ ...point, label: poi.label || poi.name || "POI", kind: poi.kind || poi.id || "poi", primary: Boolean(poi.primary) });
   }
 
-  const zoom = mapZoom(propertyPoint, poiPoints);
-  const center = poiPoints.length
+  const primaryPoint = poiPoints.find(point => point.primary) || poiPoints[0] || null;
+  const primaryDistance = primaryPoint ? haversineMiles(propertyPoint, primaryPoint) : null;
+  const distanceTarget = container.closest(".property-card")?.querySelector("[data-primary-distance]");
+  if (distanceTarget) {
+    distanceTarget.textContent = primaryDistance == null ? "SIL —" : `SIL ${primaryDistance.toFixed(primaryDistance < 10 ? 1 : 0)} mi`;
+    if (primaryDistance != null) distanceTarget.setAttribute("title", `Sister-in-law · ${primaryDistance.toFixed(primaryDistance < 10 ? 1 : 0)} miles`);
+  }
+
+  const zoom = mapZoom(propertyPoint, primaryPoint);
+  const center = primaryPoint
     ? {
-        lat: (propertyPoint.lat * 1.6 + poiPoints.reduce((sum, p) => sum + p.lat, 0) / poiPoints.length) / 2.6,
-        lng: (propertyPoint.lng * 1.6 + poiPoints.reduce((sum, p) => sum + p.lng, 0) / poiPoints.length) / 2.6
+        lat: (propertyPoint.lat + primaryPoint.lat) / 2,
+        lng: (propertyPoint.lng + primaryPoint.lng) / 2
       }
     : propertyPoint;
 
@@ -172,7 +180,7 @@ export async function renderCardMap(container, property, pointsOfInterest = [], 
   const poiMarkers = poiPoints.map(point => {
     const pos = markerOffset(point, center, zoom);
     const distance = haversineMiles(propertyPoint, point);
-    const tone = point.kind === "park" ? "park" : point.kind === "school" ? "school" : "poi";
+    const tone = point.primary ? "primary" : point.kind === "park" ? "park" : point.kind === "school" ? "school" : "poi";
     const vx = pos.dx - propertyPos.dx;
     const vy = pos.dy - propertyPos.dy;
     const length = Math.sqrt(vx * vx + vy * vy);
