@@ -1,7 +1,8 @@
 import { classifyPropertyKind } from "../core/property.js";
 
-const MAPLIBRE_MODULE_URL = "https://unpkg.com/maplibre-gl@6.11.1/dist/maplibre-gl.mjs";
+const MAPLIBRE_MODULE_URL = "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.mjs";
 const OPENFREEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
+const OPENFREEMAP_FALLBACK_STYLE_URL = "https://tiles.openfreemap.org/styles/bright";
 const ROOK_SOURCE_ID = "rook-listings";
 const ROOK_LAYER_ID = "rook-listings-points";
 const FORT_COLLINS_CENTER = [-105.0844, 40.5853];
@@ -17,7 +18,9 @@ const overviewState = {
   selectedId: null,
   hoveredId: null,
   fittedOnce: false,
-  geocodeRun: 0
+  geocodeRun: 0,
+  styleFallbackTried: false,
+  baseErrorCount: 0
 };
 
 function loadMapLibre() {
@@ -240,13 +243,30 @@ async function ensureOverviewMap(container) {
   overviewState.ready = false;
   overviewState.fittedOnce = false;
 
-  map.once("load", () => {
+  const hydrateStyle = () => {
     overviewState.ready = true;
     installOverviewLayers(map);
-    updateOverviewSource({ fit: true });
+    updateOverviewSource({ fit: !overviewState.fittedOnce });
     void geocodeMissingOverviewProperties();
+    container.dataset.mapStatus = "ready";
+    const style = map.getStyle();
+    container.dataset.baseLayerCount = String((style?.layers || []).filter(layer => layer.id !== ROOK_LAYER_ID).length);
+    container.dataset.baseSourceCount = String(Object.keys(style?.sources || {}).filter(id => id !== ROOK_SOURCE_ID).length);
+  };
+
+  map.on("style.load", hydrateStyle);
+  map.on("error", event => {
+    const message = String(event?.error?.message || event?.error || "");
+    container.dataset.mapLastError = message.slice(0, 220);
+    overviewState.baseErrorCount += 1;
+    if (!overviewState.styleFallbackTried && overviewState.baseErrorCount >= 3) {
+      overviewState.styleFallbackTried = true;
+      container.dataset.mapStatus = "recovering";
+      map.setStyle(OPENFREEMAP_FALLBACK_STYLE_URL);
+      return;
+    }
+    container.dataset.mapStatus = "degraded";
   });
-  map.on("error", () => { container.dataset.mapStatus = "degraded"; });
   return map;
 }
 
