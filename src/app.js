@@ -82,8 +82,7 @@ function propertyCard(property) {
   return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" style="--score:${score}">
       <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
     <section class="property-card__media" aria-label="Listing image">
-      <div class="property-visual ${image ? "" : "property-visual--fallback"}" ${image ? `style="--property-image:url(\'${esc(image)}\')"` : ""} aria-hidden="true"></div>
-      ${!image ? '<span class="illustration-label">Illustrative image · not listing photo</span>' : ""}
+      <div class="property-visual ${image ? "" : "property-visual--fallback"}" ${image ? `style="--property-image:url(\'${esc(image)}\')"` : ""} aria-hidden="true">${!image ? `<span class="property-placeholder-icon">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span>` : ""}</div>
       <div class="property-type-mark" title="${kind}"><span>${propertyKindIcon(kind)}</span><small>${kind}</small></div>
     </section>
     <section class="property-card__summary">
@@ -103,8 +102,7 @@ function propertyCard(property) {
     <div class="fit-ring" title="Match score ${score}" aria-label="Match score ${score}"><span>${score}</span></div>
     <aside class="property-card__context" aria-label="Neighborhood context">
 
-      <div class="card-map-art" aria-hidden="true"><div class="map-grid"></div><span class="poi property-pin">${icon("house")}</span><span class="poi family-pin">${icon("house")}</span><span class="poi park-pin">${icon("tree")}</span><span class="poi school-pin">${icon("school")}</span></div>
-      <p>Illustrative neighborhood map</p>
+      <div class="card-map-art" data-card-map="${esc(property.id)}" aria-label="Location map for ${esc(property.label)}"></div>
     </aside>
   </article>`;
 }
@@ -162,6 +160,11 @@ function renderList() {
   const mappedProperties = store.getAll().filter(p => ![PROPERTY_STATUS.ARCHIVED, PROPERTY_STATUS.REJECTED].includes(p.status));
   document.querySelector("#map-summary").textContent = `${mappedProperties.length} properties`;
   renderPropertyMap(document.querySelector("#property-map"), mappedProperties);
+  const pois = cardPointsOfInterest();
+  for (const property of visible) {
+    const cardMap = document.querySelector(`[data-card-map="${CSS.escape(property.id)}"]`);
+    if (cardMap) void renderCardMap(cardMap, property, pois, preferences.location || config.search.location);
+  }
   renderActivity();
 }
 
