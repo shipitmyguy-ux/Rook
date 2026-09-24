@@ -286,6 +286,7 @@ export async function focusPropertyOnMap(property) {
 
 const GEOCODE_CACHE_KEY = "rook.geocode-cache.v1";
 let geocodeQueue = Promise.resolve();
+const geocodeInflight = new Map();
 
 function readGeocodeCache() {
   try { return JSON.parse(localStorage.getItem(GEOCODE_CACHE_KEY) || "{}"); }
@@ -306,6 +307,7 @@ async function geocode(query) {
   if (!q) return null;
   const cache = readGeocodeCache();
   if (cache[q]) return cache[q];
+  if (geocodeInflight.has(q)) return geocodeInflight.get(q);
 
   const task = geocodeQueue.then(async () => {
     const cached = readGeocodeCache()[q];
@@ -327,8 +329,10 @@ async function geocode(query) {
       return null;
     } finally {
       await new Promise(resolve => setTimeout(resolve, 1050));
+      geocodeInflight.delete(q);
     }
   });
+  geocodeInflight.set(q, task);
   geocodeQueue = task.catch(() => null);
   return task;
 }
