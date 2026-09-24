@@ -44,7 +44,8 @@ function finish(){
       actionsClear:[...doc.querySelectorAll('.property-card')].every(el=>el.querySelector('.compact-actions').getBoundingClientRect().bottom<=el.getBoundingClientRect().bottom+1),
       typeVisible:typeRect.width>20&&typeRect.height>=14,
       overviewVisible:getComputedStyle(overview).display!=="none"&&overview.getBoundingClientRect().height>200,
-      mapHasSrc:Boolean(map.getAttribute("src")),
+      mapProvider:map.dataset.mapProvider==="maplibre-openfreemap",
+      mapHostIsDiv:map.tagName==="DIV",
       cardMapLabelFree:!doc.querySelector(".card-map-frame")&&!doc.querySelector(".map-marker small"),
       noHorizontalOverflow:doc.documentElement.scrollWidth<=viewport+2
     };
