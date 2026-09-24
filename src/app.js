@@ -94,11 +94,13 @@ function propertySearchUrl(property) {
 
 function propertyListingUrl(property) {
   const direct = safeListingUrl(property?.sourceUrl);
+  const confirmedClosed = property?.listingState === "closed" && property?.metadata?.listingClosedEvidence?.confirmed === true;
+  const legacyClosedNeedsRecheck = property?.listingState === "closed" && !confirmedClosed;
   return {
     url: direct,
     direct: Boolean(direct),
-    closed: property?.listingState === "closed",
-    resolving: !direct && property?.listingState !== "closed" && !property?.listingCheckedAt,
+    closed: confirmedClosed,
+    resolving: !direct && (legacyClosedNeedsRecheck || (!confirmedClosed && !property?.listingCheckedAt)),
     searchUrl: propertySearchUrl(property)
   };
 }
@@ -271,11 +273,14 @@ function renderActivity() {
 // Rook attempts live source recovery before exposing a manual Find listing search.
 async function resolveUnavailableListings() {
   const candidates = store.getAll().filter(property => {
-    if (safeListingUrl(property.sourceUrl) || property.listingState === "closed") return false;
+    if (safeListingUrl(property.sourceUrl)) return false;
     if (!property.address && !property.label) return false;
+    const confirmedClosed = property.listingState === "closed" && property.metadata?.listingClosedEvidence?.confirmed === true;
+    if (confirmedClosed) return false;
+    if (property.listingState === "closed") return true; // legacy closed states are invalidated and rechecked immediately
     const checkedAt = property.listingCheckedAt ? new Date(property.listingCheckedAt).getTime() : 0;
     return !checkedAt || Date.now() - checkedAt > 6 * 60 * 60 * 1000;
-  }).slice(0, 8);
+  }).slice(0, 12);
 
   for (const property of candidates) {
     try {
@@ -292,8 +297,18 @@ async function resolveUnavailableListings() {
         });
         recordActivity("listing-recovered", property, { sourceUrl: result.url });
       } else {
-        store.update(property.id, { listingState: result.state, listingCheckedAt: result.checkedAt });
-        if (result.state === "closed") recordActivity("listing-closed", property);
+        const nextMetadata = { ...(property.metadata || {}) };
+        if (result.state === "closed" && result.evidence?.confirmed === true) {
+          nextMetadata.listingClosedEvidence = result.evidence;
+        } else {
+          delete nextMetadata.listingClosedEvidence;
+        }
+        store.update(property.id, {
+          listingState: result.state,
+          listingCheckedAt: result.checkedAt,
+          metadata: nextMetadata
+        });
+        if (result.state === "closed" && result.evidence?.confirmed === true) recordActivity("listing-closed", property);
       }
     } catch (error) {
       recordActivity("listing-resolve-error", property, { message: String(error?.message || error) });
