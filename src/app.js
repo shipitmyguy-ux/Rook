@@ -30,7 +30,7 @@ let renderQueued = false;
 let distanceObserver = null;
 const BROWSER_QA_MODE = typeof location !== "undefined" && new URLSearchParams(location.search).has("browser-qa");
 const LISTING_RESOLVER_VERSION = 2;
-// Distance values are derived once per property/address pair and persisted; rerenders only read the cache. The compact strip scales to every configured address and never resets during ordinary card rerenders.
+// Distance values are derived once per property/address pair and persisted; rerenders only read the cache. The compact strip scales to every configured address and never resets during ordinary card rerenders; one document-level event handles cards in either list or map-detail placement.
 registerConfiguredProviders();
 
 function applySyncedEvidence() {
