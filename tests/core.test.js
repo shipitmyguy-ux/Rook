@@ -14,7 +14,7 @@ import { config } from "../src/config.js";
 import { poiLocationQuery } from "../src/integrations/maps.js";
 import { normalizeTour, tourState, tourLabel, applyTour } from "../src/core/tours.js";
 import { normalizePointStyles, resolvePoiStyle, poiGlyph, poiColorHex } from "../src/core/poi-style.js";
-import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, canonicalAddress } from "../src/integrations/providers.js";
+import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, canonicalAddress, isIncomeRestrictedListing } from "../src/integrations/providers.js";
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
   const property = normalizeProperty({
@@ -127,6 +127,33 @@ test("address marker styles normalize to predefined icons and colors", () => {
   assert.ok(poiGlyph(styles["address-2"].icon));
   assert.match(poiColorHex(styles["address-2"].color), /^#/);
   assert.deepEqual(resolvePoiStyle({ id:"address-2" }, 0, styles), { icon:"diamond", color:"blue" });
+});
+
+test("Buffalo Run is excluded when income-restricted housing is disabled", () => {
+  const buffalo = normalizeProperty({
+    id:"buffalo-run",
+    label:"Buffalo Run Apartments",
+    address:"1245 E Lincoln Ave, Fort Collins, CO 80524",
+    type:"Apartment",
+    listingType:"rent",
+    price:1849,
+    beds:2,
+    metadata:{ badges:["Popular Rental"] }
+  });
+  assert.equal(isIncomeRestrictedListing(buffalo), true);
+  assert.equal(matchesSearchDefaults(buffalo, { minBeds:2, propertyTypes:["apartment"], excludeIncomeRestricted:true }), false);
+  assert.equal(matchesSearchDefaults(buffalo, { minBeds:2, propertyTypes:["apartment"], excludeIncomeRestricted:false }), true);
+});
+
+test("income restriction detection scans provider metadata", () => {
+  const listing = normalizeProperty({
+    id:"restricted",
+    label:"Example Apartments",
+    address:"100 Main St, Fort Collins, CO",
+    type:"Apartment",
+    metadata:{ amenities:["Fitness Center", "Income Restricted"] }
+  });
+  assert.equal(isIncomeRestrictedListing(listing), true);
 });
 
 test("overview map uses MapLibre with OpenFreeMap", () => {
