@@ -391,6 +391,83 @@ async function discoverOfficialGalleryUrls(sourceUrl:string,address="",label="")
   }
 }
 
+function decodeImageSearchHref(raw: unknown) {
+  const href = String(raw || "").trim();
+  if (!href) return { sourceUrl:"", mediaUrl:"" };
+  try {
+    const u = new URL(href);
+    const sourceUrl = u.searchParams.get("purl") || u.searchParams.get("url") || "";
+    const mediaUrl = u.searchParams.get("mediaurl") || u.searchParams.get("imgurl") || "";
+    return {
+      sourceUrl: sourceUrl ? decodeURIComponent(sourceUrl) : "",
+      mediaUrl: mediaUrl ? decodeURIComponent(mediaUrl) : ""
+    };
+  } catch {
+    return { sourceUrl:"", mediaUrl:"" };
+  }
+}
+
+async function exactAddressImageSearch(address:string,label:string,location:string) {
+  const subject = address || label;
+  if (!subject) return null;
+  const query = ['"' + subject + '"', location, "rental"].filter(Boolean).join(" ");
+  const targets = [
+    "https://www.bing.com/images/search?q=" + encodeURIComponent(query),
+    "https://www.google.com/search?tbm=isch&q=" + encodeURIComponent(query)
+  ];
+  for (const target of targets) {
+    try {
+      const snapshot = await browserSnapshot(target);
+      const images = Array.isArray(snapshot?.images) ? snapshot.images : [];
+      for (const image of images) {
+        const text = [image?.alt,image?.context].filter(Boolean).join(" ");
+        if (!contextMatchesAddress(text,address,label)) continue;
+        const decoded = decodeImageSearchHref(image?.href);
+        const sourceUrl = normalizeSearchResultUrl(decoded.sourceUrl || image?.href || "");
+        let imageUrl = usablePhotoUrl(decoded.mediaUrl || image?.dataSrc || image?.src);
+        if (!imageUrl) imageUrl = usablePhotoUrl(image?.src);
+        if (!imageUrl) continue;
+        if (sourceUrl) {
+          try {
+            const host = new URL(sourceUrl).hostname;
+            if (isBlockedCommunityHost(host) && !isAllowedListingHost(host)) continue;
+          } catch {}
+        }
+        return {
+          imageUrl,
+          sourceUrl:sourceUrl || target,
+          width:Number(image?.naturalWidth || image?.width || 0),
+          height:Number(image?.naturalHeight || image?.height || 0),
+          method:"exact-image-search"
+        };
+      }
+    } catch {}
+  }
+  return null;
+}
+
+async function listingFromImageSearchSource(address:string,label:string,location:string) {
+  const hit = await exactAddressImageSearch(address,label,location);
+  if (!hit?.sourceUrl) return null;
+  try {
+    const url = new URL(hit.sourceUrl);
+    if (!isAllowedListingHost(url.hostname)) return null;
+    const inspected = await inspectListingUrl(url.toString());
+    if (inspected.reachable && !inspected.closed) {
+      const rows = jsonLdListings(inspected.html,url.hostname,url.toString());
+      const match = rows.find(row=>sameAddress(row.address,address));
+      const listing = match || fallbackListingFromHtml(inspected.html,url.toString(),{address,label,source:url.hostname});
+      if (Number(listing?.price)>0 || listing?.beds != null || listing?.baths != null) return listing;
+    }
+    const reader = await readerText(url.toString(),5000);
+    if (reader && !looksLikeBrowserChallenge(reader)) {
+      const listing = fallbackListingFromText(reader,url.toString(),{address,label,source:url.hostname});
+      if (Number(listing?.price)>0 || listing?.beds != null || listing?.baths != null) return listing;
+    }
+  } catch {}
+  return null;
+}
+
 async function resolveListingImage(address: string, label: string, location: string, sourceUrl = "") {
   const checkedAt = new Date().toISOString();
   const seen = new Set<string>();
@@ -614,6 +691,18 @@ async function resolveListingImage(address: string, label: string, location: str
         };
       }
     }
+  }
+
+  const imageSearchHit = await exactAddressImageSearch(address,label,location);
+  if (imageSearchHit?.imageUrl) {
+    return {
+      state:"found",
+      imageUrl:imageSearchHit.imageUrl,
+      sourceUrl:imageSearchHit.sourceUrl || null,
+      checkedAt,
+      method:imageSearchHit.method,
+      dimensions:{width:imageSearchHit.width,height:imageSearchHit.height}
+    };
   }
 
   return {
@@ -1070,6 +1159,22 @@ async function resolveComparablePrice(address: string, label: string, location: 
           if (!isAllowedListingHost(u.hostname)) continue;
           consider(context, normalized, u.hostname);
         } catch {}
+      }
+    } catch {}
+  }
+
+  if (!candidates.length) {
+    try {
+      const listing = await listingFromImageSearchSource(address,label,location);
+      if (listing && Number(listing.price)>0) {
+        candidates.push({
+          price:Number(listing.price),
+          beds:Number(listing.beds||0)||null,
+          baths:Number(listing.baths||0)||null,
+          source:listing.source || "image-search-source",
+          sourceUrl:listing.sourceUrl || "",
+          context:[listing.label,listing.address].filter(Boolean).join(" ")
+        });
       }
     } catch {}
   }
