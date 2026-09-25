@@ -1474,6 +1474,21 @@ Deno.serve(async (req: Request) => {
     let priceFallback = null;
     if (!(Number(result?.listing?.price) > 0)) {
       priceFallback = await resolveComparablePrice(address, label, location, targetBeds, targetBaths);
+      if (!priceFallback && targetBeds > 0) {
+        const relaxed = await resolveComparablePrice(address, label, location, 0, targetBaths);
+        if (relaxed) {
+          const evidenceBeds = [...new Set((relaxed.evidence || []).map((item:any)=>Number(item?.beds || 0)).filter((value:number)=>value>0))];
+          const inferredBeds = evidenceBeds.length === 1 ? evidenceBeds[0] : null;
+          priceFallback = {
+            ...relaxed,
+            targetBeds:inferredBeds || targetBeds,
+            priceLabel: inferredBeds
+              ? "$" + Number(relaxed.price).toLocaleString("en-US") + "/mo (building " + inferredBeds + "BR)"
+              : "$" + Number(relaxed.price).toLocaleString("en-US") + "/mo (building comparable)",
+            relaxedBedroomMatch:true
+          };
+        }
+      }
     }
     return new Response(JSON.stringify({ ...result, priceFallback }), { headers:corsHeaders });
   }
