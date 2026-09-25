@@ -537,37 +537,61 @@ function installOverviewLayers(map) {
 
 
 // Palette from the original card-map artwork in assets/neighborhood.svg.
+export function mapLandLayerKind(layerId = "") {
+  const id = String(layerId || "").toLowerCase();
+  if (/water|ocean|river|lake/.test(id)) return "water";
+  if (/park|recreation|recreation_ground|playground|garden|greenway/.test(id)) return "park";
+  if (/wood|forest|grass|meadow|scrub|landcover|landuse|farmland|farm|orchard/.test(id)) return "vegetation";
+  if (/building/.test(id)) return "building";
+  return "base";
+}
+
 function applyReferenceMapTheme(map) {
   for (const layer of map.getStyle()?.layers || []) {
     const id = layer.id.toLowerCase();
     if (id === ROOK_LAYER_ID) continue;
+    const kind = mapLandLayerKind(id);
     if (layer.type === "symbol") {
       const hasText = layer.layout && layer.layout["text-field"] != null;
       if (hasText) {
         map.setLayoutProperty(layer.id, "visibility", "visible");
         map.setLayerZoomRange(
           layer.id,
-          Math.max(Number(layer.minzoom) || 0, 15),
+          Math.max(Number(layer.minzoom) || 0, kind === "park" ? 11 : 15),
           Number.isFinite(layer.maxzoom) ? layer.maxzoom : 24
         );
-        try { map.setPaintProperty(layer.id, "text-color", "#b8c8ce"); } catch {}
+        try { map.setPaintProperty(layer.id, "text-color", kind === "park" ? "#c8e7cf" : "#b8c8ce"); } catch {}
         try { map.setPaintProperty(layer.id, "text-halo-color", "#09212a"); } catch {}
-        try { map.setPaintProperty(layer.id, "text-halo-width", 1.2); } catch {}
+        try { map.setPaintProperty(layer.id, "text-halo-width", kind === "park" ? 1.6 : 1.2); } catch {}
       } else {
         map.setLayoutProperty(layer.id, "visibility", "none");
       }
       continue;
     }
-    const water = /water|ocean|river|lake/.test(id);
-    const green = /park|wood|forest|grass|landcover|landuse/.test(id);
-    const building = /building/.test(id);
     if (layer.type === "background") map.setPaintProperty(layer.id, "background-color", "#09212a");
     if (layer.type === "fill") {
-      map.setPaintProperty(layer.id, "fill-color", water ? "#041b31" : green ? "#154134" : building ? "#173332" : "#09212a");
-      map.setPaintProperty(layer.id, "fill-outline-color", building ? "#1d4141" : water ? "#041b31" : "#173332");
+      const fillColor =
+        kind === "water" ? "#041b31" :
+        kind === "park" ? "#174b36" :
+        kind === "vegetation" ? "#0d2a29" :
+        kind === "building" ? "#173332" :
+        "#09212a";
+      const outlineColor =
+        kind === "park" ? "#2b7250" :
+        kind === "building" ? "#1d4141" :
+        kind === "water" ? "#041b31" :
+        "#173332";
+      map.setPaintProperty(layer.id, "fill-color", fillColor);
+      map.setPaintProperty(layer.id, "fill-outline-color", outlineColor);
     }
     if (layer.type === "line") {
-      map.setPaintProperty(layer.id, "line-color", water ? "#041b31" : /boundary|admin/.test(id) ? "#28505d" : /casing/.test(id) ? "#28505d" : "#3d6372");
+      map.setPaintProperty(layer.id, "line-color",
+        kind === "park" ? "#2b7250" :
+        kind === "water" ? "#041b31" :
+        /boundary|admin/.test(id) ? "#28505d" :
+        /casing/.test(id) ? "#28505d" :
+        "#3d6372"
+      );
     }
     if (layer.type === "fill-extrusion") map.setPaintProperty(layer.id, "fill-extrusion-color", "#173332");
   }
