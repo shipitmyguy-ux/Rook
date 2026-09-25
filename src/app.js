@@ -994,6 +994,7 @@ document.querySelector("#property-list").addEventListener("click", handlePropert
 document.querySelector("#map-details").addEventListener("click", handlePropertyCardClick);
 
 document.querySelector("#add-listing").addEventListener("click", () => document.querySelector("#import-dialog").showModal());
+// Cancel is intentionally not a form submitter, so an empty required URL never traps the dialog.
 document.querySelector("#import-cancel").addEventListener("click", () => {
   const input = document.querySelector("#listing-url");
   input.setCustomValidity("");
