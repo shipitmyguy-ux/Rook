@@ -17,7 +17,8 @@ export const defaultPreferences = Object.freeze({
   defaultTourDurationMinutes: 60,
   defaultTourReminderMinutes: 120,
   emailScanCursor: null,
-  emailLastScanAt: null
+  emailLastScanAt: null,
+  removedPointIds: []
 });
 
 export function normalizePreferences(value = {}) {
@@ -38,7 +39,8 @@ export function normalizePreferences(value = {}) {
     defaultTourDurationMinutes: Math.max(15, Number(value.defaultTourDurationMinutes) || 60),
     defaultTourReminderMinutes: Math.max(0, Number(value.defaultTourReminderMinutes) || 120),
     emailScanCursor: value.emailScanCursor || null,
-    emailLastScanAt: value.emailLastScanAt || null
+    emailLastScanAt: value.emailLastScanAt || null,
+    removedPointIds: Array.isArray(value.removedPointIds) ? [...new Set(value.removedPointIds.map(String))] : []
   };
 }
 export function loadPreferences() {
