@@ -753,7 +753,7 @@ app.innerHTML = `<main class="shell">
     <button type="button" id="showing-schedule-confirmed" class="workflow-action">Schedule confirmed showing</button>
   </div>
 </dialog>
-<dialog id="import-dialog"><form method="dialog"><h2>Add listing</h2><p class="muted">Paste a listing URL. Rook keeps the source and routes it through the shared property model.</p><input id="listing-url" type="url" placeholder="https://…" required /><div class="dialog-actions"><button value="cancel">Cancel</button><button id="import-confirm" value="default">Add</button></div></form></dialog>
+<dialog id="import-dialog"><form method="dialog"><h2>Add listing</h2><p class="muted">Paste a listing URL. Rook keeps the source and routes it through the shared property model.</p><input id="listing-url" type="url" placeholder="https://…" required /><div class="dialog-actions"><button id="import-cancel" type="button">Cancel</button><button id="import-confirm" value="default">Add</button></div></form></dialog>
 
 <dialog id="settings-dialog" class="settings-dialog-captive"><form method="dialog"><div class="dialog-heading settings-dialog-heading"><h2>Search preferences</h2><button id="close-settings" type="button" class="dialog-close settings-dialog-close" aria-label="Close search preferences">×</button></div>
 <fieldset class="poi-manager"><legend>Map points of interest</legend>
@@ -994,6 +994,12 @@ document.querySelector("#property-list").addEventListener("click", handlePropert
 document.querySelector("#map-details").addEventListener("click", handlePropertyCardClick);
 
 document.querySelector("#add-listing").addEventListener("click", () => document.querySelector("#import-dialog").showModal());
+document.querySelector("#import-cancel").addEventListener("click", () => {
+  const input = document.querySelector("#listing-url");
+  input.setCustomValidity("");
+  input.value = "";
+  document.querySelector("#import-dialog").close("cancel");
+});
 document.querySelector("#import-confirm").addEventListener("click", e => {
   const input = document.querySelector("#listing-url");
   if (!input.checkValidity()) return;
