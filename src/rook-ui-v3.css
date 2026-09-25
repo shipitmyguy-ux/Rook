@@ -190,3 +190,12 @@ button:focus-visible{outline:3px solid #78ffee;outline-offset:3px}
 .poi-candidate span{font-size:9px;color:#a0b1ba;line-height:1.25}
 .poi-candidate button{flex:0 0 auto;min-height:30px;padding:6px 9px;border:1px solid #467060;border-radius:8px;background:#123329;color:#9ef0cf;font:700 10px/1 system-ui}
 @media(max-width:699px){.poi-lookup-heading{align-items:flex-start;flex-direction:column;gap:2px}.poi-candidate{align-items:flex-start}.poi-candidate button{margin-top:1px}}
+
+html.settings-modal-open,body.settings-modal-open{overflow:hidden;overscroll-behavior:none}
+#settings-dialog.settings-dialog-captive{width:min(calc(100% - 24px),560px);max-height:calc(100dvh - 24px);padding:0;overflow:auto;overscroll-behavior:contain}
+#settings-dialog.settings-dialog-captive form{padding:0 20px 20px}
+.settings-dialog-heading{position:sticky;top:0;z-index:4;margin:0 -20px 10px;padding:14px 14px 10px 20px;background:linear-gradient(#0a121c 78%,rgba(10,18,28,.94));border-bottom:1px solid rgba(53,73,91,.5)}
+.settings-dialog-heading h2{margin:0}
+.settings-dialog-close{width:32px;height:32px;min-width:32px;border-radius:9px;padding:0;line-height:1;font-size:1.15rem}
+#settings-dialog::backdrop{background:rgba(0,0,0,.66);backdrop-filter:blur(2px)}
+@media(max-width:699px){#settings-dialog.settings-dialog-captive{width:calc(100% - 16px);max-height:calc(100dvh - 16px)}#settings-dialog.settings-dialog-captive form{padding:0 14px 16px}.settings-dialog-heading{margin:0 -14px 8px;padding:12px 10px 9px 14px}}
