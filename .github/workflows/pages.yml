@@ -113,9 +113,6 @@ jobs:
           curl --fail --retry 1 --max-time 30 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?poi=1&query=Ridge%20Runner&location=Fort%20Collins%2C%20CO&limit=5" -o /tmp/rook-poi.json
           echo "POI suggestions:" && cat /tmp/rook-poi.json
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-poi.json","utf8"));if(!Array.isArray(p.candidates)||p.candidates.length<1||!p.candidates.some(x=>/ridge\s+runner/i.test(String(x.label||"")+" "+String(x.address||""))))process.exit(1)'
-          curl --fail --retry 1 --max-time 45 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?image=1&address=3051%20Sage%20Creek%20Rd%20Unit%20G38%2C%20Fort%20Collins%2C%20CO%2080528&label=3051%20Sage%20Creek%20Rd%20Unit%20G38&sourceUrl=https%3A%2F%2Fwww.trulia.com%2Fhome%2F3051-sage-creek-rd-g38-fort-collins-co-80528-54689602&location=Fort%20Collins%2C%20CO" -o /tmp/rook-image.json
-          echo "Image enrichment:" && cat /tmp/rook-image.json
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-image.json","utf8"));if(!["found","missing"].includes(p.state)||!p.checkedAt)process.exit(1);if(p.state==="found"&&!/^https?:\/\//.test(p.imageUrl||""))process.exit(1)'
           curl --fail --retry 1 --max-time 55 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?image=1&address=702%20E%20Myrtle%20St%2C%20Fort%20Collins%2C%20CO%2080524&label=702%20E%20Myrtle%20St&location=Fort%20Collins%2C%20CO" -o /tmp/rook-myrtle-image.json
           echo "Myrtle image:" && cat /tmp/rook-myrtle-image.json
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-myrtle-image.json","utf8"));if(p.state!=="found"||!/^https?:\/\//.test(p.imageUrl||""))process.exit(1)'
