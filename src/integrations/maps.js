@@ -785,6 +785,47 @@ async function geocode(query) {
   return task;
 }
 
+export function normalizePoiSearchCandidate(row = {}, originalQuery = "") {
+  const lat = Number(row.lat), lng = Number(row.lon ?? row.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const displayName = String(row.display_name || row.address || row.name || originalQuery || "").trim();
+  const named = String(row.namedetails?.name || row.name || "").trim();
+  const firstPart = displayName.split(",")[0]?.trim() || "";
+  const label = named || firstPart || String(originalQuery || "Saved place").trim();
+  return {
+    label,
+    address: displayName || label,
+    query: String(originalQuery || label).trim(),
+    lat,
+    lng,
+    placeType: row.type || row.addresstype || row.class || null,
+    source: "OpenStreetMap"
+  };
+}
+
+export async function searchPoiCandidates(query, fallbackLocation = "Fort Collins, CO", limit = 5) {
+  const q = poiLocationQuery({ query }, fallbackLocation);
+  if (!q) return [];
+  const safeLimit = Math.max(1, Math.min(5, Number(limit) || 5));
+  const task = geocodeQueue.then(async () => {
+    const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&dedupe=1&countrycodes=us&limit=" + safeLimit + "&q=" + encodeURIComponent(q);
+    try {
+      const response = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!response.ok) return [];
+      const rows = await response.json();
+      return (Array.isArray(rows) ? rows : [])
+        .map(row => normalizePoiSearchCandidate(row, query))
+        .filter(Boolean);
+    } catch {
+      return [];
+    } finally {
+      await new Promise(resolve => setTimeout(resolve, 1050));
+    }
+  });
+  geocodeQueue = task.catch(() => []);
+  return task;
+}
+
 function haversineMiles(a, b) {
   const toRad = value => value * Math.PI / 180;
   const R = 3958.8;
