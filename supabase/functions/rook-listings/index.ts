@@ -548,6 +548,49 @@ function imageFromProviderIndexSnapshot(snapshot:any,address="",label="") {
   return matches[0] || null;
 }
 
+function imageFromProviderIndexSnapshotCluster(snapshot:any,address="",label="") {
+  const images = Array.isArray(snapshot?.images) ? snapshot.images : [];
+  const targetNumber = streetNumberValue(address);
+  const matches = images.map((image:any) => {
+    const src = usablePhotoUrl(image?.dataSrc || image?.src);
+    if (!src) return null;
+    const text = [image?.alt,image?.context].filter(Boolean).join(" ");
+    if (!comparableContextMatches(text,address||label,0)) return null;
+    if (/(logo|icon|avatar|map|floor\s*plan|site\s*plan)/i.test(text)) return null;
+    const width = Number(image?.naturalWidth || image?.width || 0);
+    const height = Number(image?.naturalHeight || image?.height || 0);
+    if (width && height && (width < 180 || height < 120)) return null;
+    const nearbyNumbers = [...String(text).matchAll(/\b(\d{2,5})\s+[A-Za-z]/g)]
+      .map(m=>Number(m[1])).filter(Number.isFinite);
+    const nearest = targetNumber && nearbyNumbers.length
+      ? Math.min(...nearbyNumbers.map(n=>Math.abs(n-targetNumber)))
+      : 99;
+    const decoded = decodeImageSearchHref(image?.href);
+    const sourceUrl = normalizeSearchResultUrl(decoded.sourceUrl || image?.href || "");
+    return {src,width,height,sourceUrl,nearest,score:(width*height)||1};
+  }).filter(Boolean).sort((a:any,b:any)=>(a.nearest-b.nearest)||(b.score-a.score));
+  return matches[0] || null;
+}
+
+async function providerZipClusterRecovery(address:string,label:string,location:string) {
+  const zip = String(address||"").match(/\b(\d{5})(?:-\d{4})?\b/)?.[1] || "";
+  if (!zip) return null;
+  const city = String(location || "Fort Collins, CO").split(",")[0].trim();
+  const slug = city.toLowerCase().replace(/[^a-z0-9]+/g,"-");
+  const urls = [
+    "https://www.zillow.com/" + slug + "-co-" + zip + "/rentals/",
+    "https://www.apartments.com/" + slug + "-co-" + zip + "/"
+  ];
+  for (const indexUrl of urls) {
+    try {
+      const snapshot = await browserSnapshot(indexUrl);
+      const image = imageFromProviderIndexSnapshotCluster(snapshot,address,label);
+      if (image?.src) return {indexUrl,image};
+    } catch {}
+  }
+  return null;
+}
+
 async function resolveListingImage(address: string, label: string, location: string, sourceUrl = "") {
   const checkedAt = new Date().toISOString();
   const seen = new Set<string>();
@@ -608,6 +651,21 @@ async function resolveListingImage(address: string, label: string, location: str
       checkedAt,
       method:"provider-city-index-card",
       dimensions:{width:cityIndexHit.image.width,height:cityIndexHit.image.height}
+    };
+  }
+
+  // When an exact card is unavailable, allow a nearby same-street building
+  // photo from the ZIP rental index. The card still must share the street and be
+  // within a small street-number range of the target.
+  const zipClusterHit = await providerZipClusterRecovery(address,label,location);
+  if (zipClusterHit?.image?.src) {
+    return {
+      state:"found",
+      imageUrl:zipClusterHit.image.src,
+      sourceUrl:zipClusterHit.image.sourceUrl || zipClusterHit.indexUrl,
+      checkedAt,
+      method:"provider-zip-street-cluster",
+      dimensions:{width:zipClusterHit.image.width,height:zipClusterHit.image.height}
     };
   }
 
