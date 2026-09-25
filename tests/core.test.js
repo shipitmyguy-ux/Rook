@@ -14,7 +14,7 @@ import { config } from "../src/config.js";
 import { poiLocationQuery, normalizePoiSearchCandidate, poiSearchQueries, mapLandLayerKind } from "../src/integrations/maps.js";
 import { normalizeTour, tourState, tourLabel, applyTour } from "../src/core/tours.js";
 import { normalizePointStyles, resolvePoiStyle, poiGlyph, poiColorHex } from "../src/core/poi-style.js";
-import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, canonicalAddress, isIncomeRestrictedListing } from "../src/integrations/providers.js";
+import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, resolveMissingImage, canonicalAddress, isIncomeRestrictedListing } from "../src/integrations/providers.js";
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
   const property = normalizeProperty({
@@ -29,6 +29,28 @@ test("normalizeProperty preserves lifecycle and ranking metadata", () => {
   assert.equal(property.nearSchool, true);
   assert.equal(property.kidFriendly, true);
   assert.equal(property.metadata.providerId, "123");
+});
+
+test("normalizeProperty persists enriched image fields", () => {
+  const property = normalizeProperty({
+    id:"img",
+    imageUrl:"https://example.com/home.jpg",
+    metadata:{ image:"https://example.com/home.jpg" }
+  });
+  assert.equal(property.image, "https://example.com/home.jpg");
+  assert.equal(property.imageUrl, "https://example.com/home.jpg");
+  assert.equal(property.primaryImageUrl, "https://example.com/home.jpg");
+});
+
+test("image resolver returns normalized backend image", async () => {
+  const fetchImpl = async () => ({
+    ok:true,
+    async json(){ return { state:"found", imageUrl:"https://cdn.example.com/photo.jpg", sourceUrl:"https://example.com/listing", checkedAt:"2026-09-25T00:00:00Z", method:"listing-metadata" }; }
+  });
+  const result = await resolveMissingImage({ address:"100 Main St, Fort Collins, CO" }, { location:"Fort Collins, CO" }, fetchImpl);
+  assert.equal(result.state, "found");
+  assert.equal(result.imageUrl, "https://cdn.example.com/photo.jpg");
+  assert.equal(result.method, "listing-metadata");
 });
 
 test("archive filtering hides archived properties", () => {
