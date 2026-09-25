@@ -59,6 +59,13 @@ test("archive filtering hides archived properties", () => {
   assert.deepEqual(filterProperties([visible, archived], "all").map(p => p.id), ["a"]);
 });
 
+test("702 E Myrtle keeps a building-level fallback price", async () => {
+  const seed = (await import("../src/data/properties.js")).properties.find(p => p.id === "702-myrtle");
+  assert.equal(seed.price, 1395);
+  assert.match(seed.metadata?.priceLabel || "", /1,395\/mo/);
+  assert.match(seed.metadata?.priceEvidence || "", /700-718 E Myrtle/i);
+});
+
 test("dedupe merges the same address and preserves saved state", () => {
   const first = normalizeProperty({ id: "old", address: "702 E Myrtle St, Fort Collins, CO", saved: true, note: "Visited" });
   const newer = normalizeProperty({ id: "new", address: "702 E Myrtle St, Fort Collins, CO", price: 1800 });
