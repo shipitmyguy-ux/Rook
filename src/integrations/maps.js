@@ -1,5 +1,6 @@
 import { classifyPropertyKind } from "../core/property.js";
 import { resolvePoiStyle, poiGlyph, poiColorHex } from "../core/poi-style.js";
+import { config } from "../config.js";
 
 const MAPLIBRE_SCRIPT_URL = "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js";
 const OPENFREEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
@@ -823,6 +824,22 @@ export async function searchPoiCandidates(query, fallbackLocation = "Fort Collin
   const queries = poiSearchQueries(query, fallbackLocation);
   if (!queries.length) return [];
   const safeLimit = Math.max(1, Math.min(5, Number(limit) || 5));
+
+  if (config.listings?.endpoint) {
+    try {
+      const endpoint = new URL(config.listings.endpoint, typeof window !== "undefined" ? window.location.href : "http://localhost/");
+      endpoint.searchParams.set("poi", "1");
+      endpoint.searchParams.set("query", String(query || "").trim());
+      endpoint.searchParams.set("location", fallbackLocation || config.search.location);
+      endpoint.searchParams.set("limit", String(safeLimit));
+      const response = await fetch(endpoint, { headers:{ "Accept":"application/json" } });
+      if (response.ok) {
+        const payload = await response.json();
+        const candidates = Array.isArray(payload?.candidates) ? payload.candidates : [];
+        if (candidates.length) return candidates.slice(0, safeLimit);
+      }
+    } catch {}
+  }
   const task = geocodeQueue.then(async () => {
     const found = [];
     const seen = new Set();
