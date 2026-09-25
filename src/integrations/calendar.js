@@ -24,7 +24,7 @@ export function isShowingEvent(event = {}) {
   return /\b(showing|property tour|apartment tour|home tour|walkthrough)\b/i.test([event.title,event.summary,event.description].filter(Boolean).join(" "));
 }
 
-export function googleCalendarShowingUrl(property, startsAt, durationMinutes = 30) {
+export function googleCalendarShowingUrl(property, startsAt, durationMinutes = 60) {
   const start = new Date(startsAt);
   if (Number.isNaN(start.getTime())) return null;
   const end = new Date(start.getTime() + durationMinutes * 60000);
