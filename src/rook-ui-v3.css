@@ -199,3 +199,9 @@ html.settings-modal-open,body.settings-modal-open{overflow:hidden;overscroll-beh
 .settings-dialog-close{width:32px;height:32px;min-width:32px;border-radius:9px;padding:0;line-height:1;font-size:1.15rem}
 #settings-dialog::backdrop{background:rgba(0,0,0,.66);backdrop-filter:blur(2px)}
 @media(max-width:699px){#settings-dialog.settings-dialog-captive{width:calc(100% - 16px);max-height:calc(100dvh - 16px)}#settings-dialog.settings-dialog-captive form{padding:0 14px 16px}.settings-dialog-heading{margin:0 -14px 8px;padding:12px 10px 9px 14px}}
+
+.topbar-actions{display:flex;align-items:center;gap:10px}
+.desktop-refresh-button{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 14px;border:1px solid #34495b;border-radius:14px;background:#0a121d;color:#eef4fa;font-weight:700}
+.desktop-refresh-button:hover{background:#101b26;border-color:#49657a}
+.desktop-refresh-button:disabled{opacity:.6}
+@media(max-width:699px){.desktop-refresh-button{display:none}}
