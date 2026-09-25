@@ -492,7 +492,14 @@ async function resolveUnavailableListings() {
         } else {
           delete nextMetadata.listingClosedEvidence;
         }
+        const fallback = result.priceFallback && Number(result.priceFallback.price) > 0 ? result.priceFallback : null;
+        if (fallback && !(Number(property.price) > 0)) {
+          nextMetadata.priceLabel = fallback.priceLabel || null;
+          nextMetadata.priceEvidence = fallback;
+          nextMetadata.priceFallback = true;
+        }
         store.update(property.id, {
+          ...(fallback && !(Number(property.price) > 0) ? { price:fallback.price } : {}),
           listingState: result.state,
           listingCheckedAt: result.checkedAt,
           metadata: nextMetadata
