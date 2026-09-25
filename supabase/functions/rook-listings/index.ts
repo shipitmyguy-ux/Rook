@@ -1316,18 +1316,73 @@ async function resolveComparablePrice(address: string, label: string, location: 
   const subject = address || label;
   const bedText = targetBeds > 0 ? targetBeds + " bedroom" : "";
   const query = ['"' + subject + '"', bedText, location, "rent"].filter(Boolean).join(" ");
+  const candidates:any[] = [];
+  const seen = new Set<string>();
+
+  const addCandidate = (priceValue:any,bedsValue:any,bathsValue:any,source:string,sourceUrl:string,context="") => {
+    const price = Number(priceValue || 0);
+    if (!(price >= 500 && price <= 10000)) return;
+    const beds = Number(bedsValue || targetBeds || 0);
+    if (targetBeds > 0 && beds > 0 && Math.round(beds) !== Math.round(targetBeds)) return;
+    const key = String(sourceUrl || source) + "|" + price;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({
+      price,
+      beds:beds || null,
+      baths:Number(bathsValue || 0) || null,
+      source,
+      sourceUrl,
+      context:String(context || "").slice(0,1200)
+    });
+  };
+
+  const consider = (context:string, sourceUrl:string, source:string) => {
+    if (!comparableContextMatches(context, address || label, targetBeds)) return;
+    const parsed = fallbackListingFromText(context, sourceUrl, { address, label, source });
+    addCandidate(parsed.price,parsed.beds,parsed.baths,source,sourceUrl,context);
+  };
+
+  // A verified media cache entry also stores the listing/community page that
+  // produced the image. Reuse that source for pricing before repeating discovery.
+  try {
+    const media = await readMediaCache(address,label);
+    const cachedSource = String(media?.sourceUrl || "");
+    if (cachedSource) {
+      const u = new URL(cachedSource);
+      if (isAllowedListingHost(u.hostname)) {
+        const inspected = await inspectListingUrl(cachedSource);
+        if (inspected.reachable && !inspected.closed) {
+          const rows = jsonLdListings(inspected.html,u.hostname,cachedSource);
+          const exact = rows.find(row=>sameAddress(row.address,address));
+          const text = stripHtml(inspected.html).slice(0,80000);
+          if (exact && Number(exact.price)>0) {
+            addCandidate(exact.price,exact.beds,exact.baths,u.hostname,cachedSource,[exact.label,exact.address].filter(Boolean).join(" "));
+          } else if (pageMatchesProperty(text,address,label)) {
+            const page = fallbackListingFromHtml(inspected.html,cachedSource,{address,label,source:u.hostname});
+            if (Number(page.price)>0) {
+              addCandidate(page.price,page.beds,page.baths,u.hostname,cachedSource,text);
+            } else {
+              const reader = await readerText(cachedSource,5000);
+              if (reader && !looksLikeBrowserChallenge(reader)) consider(reader,cachedSource,u.hostname);
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+
   try {
     const cityIndex = await providerCityIndexRecovery(address,label,location);
     if (cityIndex?.listing && Number(cityIndex.listing.price)>0) {
-      const price = Number(cityIndex.listing.price);
-      candidates.push({
-        price,
-        beds:Number(cityIndex.listing.beds||0)||null,
-        baths:Number(cityIndex.listing.baths||0)||null,
-        source:cityIndex.listing.source || "provider-city-index",
-        sourceUrl:cityIndex.listing.sourceUrl || cityIndex.indexUrl,
-        context:[cityIndex.listing.label,cityIndex.listing.address].filter(Boolean).join(" ")
-      });
+      addCandidate(
+        cityIndex.listing.price,
+        cityIndex.listing.beds,
+        cityIndex.listing.baths,
+        cityIndex.listing.source || "provider-city-index",
+        cityIndex.listing.sourceUrl || cityIndex.indexUrl,
+        [cityIndex.listing.label,cityIndex.listing.address].filter(Boolean).join(" ")
+      );
     }
   } catch {}
 
@@ -1336,28 +1391,6 @@ async function resolveComparablePrice(address: string, label: string, location: 
     "https://www.google.com/search?q=" + encodeURIComponent(query),
     "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query)
   ];
-  const candidates:any[] = [];
-  const seen = new Set<string>();
-
-  const consider = (context:string, sourceUrl:string, source:string) => {
-    if (!comparableContextMatches(context, address || label, targetBeds)) return;
-    const parsed = fallbackListingFromText(context, sourceUrl, { address, label, source });
-    const price = Number(parsed.price || 0);
-    if (!(price >= 500 && price <= 10000)) return;
-    const beds = Number(parsed.beds || targetBeds || 0);
-    if (targetBeds > 0 && beds > 0 && Math.round(beds) !== Math.round(targetBeds)) return;
-    const key = sourceUrl + "|" + price;
-    if (seen.has(key)) return;
-    seen.add(key);
-    candidates.push({
-      price,
-      beds:beds || null,
-      baths:Number(parsed.baths || 0) || null,
-      source,
-      sourceUrl,
-      context:String(context).slice(0,1200)
-    });
-  };
 
   for (const searchUrl of searchUrls) {
     try {
@@ -1409,14 +1442,14 @@ async function resolveComparablePrice(address: string, label: string, location: 
     try {
       const listing = await listingFromImageSearchSource(address,label,location);
       if (listing && Number(listing.price)>0) {
-        candidates.push({
-          price:Number(listing.price),
-          beds:Number(listing.beds||0)||null,
-          baths:Number(listing.baths||0)||null,
-          source:listing.source || "image-search-source",
-          sourceUrl:listing.sourceUrl || "",
-          context:[listing.label,listing.address].filter(Boolean).join(" ")
-        });
+        addCandidate(
+          listing.price,
+          listing.beds,
+          listing.baths,
+          listing.source || "image-search-source",
+          listing.sourceUrl || "",
+          [listing.label,listing.address].filter(Boolean).join(" ")
+        );
       }
     } catch {}
   }
