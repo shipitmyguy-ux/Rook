@@ -18,6 +18,7 @@ export const defaultPreferences = Object.freeze({
   defaultTourReminderMinutes: 120,
   emailScanCursor: null,
   emailLastScanAt: null,
+  googleOAuthClientId: "",
   removedPointIds: []
 });
 
@@ -47,6 +48,7 @@ export function normalizePreferences(value = {}) {
     defaultTourReminderMinutes: Math.max(0, Number(value.defaultTourReminderMinutes) || 120),
     emailScanCursor: value.emailScanCursor || null,
     emailLastScanAt: value.emailLastScanAt || null,
+    googleOAuthClientId: String(value.googleOAuthClientId || "").trim(),
     removedPointIds
   };
 }
