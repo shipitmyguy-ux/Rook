@@ -1,6 +1,7 @@
 import { classifyHousingEmail, matchEmailToProperty, normalizeEmailEvent } from "./email.js";
 import { applyTour, normalizeTour } from "../core/tours.js";
 import { applyEvidence } from "../core/property.js";
+import { config } from "../config.js";
 
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 let googleIdentityPromise = null;
@@ -154,6 +155,17 @@ async function scanGmailInBrowser({ since = null, preferences = {} } = {}) {
     messages,
     cursor:new Date().toISOString()
   };
+}
+
+export async function fetchSharedRookState(fetchImpl = fetch) {
+  const endpoint = config.listings?.endpoint;
+  if (!endpoint) return [];
+  const url = new URL(endpoint, typeof window !== "undefined" ? window.location.href : "http://localhost/");
+  url.searchParams.set("state", "1");
+  const response = await fetchImpl(url, { headers:{ Accept:"application/json" } });
+  if (!response.ok) return [];
+  const payload = await response.json();
+  return Array.isArray(payload?.state) ? payload.state : [];
 }
 
 export function getRookSyncBridge() {
