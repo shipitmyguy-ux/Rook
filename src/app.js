@@ -10,7 +10,7 @@ import { rankProperties, rankProperty } from "./core/ranking.js";
 import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
-import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing } from "./integrations/providers.js";
+import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, matchesSearchDefaults } from "./integrations/providers.js";
 import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap } from "./integrations/maps.js?v=poi-editor-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
@@ -436,7 +436,9 @@ function propertyCard(property) {
 }
 
 function visibleProperties() {
-  const filtered = searchProperties(filterProperties(store.getAll(), activeFilter), query);
+  const restricted = filterProperties(store.getAll(), activeFilter)
+    .filter(property => matchesSearchDefaults(property, preferences));
+  const filtered = searchProperties(restricted, query);
   const ranked = rankProperties(filtered, preferences);
   return ranked.sort((a,b) => {
     const at = tourForProperty(a, preferences), bt = tourForProperty(b, preferences);
