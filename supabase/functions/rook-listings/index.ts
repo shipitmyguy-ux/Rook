@@ -664,6 +664,137 @@ function searchSnippetContext(html: string, needles: string[]) {
   return "";
 }
 
+function streetComparableKey(value: unknown) {
+  const first = String(value || "").split(",")[0] || "";
+  return canonicalAddress(
+    first
+      .replace(/^\s*\d+[A-Za-z]?\s+/, "")
+      .replace(/\s+(?:unit|apt|apartment|suite|#)\s*[A-Za-z0-9-]+\s*$/i, "")
+  );
+}
+
+function streetNumberValue(value: unknown) {
+  const raw = String(value || "").trim().match(/^(\d+)/)?.[1];
+  return raw ? Number(raw) : null;
+}
+
+function comparableContextMatches(context: string, address: string, targetBeds = 0) {
+  const key = streetComparableKey(address);
+  if (!key || !canonicalAddress(context).includes(key)) return false;
+  if (targetBeds > 0) {
+    const beds = firstMatchNumber(context, [/([\d.]+)\s*(?:bed|beds|bedroom|bedrooms)\b/i]);
+    if (beds != null && Math.round(beds) !== Math.round(targetBeds)) return false;
+  }
+  const targetNumber = streetNumberValue(address);
+  const numbers = [...String(context).matchAll(/\b(\d{2,5})\s+[A-Za-z]/g)]
+    .map(match => Number(match[1]))
+    .filter(Number.isFinite);
+  if (targetNumber && numbers.length) {
+    const close = numbers.some(value => Math.abs(value - targetNumber) <= 50);
+    if (!close) return false;
+  }
+  return true;
+}
+
+async function resolveComparablePrice(address: string, label: string, location: string, targetBeds = 0, targetBaths = 0) {
+  if (!address && !label) return null;
+  const checkedAt = new Date().toISOString();
+  const subject = address || label;
+  const bedText = targetBeds > 0 ? targetBeds + " bedroom" : "";
+  const query = ['"' + subject + '"', bedText, location, "rent"].filter(Boolean).join(" ");
+  const searchUrls = [
+    "https://www.bing.com/search?format=rss&q=" + encodeURIComponent(query),
+    "https://www.google.com/search?q=" + encodeURIComponent(query),
+    "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query)
+  ];
+  const candidates:any[] = [];
+  const seen = new Set<string>();
+
+  const consider = (context:string, sourceUrl:string, source:string) => {
+    if (!comparableContextMatches(context, address || label, targetBeds)) return;
+    const parsed = fallbackListingFromText(context, sourceUrl, { address, label, source });
+    const price = Number(parsed.price || 0);
+    if (!(price >= 500 && price <= 10000)) return;
+    const beds = Number(parsed.beds || targetBeds || 0);
+    if (targetBeds > 0 && beds > 0 && Math.round(beds) !== Math.round(targetBeds)) return;
+    const key = sourceUrl + "|" + price;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({
+      price,
+      beds:beds || null,
+      baths:Number(parsed.baths || 0) || null,
+      source,
+      sourceUrl,
+      context:String(context).slice(0,1200)
+    });
+  };
+
+  for (const searchUrl of searchUrls) {
+    try {
+      const text = await readerText(searchUrl, 5000);
+      const lines = String(text || "").split(/\n+/);
+      for (let i=0; i<lines.length; i++) {
+        const context = lines.slice(Math.max(0,i-3), Math.min(lines.length,i+5)).join(" ");
+        if (!comparableContextMatches(context, address || label, targetBeds)) continue;
+        const hrefs = [
+          ...[...context.matchAll(/\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m=>m[1]),
+          ...[...context.matchAll(/(https?:\/\/[^\s<>"')]+)/g)].map(m=>m[1])
+        ];
+        let acceptedUrl = "";
+        for (const href of hrefs) {
+          const normalized = normalizeSearchResultUrl(href);
+          if (!normalized) continue;
+          try {
+            const u = new URL(normalized);
+            if (!isAllowedListingHost(u.hostname)) continue;
+            acceptedUrl = normalized;
+            break;
+          } catch {}
+        }
+        if (!acceptedUrl) continue;
+        consider(context, acceptedUrl, new URL(acceptedUrl).hostname);
+      }
+    } catch {}
+    if (candidates.length >= 4) break;
+  }
+
+  if (!candidates.length) {
+    try {
+      const snapshot = await browserSnapshot("https://www.google.com/search?q=" + encodeURIComponent(query));
+      for (const link of Array.isArray(snapshot?.links) ? snapshot.links : []) {
+        const context = [link?.text, link?.context].filter(Boolean).join(" ");
+        if (!comparableContextMatches(context, address || label, targetBeds)) continue;
+        const normalized = normalizeSearchResultUrl(link?.href);
+        if (!normalized) continue;
+        try {
+          const u = new URL(normalized);
+          if (!isAllowedListingHost(u.hostname)) continue;
+          consider(context, normalized, u.hostname);
+        } catch {}
+      }
+    } catch {}
+  }
+
+  if (!candidates.length) return null;
+  candidates.sort((a,b) => a.price - b.price);
+  const prices = [...new Set(candidates.map(item=>item.price))];
+  const price = prices[Math.floor((prices.length - 1) / 2)];
+  const evidence = candidates.filter(item=>item.price===price).slice(0,3);
+  const labelText = targetBeds > 0
+    ? "$" + price.toLocaleString("en-US") + "/mo (building " + targetBeds + "BR)"
+    : "$" + price.toLocaleString("en-US") + "/mo (building comparable)";
+  return {
+    price,
+    priceLabel:labelText,
+    checkedAt,
+    targetBeds:targetBeds || null,
+    targetBaths:targetBaths || null,
+    method:"same-street-building-comparable",
+    evidence:evidence.map(item=>({ source:item.source, sourceUrl:item.sourceUrl, price:item.price, beds:item.beds, baths:item.baths }))
+  };
+}
+
 async function resolveListing(address: string, label: string, location: string, sourceUrl = "") {
   const checkedAt = new Date().toISOString();
   const citySlug = location.toLowerCase().replace(/,.*$/, "").trim().replace(/[^a-z0-9]+/g, "-");
@@ -1145,9 +1276,15 @@ Deno.serve(async (req: Request) => {
     const address = (url.searchParams.get("address") || "").trim();
     const label = (url.searchParams.get("label") || "").trim();
     const sourceUrl = (url.searchParams.get("sourceUrl") || "").trim();
+    const targetBeds = Number(url.searchParams.get("beds") || "0");
+    const targetBaths = Number(url.searchParams.get("baths") || "0");
     if (!address && !label && !sourceUrl) return new Response(JSON.stringify({ state:"unknown", listing:null, checkedAt:new Date().toISOString(), error:"address, label, or sourceUrl required" }), { status:400, headers:corsHeaders });
     const result = await resolveListing(address, label, location, sourceUrl);
-    return new Response(JSON.stringify(result), { headers:corsHeaders });
+    let priceFallback = null;
+    if (!(Number(result?.listing?.price) > 0)) {
+      priceFallback = await resolveComparablePrice(address, label, location, targetBeds, targetBaths);
+    }
+    return new Response(JSON.stringify({ ...result, priceFallback }), { headers:corsHeaders });
   }
   const minBeds = Number(url.searchParams.get("minBeds") || "2");
   const maxPrice = Number(url.searchParams.get("maxPrice") || "0");
