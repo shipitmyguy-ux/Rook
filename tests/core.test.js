@@ -93,6 +93,17 @@ test("backup parser rejects unsupported formats", () => {
 });
 
 
+test("legacy primary POI migrates into the unified POI list", () => {
+  const prefs = normalizePreferences({
+    address1:{ label:"Ridge Runner", query:"Ridge Runner", lat:40.58, lng:-105.05 },
+    pointsOfInterest:[]
+  });
+  assert.equal(prefs.address1, null);
+  assert.equal(prefs.pointsOfInterest.length, 1);
+  assert.equal(prefs.pointsOfInterest[0].id, "address-1");
+  assert.equal(prefs.pointsOfInterest[0].primary, false);
+});
+
 test("loose POI names are scoped to the current search location", () => {
   assert.equal(poiLocationQuery({ query:"Ridge Runner" }, "Fort Collins, CO"), "Ridge Runner, Fort Collins, CO");
   assert.equal(poiLocationQuery({ address:"5480 Ziegler Rd, Fort Collins, CO 80528" }, "Fort Collins, CO"), "5480 Ziegler Rd, Fort Collins, CO 80528");
