@@ -203,6 +203,32 @@ function searchCommunityUrlsFromText(text: string, address = "", label = "") {
   return urls;
 }
 
+function searchStreetClusterUrlsFromText(text: string, address = "", label = "") {
+  const urls:string[] = [];
+  const seen = new Set<string>();
+  const lines = String(text || "").split(/\n+/);
+  for (let i=0; i<lines.length; i++) {
+    const context = lines.slice(Math.max(0,i-3),Math.min(lines.length,i+5)).join(" ");
+    if (!comparableContextMatches(context,address || label,0)) continue;
+    const hrefs = [
+      ...[...context.matchAll(/\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m=>m[1]),
+      ...[...context.matchAll(/(https?:\/\/[^\s<>"')]+)/g)].map(m=>m[1])
+    ];
+    for (const href of hrefs) {
+      const normalized = normalizeSearchResultUrl(href);
+      if (!normalized || seen.has(normalized)) continue;
+      try {
+        const url = new URL(normalized);
+        if (!isAllowedListingHost(url.hostname)) continue;
+        seen.add(normalized);
+        urls.push(normalized);
+        if (urls.length >= 5) return urls;
+      } catch {}
+    }
+  }
+  return urls;
+}
+
 function streetClusterQuery(address = "", label = "") {
   const raw = String(address || label || "");
   const first = raw.split(",")[0] || "";
@@ -415,7 +441,7 @@ async function resolveListingImage(address: string, label: string, location: str
     for (const searchUrl of clusterSearches) {
       try {
         const reader = await readerText(searchUrl,5000);
-        for (const url of searchCandidateUrlsFromText(reader,cluster.withoutUnit,label)) {
+        for (const url of searchStreetClusterUrlsFromText(reader,cluster.withoutUnit,label)) {
           if (!clusterUrls.includes(url)) clusterUrls.push(url);
           if (clusterUrls.length >= 4) break;
         }
@@ -423,7 +449,7 @@ async function resolveListingImage(address: string, label: string, location: str
       if (clusterUrls.length >= 4) break;
     }
     for (const clusterUrl of clusterUrls) {
-      const result = await imageFromListingPage(clusterUrl,cluster.withoutUnit,label);
+      const result = await imageFromListingPage(clusterUrl,cluster.streetOnly,label);
       if (result?.imageUrl) {
         return {
           state:"found",
