@@ -1030,6 +1030,12 @@ document.querySelector("#set-address-1").addEventListener("click", () => {
   renderPoiStyleSettings();
   renderList();
 });
+document.querySelector("#pref-address-1").addEventListener("keydown", event => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    document.querySelector("#set-address-1").click();
+  }
+});
 document.querySelector("#remove-address-1").addEventListener("click", () => {
   preferences = {
     ...preferences,
