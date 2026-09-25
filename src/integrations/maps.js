@@ -803,24 +803,69 @@ export function normalizePoiSearchCandidate(row = {}, originalQuery = "") {
   };
 }
 
+export function poiSearchQueries(query, fallbackLocation = "Fort Collins, CO") {
+  const raw = normalizeQuery(query);
+  if (!raw) return [];
+  const hasRoadSuffix = /\b(?:st|street|rd|road|dr|drive|ln|lane|way|ct|court|ave|avenue|blvd|boulevard|pkwy|parkway|pl|place|cir|circle|trl|trail)\.?$/i.test(raw);
+  const values = [];
+  const add = value => {
+    const scoped = poiLocationQuery({ query:value }, fallbackLocation);
+    if (scoped && !values.includes(scoped)) values.push(scoped);
+  };
+  add(raw);
+  if (!hasRoadSuffix) {
+    for (const suffix of ["Drive","Road","Street","Way","Lane","Court","Avenue","Place","Trail"]) add(raw + " " + suffix);
+  }
+  return values;
+}
+
 export async function searchPoiCandidates(query, fallbackLocation = "Fort Collins, CO", limit = 5) {
-  const q = poiLocationQuery({ query }, fallbackLocation);
-  if (!q) return [];
+  const queries = poiSearchQueries(query, fallbackLocation);
+  if (!queries.length) return [];
   const safeLimit = Math.max(1, Math.min(5, Number(limit) || 5));
   const task = geocodeQueue.then(async () => {
-    const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&dedupe=1&countrycodes=us&limit=" + safeLimit + "&q=" + encodeURIComponent(q);
-    try {
-      const response = await fetch(url, { headers: { "Accept": "application/json" } });
-      if (!response.ok) return [];
-      const rows = await response.json();
-      return (Array.isArray(rows) ? rows : [])
-        .map(row => normalizePoiSearchCandidate(row, query))
-        .filter(Boolean);
-    } catch {
-      return [];
-    } finally {
-      await new Promise(resolve => setTimeout(resolve, 1050));
+    const found = [];
+    const seen = new Set();
+    const fetchRows = async q => {
+      const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&dedupe=1&countrycodes=us&limit=" + safeLimit + "&q=" + encodeURIComponent(q);
+      try {
+        const response = await fetch(url, { headers: { "Accept": "application/json" } });
+        if (!response.ok) return [];
+        const rows = await response.json();
+        return Array.isArray(rows) ? rows : [];
+      } catch {
+        return [];
+      }
+    };
+
+    for (let index = 0; index < queries.length && found.length < safeLimit; index += 1) {
+      const q = queries[index];
+      const rows = await fetchRows(q);
+      for (const row of rows) {
+        const candidate = normalizePoiSearchCandidate(row, query);
+        if (!candidate) continue;
+        const key = (candidate.address || "").toLowerCase() + "|" + candidate.lat.toFixed(5) + "|" + candidate.lng.toFixed(5);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        found.push({ ...candidate, matchedQuery:q });
+        if (found.length >= safeLimit) break;
+      }
+      if (found.length >= safeLimit) break;
+      if (index < queries.length - 1) await new Promise(resolve => setTimeout(resolve, 1050));
     }
+
+    const locationTokens = String(fallbackLocation || "").toLowerCase().split(/[,\s]+/).filter(token => token.length > 2);
+    const needle = String(query || "").trim().toLowerCase();
+    return found.sort((a,b) => {
+      const aText = (a.address || "").toLowerCase(), bText = (b.address || "").toLowerCase();
+      const aLocal = locationTokens.reduce((score, token) => score + (aText.includes(token) ? 1 : 0), 0);
+      const bLocal = locationTokens.reduce((score, token) => score + (bText.includes(token) ? 1 : 0), 0);
+      const aMatch = needle && (a.label || a.address || "").toLowerCase().includes(needle) ? 1 : 0;
+      const bMatch = needle && (b.label || b.address || "").toLowerCase().includes(needle) ? 1 : 0;
+      return (bLocal - aLocal) || (bMatch - aMatch);
+    }).slice(0, safeLimit);
+  }).finally(async () => {
+    await new Promise(resolve => setTimeout(resolve, 1050));
   });
   geocodeQueue = task.catch(() => []);
   return task;
