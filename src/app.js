@@ -713,7 +713,7 @@ function renderList() {
 }
 
 app.innerHTML = `<main class="shell">
-<header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></header>
+<header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><div class="topbar-actions"><button type="button" class="desktop-refresh-button" data-refresh-listings aria-label="Refresh listings">↻ <span>Refresh listings</span></button><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></div></header>
 <div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div>
 <section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><div id="property-map" class="property-map" role="region" aria-label="Interactive property map"></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
 <section id="map-details" class="map-details" aria-label="Property details" aria-live="polite" hidden></section>
