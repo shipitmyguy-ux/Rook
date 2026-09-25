@@ -33,12 +33,17 @@ export const properties = [
     address: "702 E Myrtle St, Fort Collins, CO 80524",
     type: "Apartment",
     listingType: "rent",
-    price: null,
+    price: 1395,
     beds: 2,
     baths: 1,
     saved: true,
     status: "shortlisted",
     nearSchool: true,
+    metadata: {
+      priceLabel: "$1,395/mo (building 2BR)",
+      priceEvidence: "Current 2BR/1BA listings in the 700-718 E Myrtle building",
+      priceEvidenceDate: "2026-09-24"
+    },
     note: "Very high interest. Very close to an elementary school."
   },
   {
