@@ -111,6 +111,30 @@ export function isUsableListing(property) {
   return true;
 }
 
+const VERIFIED_INCOME_RESTRICTED_COMMUNITIES = [
+  { label:/\bbuffalo\s+run(?:\s+apartments)?\b/i, address:/\b1245\s+e\s+lincoln\s+ave\b/i }
+];
+
+export function incomeRestrictionText(property = {}) {
+  const metadata = property.metadata && typeof property.metadata === "object" ? property.metadata : {};
+  const parts = [
+    property.label, property.address, property.type, property.note,
+    metadata.description, metadata.summary, metadata.tags, metadata.features,
+    metadata.amenities, metadata.badges, metadata.highlights, metadata.category,
+    metadata.categories, metadata.qualifications, metadata.programs
+  ];
+  try { parts.push(JSON.stringify(metadata)); } catch {}
+  return parts.filter(Boolean).join(" ").toLowerCase();
+}
+
+export function isIncomeRestrictedListing(property = {}) {
+  const text = incomeRestrictionText(property);
+  if (/(income[-\s]restricted|income\s+(?:limit|limits|limited|qualified|qualification|qualifications)|income-qualified|affordable\s+housing(?:\s+programs?)?|section\s*8|\blihtc\b|low[-\s]income\s+housing\s+tax\s+credit)/i.test(text)) return true;
+  const label = String(property.label || "");
+  const address = String(property.address || "");
+  return VERIFIED_INCOME_RESTRICTED_COMMUNITIES.some(item => item.label.test(label) || (item.address.test(address) && /buffalo\s+run/i.test(label + " " + text)));
+}
+
 export function matchesSearchDefaults(property, criteria = {}) {
   if (!isUsableListing(property)) return false;
   const minBeds = criteria.minBeds ?? config.search.minBeds;
@@ -125,8 +149,7 @@ export function matchesSearchDefaults(property, criteria = {}) {
   if (maxPrice && property.listingType === "rent" && property.price != null && property.price > maxPrice) return false;
   const text = [property.label, property.address, property.type, property.note, property.metadata?.description]
     .filter(Boolean).join(" ").toLowerCase();
-  if ((criteria.excludeIncomeRestricted ?? config.search.excludeIncomeRestricted) &&
-      /(income[- ]restricted|income limits?|affordable housing|section 8)/i.test(text)) return false;
+  if ((criteria.excludeIncomeRestricted ?? config.search.excludeIncomeRestricted) && isIncomeRestrictedListing(property)) return false;
   if ((criteria.excludeMobileHomes ?? config.search.excludeMobileHomes) &&
       /(mobile home|manufactured home|trailer park)/i.test(text)) return false;
   return true;
