@@ -23,9 +23,16 @@ export const defaultPreferences = Object.freeze({
 
 export function normalizePreferences(value = {}) {
   const types = Array.isArray(value.propertyTypes) ? value.propertyTypes.filter(Boolean) : defaultPreferences.propertyTypes;
+  const removedPointIds = Array.isArray(value.removedPointIds) ? [...new Set(value.removedPointIds.map(String))] : [];
+  const pointsOfInterest = Array.isArray(value.pointsOfInterest) ? [...value.pointsOfInterest] : [];
+  if (value.address1 && !removedPointIds.includes("address-1") && !pointsOfInterest.some(point => String(point?.id) === "address-1")) {
+    pointsOfInterest.unshift({ id:"address-1", ...value.address1, primary:false, kind:"poi" });
+  }
   return {
     ...defaultPreferences,
     ...value,
+    address1:null,
+    pointsOfInterest,
     location: String(value.location || defaultPreferences.location).trim(),
     radiusMiles: Math.max(1, Number(value.radiusMiles) || defaultPreferences.radiusMiles),
     minBeds: Math.max(0, Number(value.minBeds) || 0),
@@ -40,7 +47,7 @@ export function normalizePreferences(value = {}) {
     defaultTourReminderMinutes: Math.max(0, Number(value.defaultTourReminderMinutes) || 120),
     emailScanCursor: value.emailScanCursor || null,
     emailLastScanAt: value.emailLastScanAt || null,
-    removedPointIds: Array.isArray(value.removedPointIds) ? [...new Set(value.removedPointIds.map(String))] : []
+    removedPointIds
   };
 }
 export function loadPreferences() {
