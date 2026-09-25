@@ -11,6 +11,7 @@ import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
 import { normalizePreferences } from "../src/core/preferences.js";
 import { config } from "../src/config.js";
+import { normalizeTour, tourState, tourLabel, applyTour } from "../src/core/tours.js";
 import { normalizePointStyles, resolvePoiStyle, poiGlyph, poiColorHex } from "../src/core/poi-style.js";
 import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, canonicalAddress } from "../src/integrations/providers.js";
 
@@ -90,6 +91,24 @@ test("backup parser rejects unsupported formats", () => {
   assert.throws(() => parseRookBackup('{"version":2,"properties":[]}'), /Unsupported Rook backup version/);
 });
 
+
+test("tour defaults use one hour and two hour reminders", () => {
+  const tour = normalizeTour({ startsAt:"2026-09-29T20:30:00Z" }, {});
+  assert.equal(tour.durationMinutes, 60);
+  assert.equal(tour.reminderMinutes, 120);
+  assert.equal(new Date(tour.endsAt) - new Date(tour.startsAt), 60 * 60 * 1000);
+});
+
+test("tour lifecycle exposes upcoming soon and past states", () => {
+  const tour = normalizeTour({ startsAt:"2026-09-29T20:30:00Z" }, {});
+  assert.equal(tourState(tour, new Date("2026-09-28T18:00:00Z")), "upcoming");
+  assert.equal(tourState(tour, new Date("2026-09-29T18:00:00Z")), "soon");
+  assert.equal(tourState(tour, new Date("2026-09-29T22:00:00Z")), "past");
+  assert.match(tourLabel(tour, new Date("2026-09-28T18:00:00Z")), /Sep|Tue|Mon|Tomorrow|Today/);
+  const property = applyTour({ id:"p", metadata:{} }, tour, {});
+  assert.equal(property.status, "showing-scheduled");
+  assert.equal(property.metadata.tour.reminderMinutes, 120);
+});
 
 test("address marker styles normalize to predefined icons and colors", () => {
   const styles = normalizePointStyles({
