@@ -703,7 +703,7 @@ app.innerHTML = `<main class="shell">
 <dialog id="settings-dialog"><form method="dialog"><h2>Search preferences</h2>
 <fieldset class="poi-manager"><legend>Map points of interest</legend>
   <label>Primary place / road<input id="pref-address-1" type="text" placeholder="Ridge Runner, Ridge Runner Dr, Twin Silo Park…"></label>
-  <button id="set-address-1" type="button">Set primary POI</button>
+  <div class="poi-primary-actions"><button id="set-address-1" type="button">Set primary POI</button><button id="remove-address-1" type="button">Remove primary</button></div>
   <div class="poi-add-row"><input id="pref-poi-query" type="text" placeholder="Place, road, landmark, or full address"><button id="add-poi" type="button">Add POI</button></div>
   <small>Exact street numbers are optional. Loose names are searched near the current Rook search location.</small>
 </fieldset>
@@ -1027,6 +1027,17 @@ document.querySelector("#set-address-1").addEventListener("click", () => {
     removedPointIds:(preferences.removedPointIds || []).filter(id => id !== "address-1")
   };
   savePreferences(preferences);
+  renderPoiStyleSettings();
+  renderList();
+});
+document.querySelector("#remove-address-1").addEventListener("click", () => {
+  preferences = {
+    ...preferences,
+    address1:null,
+    removedPointIds:[...new Set([...(preferences.removedPointIds || []), "address-1"])]
+  };
+  savePreferences(preferences);
+  document.querySelector("#pref-address-1").value = "";
   renderPoiStyleSettings();
   renderList();
 });
