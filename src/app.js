@@ -14,7 +14,7 @@ import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMis
 import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates } from "./integrations/maps.js?v=park-contrast-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
-import { scanHousingEmail, reconcileTourCalendar } from "./integrations/sync.js?v=tours-v1";
+import { scanHousingEmail, reconcileTourCalendar } from "./integrations/sync.js?v=gmail-oauth-v1";
 import { config } from "./config.js";
 
 const app = document.querySelector("#app");
@@ -103,8 +103,13 @@ async function scanEmailNow() {
   try {
     const result = await scanHousingEmail(store.getAll(), { since:preferences.emailScanCursor, preferences });
     if (!result.connected) {
-      if (status) status.textContent = "Email sync is not connected to Rook yet.";
-      recordActivity("email-scan-unavailable", null);
+      if (result.setupRequired) {
+        if (status) status.textContent = "Gmail setup required · add your Google OAuth client ID in Search preferences.";
+        recordActivity("email-scan-setup-required", null);
+      } else {
+        if (status) status.textContent = "Email sync is not connected to Rook yet.";
+        recordActivity("email-scan-unavailable", null);
+      }
       return;
     }
     for (const update of result.updates) {
@@ -774,6 +779,10 @@ app.innerHTML = `<main class="shell">
 <label class="check-row"><input id="pref-exclude-mobile" type="checkbox"> Exclude mobile/manufactured homes</label>
 <label class="check-row"><input id="pref-kid-friendly" type="checkbox"> Prioritize kid-friendly areas</label>
 <label class="check-row"><input id="pref-school" type="checkbox"> Prioritize nearby schools</label>
+<fieldset class="email-sync-options"><legend>Gmail sync</legend>
+<label>Google OAuth client ID<input id="pref-google-oauth-client-id" type="text" autocomplete="off" placeholder="1234567890-…apps.googleusercontent.com"></label>
+<small>Required once for in-app Gmail scanning. Rook stores only the public OAuth client ID; Gmail access tokens stay in the browser session.</small>
+</fieldset>
 <fieldset class="tour-defaults"><legend>Tour defaults</legend><label>Duration (minutes)<input id="pref-tour-duration" type="number" min="15" step="15"></label><label>Reminder (minutes before)<input id="pref-tour-reminder" type="number" min="0" step="15"></label><small>Defaults: 60-minute tours and a reminder 2 hours before.</small></fieldset>
 <label>Visual theme<select id="pref-theme"><option value="default">Default · Twilight</option><option value="warm">Warm</option><option value="night">Night</option><option value="mono">Monochrome</option></select></label>
 <input id="restore-data" type="file" accept="application/json,.json" hidden><div class="dialog-actions"><button id="restore-button" type="button">Restore backup</button><button id="export-data" type="button">Export backup</button><button value="cancel">Cancel</button><button id="save-settings" value="default">Save</button></div></form></dialog>
@@ -1165,6 +1174,7 @@ function openSettings() {
   document.querySelector("#pref-exclude-mobile").checked = preferences.excludeMobileHomes !== false;
   document.querySelector("#pref-kid-friendly").checked = Boolean(preferences.kidFriendlyPriority);
   document.querySelector("#pref-school").checked = Boolean(preferences.schoolPriority);
+  document.querySelector("#pref-google-oauth-client-id").value = preferences.googleOAuthClientId || "";
   document.querySelector("#pref-tour-duration").value = preferences.defaultTourDurationMinutes ?? 60;
   document.querySelector("#pref-tour-reminder").value = preferences.defaultTourReminderMinutes ?? 120;
   document.querySelector("#pref-theme").value = preferences.visualTheme || "default";
@@ -1239,6 +1249,7 @@ document.querySelector("#save-settings").addEventListener("click", e => {
     ...preferences,
     address1:null,
     pointStyles,
+    googleOAuthClientId: document.querySelector("#pref-google-oauth-client-id").value.trim(),
     defaultTourDurationMinutes: Math.max(15, Number(document.querySelector("#pref-tour-duration").value) || 60),
     defaultTourReminderMinutes: Math.max(0, Number(document.querySelector("#pref-tour-reminder").value) || 120),
     location: document.querySelector("#pref-location").value.trim() || config.search.location,
