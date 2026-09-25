@@ -78,7 +78,7 @@ async function updateOverviewPois() {
   const pois = overviewState.latestOptions.pointsOfInterest || [];
   const points = [];
   for (const poi of pois) {
-    const query = poi.address || poi.query || poi.location || poi.label;
+    const query = poiLocationQuery(poi, overviewState.latestOptions.location);
     const point = validCoordinates(poi) || (query ? await geocode(query) : null);
     if (run !== poiRun) return;
     if (point) points.push({ ...poi, ...point });
@@ -189,6 +189,13 @@ export function mapLocationQueries(property, fallbackLocation = "Fort Collins, C
 
 function mapLocationQuery(property, fallbackLocation = "Fort Collins, CO") {
   return mapLocationQueries(property, fallbackLocation)[0] || "";
+}
+
+export function poiLocationQuery(poi = {}, fallbackLocation = "Fort Collins, CO") {
+  const raw = String(poi.address || poi.query || poi.location || poi.label || "").trim();
+  if (!raw) return "";
+  const hasContext = raw.includes(",") || /\b(?:co|colorado)\b/i.test(raw) || /\b\d{5}(?:-\d{4})?\b/.test(raw);
+  return hasContext || !fallbackLocation ? raw : [raw, fallbackLocation].filter(Boolean).join(", ");
 }
 
 function validCoordinates(point) {
@@ -873,7 +880,7 @@ export async function resolvePropertyDistances(property, pointsOfInterest = [], 
     if (distanceInflight.has(key)) return distanceInflight.get(key);
 
     const task = (async () => {
-      const poiPoint = validCoordinates(poi) || await geocode(poi.address || poi.query || poi.location || poi.label);
+      const poiPoint = validCoordinates(poi) || await geocode(poiLocationQuery(poi, fallbackLocation));
       const distance = propertyPoint && poiPoint ? haversineMiles(propertyPoint, poiPoint) : null;
       storeDistanceValue(key, distance);
       const style = resolvePoiStyle(poi, index);
@@ -920,7 +927,7 @@ export async function renderCardMap(container, property, pointsOfInterest = [], 
   const propertyPoint = point || fallbackPoint;
   const pois = [];
   for (const poi of pointsOfInterest) {
-    const resolved = validCoordinates(poi) || await geocode(poi.address || poi.query || poi.location || poi.label);
+    const resolved = validCoordinates(poi) || await geocode(poiLocationQuery(poi, fallbackLocation));
     if (resolved) pois.push({ ...poi, ...resolved });
   }
   if (!container.isConnected || cardMapViews.get(container) !== view) return;
