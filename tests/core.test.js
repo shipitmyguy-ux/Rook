@@ -208,6 +208,11 @@ test("POI lookup candidates preserve resolved map data for approval", () => {
   });
 });
 
+test("Gmail OAuth client ID persists as a public preference", () => {
+  const prefs = normalizePreferences({ googleOAuthClientId:" 123-example.apps.googleusercontent.com " });
+  assert.equal(prefs.googleOAuthClientId, "123-example.apps.googleusercontent.com");
+});
+
 test("tour defaults use one hour and two hour reminders", () => {
   const tour = normalizeTour({ startsAt:"2026-09-29T20:30:00Z" }, {});
   assert.equal(tour.durationMinutes, 60);
