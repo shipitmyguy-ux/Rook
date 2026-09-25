@@ -102,6 +102,81 @@ async function browserSnapshot(url: string) {
   }
 }
 
+function usablePhotoUrl(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw || !/^https?:\/\//i.test(raw)) return "";
+  if (/\.(?:svg|gif)(?:\?|$)/i.test(raw)) return "";
+  if (/(?:logo|icon|avatar|sprite|badge|marker|map|floorplan|floor-plan|siteplan|site-plan)/i.test(raw)) return "";
+  return raw;
+}
+
+function imageFromBrowserSnapshot(snapshot: any, address = "", label = "") {
+  const images = Array.isArray(snapshot?.images) ? snapshot.images : [];
+  const pageText = String(snapshot?.text || "");
+  if ((address || label) && !contextMatchesAddress(pageText, address, label)) return null;
+  const ranked = images.map((image:any) => {
+    const src = usablePhotoUrl(image?.src);
+    if (!src) return null;
+    const width = Number(image?.naturalWidth || image?.width || 0);
+    const height = Number(image?.naturalHeight || image?.height || 0);
+    if (width && height && (width < 300 || height < 180)) return null;
+    const text = [image?.alt, image?.context, src].filter(Boolean).join(" ");
+    if (/(logo|icon|avatar|map|floor\s*plan|site\s*plan)/i.test(text)) return null;
+    let score = Math.min(20, Math.floor((width * height) / 120000));
+    if (width >= 800) score += 4;
+    if (height >= 500) score += 3;
+    if (/photo|home|house|apartment|townhome|property|exterior|interior|living|kitchen|bedroom/i.test(text)) score += 3;
+    if (address && contextMatchesAddress(text, address, label)) score += 5;
+    return { src, score, width, height };
+  }).filter(Boolean).sort((a:any,b:any) => b.score - a.score);
+  return ranked[0] || null;
+}
+
+async function resolveListingImage(address: string, label: string, location: string, sourceUrl = "") {
+  const checkedAt = new Date().toISOString();
+  const resolved = await resolveListing(address, label, location, sourceUrl);
+  const listing = resolved?.listing || null;
+  const directImage = usablePhotoUrl(
+    listing?.primaryImageUrl || listing?.imageUrl || listing?.image ||
+    listing?.metadata?.image || listing?.metadata?.imageUrl
+  );
+  const candidateUrl = String(listing?.sourceUrl || sourceUrl || "");
+  if (resolved?.state === "active" && directImage) {
+    return {
+      state:"found",
+      imageUrl:directImage,
+      sourceUrl:candidateUrl || null,
+      checkedAt,
+      method:"listing-metadata"
+    };
+  }
+
+  if (resolved?.state === "active" && candidateUrl) {
+    try {
+      const snapshot = await browserSnapshot(candidateUrl);
+      const browserImage = imageFromBrowserSnapshot(snapshot, address, label);
+      if (browserImage?.src) {
+        return {
+          state:"found",
+          imageUrl:browserImage.src,
+          sourceUrl:candidateUrl,
+          checkedAt,
+          method:"browser-page",
+          dimensions:{ width:browserImage.width, height:browserImage.height }
+        };
+      }
+    } catch {}
+  }
+
+  return {
+    state:"missing",
+    imageUrl:null,
+    sourceUrl:candidateUrl || sourceUrl || null,
+    checkedAt,
+    method:"none"
+  };
+}
+
 function looksLikeBrowserChallenge(text: string) {
   return /performing security verification|verify you are not a bot|checking your browser|cloudflare|access denied|enable javascript and cookies|captcha|security service to protect against malicious bots/i.test(text);
 }
@@ -906,6 +981,14 @@ Deno.serve(async (req: Request) => {
     if (!query) return new Response(JSON.stringify({ candidates:[], error:"query required" }), { status:400, headers:corsHeaders });
     const candidates = await searchPoiSuggestions(query, location, limit);
     return new Response(JSON.stringify({ candidates, query, location }), { headers:corsHeaders });
+  }
+  if (url.searchParams.get("image") === "1") {
+    const address = (url.searchParams.get("address") || "").trim();
+    const label = (url.searchParams.get("label") || "").trim();
+    const sourceUrl = (url.searchParams.get("sourceUrl") || "").trim();
+    if (!address && !label && !sourceUrl) return new Response(JSON.stringify({ state:"missing", imageUrl:null, checkedAt:new Date().toISOString(), error:"address, label, or sourceUrl required" }), { status:400, headers:corsHeaders });
+    const result = await resolveListingImage(address, label, location, sourceUrl);
+    return new Response(JSON.stringify(result), { headers:corsHeaders });
   }
   if (url.searchParams.get("resolve") === "1") {
     const address = (url.searchParams.get("address") || "").trim();
