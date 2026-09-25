@@ -135,8 +135,17 @@ function imageFromBrowserSnapshot(snapshot: any, address = "", label = "") {
 function pageMatchesProperty(text: string, address = "", label = "") {
   if (!text) return false;
   if (address && contextMatchesAddress(text, address, label)) return true;
+  const normalizedText = canonicalAddress(text);
   const cleanLabel = String(label || "").trim();
-  if (cleanLabel.length >= 5 && canonicalAddress(text).includes(canonicalAddress(cleanLabel))) return true;
+  if (cleanLabel.length >= 5 && normalizedText.includes(canonicalAddress(cleanLabel))) return true;
+  // For multi-unit properties, a building/community page is acceptable for an
+  // exterior/community photo even when it omits the exact apartment/unit suffix.
+  const buildingAddress = String(address || "")
+    .replace(/\s+(?:unit|apt|apartment|suite|#)\s*[A-Za-z0-9-]+(?=,|$)/i, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  const buildingCore = addressCore(buildingAddress);
+  if (buildingCore.length >= 8 && normalizedText.includes(buildingCore)) return true;
   return false;
 }
 
