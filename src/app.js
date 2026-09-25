@@ -10,7 +10,7 @@ import { rankProperties, rankProperty } from "./core/ranking.js";
 import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
-import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, matchesSearchDefaults } from "./integrations/providers.js?v=income-filter-v1";
+import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults } from "./integrations/providers.js?v=image-enrichment-v1";
 import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates } from "./integrations/maps.js?v=park-contrast-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
@@ -504,6 +504,52 @@ async function resolveUnavailableListings() {
   }
 }
 
+async function enrichMissingImages() {
+  const now = Date.now();
+  const candidates = store.getAll().filter(property => {
+    if (firstImageUrl(property)) return false;
+    if (property.listingState === "closed" && property.metadata?.listingClosedEvidence?.confirmed === true) return false;
+    if (!property.address && !property.label && !safeListingUrl(property.sourceUrl)) return false;
+    const checkedAt = Date.parse(property.metadata?.imageCheckedAt || 0) || 0;
+    const missingCooldown = property.metadata?.imageEnrichmentState === "missing" ? 24 * 60 * 60 * 1000 : 2 * 60 * 60 * 1000;
+    return !checkedAt || now - checkedAt > missingCooldown;
+  }).slice(0, 6);
+
+  for (const property of candidates) {
+    try {
+      const result = await resolveMissingImage(property, { location: preferences.location || config.search.location });
+      const metadata = {
+        ...(property.metadata || {}),
+        imageCheckedAt: result.checkedAt || new Date().toISOString(),
+        imageEnrichmentState: result.state,
+        imageEnrichmentMethod: result.method || "none"
+      };
+      if (result.imageUrl) {
+        metadata.image = result.imageUrl;
+        metadata.imageSourceUrl = result.sourceUrl || property.sourceUrl || null;
+        store.update(property.id, {
+          image: result.imageUrl,
+          imageUrl: result.imageUrl,
+          primaryImageUrl: result.imageUrl,
+          metadata
+        });
+        recordActivity("image-enriched", property, { sourceUrl:result.sourceUrl || property.sourceUrl, method:result.method });
+      } else {
+        store.update(property.id, { metadata });
+      }
+    } catch (error) {
+      store.update(property.id, {
+        metadata:{
+          ...(property.metadata || {}),
+          imageCheckedAt:new Date().toISOString(),
+          imageEnrichmentState:"error"
+        }
+      });
+      recordActivity("image-enrichment-error", property, { message:String(error?.message || error) });
+    }
+  }
+}
+
 async function refreshListings(trigger = "manual") {
   if (refreshInFlight) return;
   refreshInFlight = true;
@@ -514,7 +560,9 @@ async function refreshListings(trigger = "manual") {
     const { address1, ...searchPreferences } = preferences;
     const found = await searchProviders({ ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query });
     store.upsertMany(found);
-    void resolveUnavailableListings().then(() => renderList());
+    void resolveUnavailableListings()
+      .then(() => enrichMissingImages())
+      .then(() => renderList());
     recordActivity("provider-refresh", null, { count: found.length, trigger });
     const indicator = document.querySelector("#pull-indicator");
     if (indicator) indicator.textContent = found.length ? `Found ${found.length} listings · checking missing details` : "Listings checked · checking missing details";
