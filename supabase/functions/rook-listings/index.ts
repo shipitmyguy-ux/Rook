@@ -132,48 +132,190 @@ function imageFromBrowserSnapshot(snapshot: any, address = "", label = "") {
   return ranked[0] || null;
 }
 
+function pageMatchesProperty(text: string, address = "", label = "") {
+  if (!text) return false;
+  if (address && contextMatchesAddress(text, address, label)) return true;
+  const cleanLabel = String(label || "").trim();
+  if (cleanLabel.length >= 5 && canonicalAddress(text).includes(canonicalAddress(cleanLabel))) return true;
+  return false;
+}
+
+function imageFromReaderText(text: string, address = "", label = "") {
+  if (!pageMatchesProperty(text, address, label)) return null;
+  const candidates = [
+    ...[...String(text).matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/gi)].map(m => m[1]),
+    ...[...String(text).matchAll(/https?:\/\/[^\s"'<>]+?\.(?:jpe?g|png|webp)(?:\?[^\s"'<>)]*)?/gi)].map(m => m[0])
+  ];
+  for (const candidate of candidates) {
+    const src = usablePhotoUrl(candidate);
+    if (src) return src;
+  }
+  return null;
+}
+
+function searchCandidateUrlsFromText(text: string, address = "", label = "") {
+  const urls:string[] = [];
+  const seen = new Set<string>();
+  const lines = String(text || "").split(/\n+/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const context = lines.slice(Math.max(0, i - 2), Math.min(lines.length, i + 3)).join(" ");
+    if (!contextMatchesAddress(context, address, label)) continue;
+    const hrefs = [
+      ...[...context.matchAll(/\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1]),
+      ...[...context.matchAll(/(https?:\/\/[^\s<>"')]+)/g)].map(m => m[1])
+    ];
+    for (const href of hrefs) {
+      const normalized = normalizeSearchResultUrl(href);
+      if (!normalized || seen.has(normalized)) continue;
+      try {
+        const url = new URL(normalized);
+        if (!isAllowedListingHost(url.hostname)) continue;
+        seen.add(normalized);
+        urls.push(normalized);
+        if (urls.length >= 6) return urls;
+      } catch {}
+    }
+  }
+  return urls;
+}
+
+async function imageFromListingPage(pageUrl: string, address = "", label = "") {
+  try {
+    const html = await fetchText(pageUrl);
+    const text = stripHtml(html).slice(0, 70000);
+    const rows = jsonLdListings(html, new URL(pageUrl).hostname, pageUrl);
+    const match = rows.find(row => sameAddress(row.address, address) || (!address && canonicalAddress(row.label) === canonicalAddress(label)));
+    const pageMatches = Boolean(match) || pageMatchesProperty(text, address, label);
+    if (pageMatches) {
+      const structuredImage = usablePhotoUrl(match?.primaryImageUrl || match?.imageUrl || match?.image || match?.metadata?.image);
+      if (structuredImage) return { imageUrl:structuredImage, method:"alternate-structured" };
+      const fallback = fallbackListingFromHtml(html, pageUrl, { address, label, source:new URL(pageUrl).hostname });
+      const metaImage = usablePhotoUrl(fallback?.primaryImageUrl || fallback?.imageUrl || fallback?.image || fallback?.metadata?.image);
+      if (metaImage) return { imageUrl:metaImage, method:"alternate-meta" };
+    }
+  } catch {}
+
+  try {
+    const reader = await readerText(pageUrl, 5000);
+    const readerImage = imageFromReaderText(reader, address, label);
+    if (readerImage) return { imageUrl:readerImage, method:"alternate-reader" };
+  } catch {}
+
+  try {
+    const snapshot = await browserSnapshot(pageUrl);
+    const browserImage = imageFromBrowserSnapshot(snapshot, address, label);
+    if (browserImage?.src) return { imageUrl:browserImage.src, method:"alternate-browser", dimensions:{ width:browserImage.width, height:browserImage.height } };
+  } catch {}
+
+  return null;
+}
+
 async function resolveListingImage(address: string, label: string, location: string, sourceUrl = "") {
   const checkedAt = new Date().toISOString();
-  const resolved = await resolveListing(address, label, location, sourceUrl);
-  const listing = resolved?.listing || null;
-  const directImage = usablePhotoUrl(
-    listing?.primaryImageUrl || listing?.imageUrl || listing?.image ||
-    listing?.metadata?.image || listing?.metadata?.imageUrl
-  );
-  const candidateUrl = String(listing?.sourceUrl || sourceUrl || "");
-  if (resolved?.state === "active" && directImage) {
-    return {
-      state:"found",
-      imageUrl:directImage,
-      sourceUrl:candidateUrl || null,
-      checkedAt,
-      method:"listing-metadata"
-    };
+  const seen = new Set<string>();
+  const candidateUrls:string[] = [];
+  const pushUrl = (value:string) => {
+    const normalized = normalizeSearchResultUrl(value);
+    if (!normalized || seen.has(normalized)) return;
+    try {
+      const url = new URL(normalized);
+      if (!isAllowedListingHost(url.hostname)) return;
+      seen.add(normalized);
+      candidateUrls.push(normalized);
+    } catch {}
+  };
+
+  if (sourceUrl) pushUrl(sourceUrl);
+
+  // First inspect any known listing page directly; image enrichment should not wait
+  // for the full availability resolver to prove the listing active.
+  if (sourceUrl) {
+    const direct = await imageFromListingPage(sourceUrl, address, label);
+    if (direct?.imageUrl) {
+      return {
+        state:"found",
+        imageUrl:direct.imageUrl,
+        sourceUrl,
+        checkedAt,
+        method:direct.method || "direct-page",
+        ...(direct.dimensions ? { dimensions:direct.dimensions } : {})
+      };
+    }
   }
 
-  if (resolved?.state === "active" && candidateUrl) {
+  // Reuse the listing resolver once because it can discover a fresher exact-address
+  // source that is not the stale sourceUrl saved on the property.
+  try {
+    const resolved = await resolveListing(address, label, location, sourceUrl);
+    const listing = resolved?.listing || null;
+    const directImage = usablePhotoUrl(
+      listing?.primaryImageUrl || listing?.imageUrl || listing?.image ||
+      listing?.metadata?.image || listing?.metadata?.imageUrl
+    );
+    const resolvedUrl = String(listing?.sourceUrl || "");
+    if (resolved?.state === "active" && directImage) {
+      return {
+        state:"found",
+        imageUrl:directImage,
+        sourceUrl:resolvedUrl || sourceUrl || null,
+        checkedAt,
+        method:"listing-metadata"
+      };
+    }
+    if (resolvedUrl) pushUrl(resolvedUrl);
+  } catch {}
+
+  // Search the exact address/community name for alternate listing sources and inspect
+  // those pages. Search result images themselves are never used.
+  const exact = ['"' + (address || label) + '"', location, "rental listing"].filter(Boolean).join(" ");
+  const searchUrls = [
+    "https://www.bing.com/search?format=rss&q=" + encodeURIComponent(exact),
+    "https://www.google.com/search?q=" + encodeURIComponent(exact)
+  ];
+  for (const searchUrl of searchUrls) {
     try {
-      const snapshot = await browserSnapshot(candidateUrl);
-      const browserImage = imageFromBrowserSnapshot(snapshot, address, label);
-      if (browserImage?.src) {
-        return {
-          state:"found",
-          imageUrl:browserImage.src,
-          sourceUrl:candidateUrl,
-          checkedAt,
-          method:"browser-page",
-          dimensions:{ width:browserImage.width, height:browserImage.height }
-        };
+      const reader = await readerText(searchUrl, 5000);
+      for (const url of searchCandidateUrlsFromText(reader, address, label)) pushUrl(url);
+    } catch {}
+    if (candidateUrls.length >= 6) break;
+  }
+
+  // Browser-backed discovery is the final discovery tier and only runs if cheap
+  // exact-address search did not surface additional listing pages.
+  if (candidateUrls.length <= (sourceUrl ? 1 : 0)) {
+    try {
+      const snapshot = await browserSnapshot("https://www.google.com/search?q=" + encodeURIComponent(exact));
+      for (const link of Array.isArray(snapshot?.links) ? snapshot.links : []) {
+        const context = [link?.text, link?.context].filter(Boolean).join(" ");
+        if (!contextMatchesAddress(context, address, label)) continue;
+        pushUrl(String(link?.href || ""));
+        if (candidateUrls.length >= 6) break;
       }
     } catch {}
+  }
+
+  for (const candidateUrl of candidateUrls.slice(0, 4)) {
+    if (sourceUrl && normalizeSearchResultUrl(candidateUrl) === normalizeSearchResultUrl(sourceUrl)) continue;
+    const result = await imageFromListingPage(candidateUrl, address, label);
+    if (result?.imageUrl) {
+      return {
+        state:"found",
+        imageUrl:result.imageUrl,
+        sourceUrl:candidateUrl,
+        checkedAt,
+        method:result.method || "alternate-page",
+        ...(result.dimensions ? { dimensions:result.dimensions } : {})
+      };
+    }
   }
 
   return {
     state:"missing",
     imageUrl:null,
-    sourceUrl:candidateUrl || sourceUrl || null,
+    sourceUrl:candidateUrls[0] || sourceUrl || null,
     checkedAt,
-    method:"none"
+    method:"none",
+    checkedCandidates:candidateUrls.length
   };
 }
 
