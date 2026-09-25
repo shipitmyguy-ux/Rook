@@ -215,6 +215,34 @@ export async function resolveMissingListing(property = {}, criteria = {}, fetchI
   };
 }
 
+export async function resolveMissingImage(property = {}, criteria = {}, fetchImpl = fetch) {
+  if (firstImageUrl(property)) {
+    return { state:"found", imageUrl:firstImageUrl(property), checkedAt:new Date().toISOString(), method:"existing" };
+  }
+  if (!property?.address && !property?.label && !property?.sourceUrl) {
+    return { state:"missing", imageUrl:null, checkedAt:new Date().toISOString(), method:"none" };
+  }
+  const endpoint = config.listings?.endpoint;
+  if (!endpoint) return { state:"missing", imageUrl:null, checkedAt:new Date().toISOString(), method:"none" };
+  const url = new URL(endpoint, typeof window !== "undefined" ? window.location.href : "http://localhost/");
+  url.searchParams.set("image", "1");
+  if (property.address) url.searchParams.set("address", property.address);
+  if (property.label) url.searchParams.set("label", property.label);
+  if (property.sourceUrl) url.searchParams.set("sourceUrl", property.sourceUrl);
+  if (criteria.location) url.searchParams.set("location", criteria.location);
+  const response = await fetchImpl(url, { headers:{ Accept:"application/json" } });
+  if (!response.ok) throw new Error(`Image resolver returned ${response.status}`);
+  const payload = await response.json();
+  const imageUrl = firstImageUrl({ imageUrl:payload?.imageUrl, sourceUrl:payload?.sourceUrl || property.sourceUrl });
+  return {
+    state:imageUrl ? "found" : "missing",
+    imageUrl:imageUrl || null,
+    sourceUrl:payload?.sourceUrl || property.sourceUrl || null,
+    checkedAt:payload?.checkedAt || new Date().toISOString(),
+    method:payload?.method || "none"
+  };
+}
+
 export async function searchProviders(criteria = {}) {
   const active = [...providers.values()].filter(provider => provider.enabled !== false);
   const settled = await Promise.allSettled(active.map(async provider => {
