@@ -318,6 +318,79 @@ async function imageFromListingPage(pageUrl: string, address = "", label = "") {
   return null;
 }
 
+async function discoverExactProviderUrls(address:string,label:string,location:string) {
+  const subject = address || label;
+  if (!subject) return [];
+  const providers = ["forrent.com","trulia.com","hotpads.com","zillow.com","apartments.com","realtor.com","rent.com","redfin.com","homes.com","zumper.com"];
+  const urls:string[] = [];
+  const seen = new Set<string>();
+  for (const domain of providers) {
+    const query = ['site:' + domain, '"' + subject + '"', location].filter(Boolean).join(" ");
+    const searchUrl = "https://www.bing.com/search?format=rss&q=" + encodeURIComponent(query);
+    try {
+      const html = await fetchText(searchUrl);
+      const hrefs = [
+        ...[...html.matchAll(/<link>\s*(https?:\/\/[^<\s]+)\s*<\/link>/gi)].map(m=>m[1].replace(/&amp;/g,"&")),
+        ...[...html.matchAll(/<guid[^>]*>\s*(https?:\/\/[^<\s]+)\s*<\/guid>/gi)].map(m=>m[1].replace(/&amp;/g,"&"))
+      ];
+      for (const href of hrefs) {
+        const normalized = normalizeSearchResultUrl(href);
+        if (!normalized || seen.has(normalized)) continue;
+        try {
+          const u = new URL(normalized);
+          if (!isAllowedListingHost(u.hostname)) continue;
+          seen.add(normalized);
+          urls.push(normalized);
+          if (urls.length >= 8) return urls;
+        } catch {}
+      }
+    } catch {}
+  }
+  return urls;
+}
+
+async function discoverOfficialGalleryUrls(sourceUrl:string,address="",label="") {
+  if (!sourceUrl) return [];
+  try {
+    const u = new URL(sourceUrl);
+    if (isAllowedListingHost(u.hostname) || isBlockedCommunityHost(u.hostname)) return [];
+    const root = u.origin + "/";
+    const urls:string[] = [];
+    const seen = new Set<string>();
+    const add = (value:string) => {
+      try {
+        const parsed = new URL(value,root);
+        if (parsed.origin !== u.origin) return;
+        const href = parsed.toString();
+        if (seen.has(href)) return;
+        seen.add(href);
+        urls.push(href);
+      } catch {}
+    };
+    add(root);
+    try {
+      const html = await fetchText(root);
+      const links = [...html.matchAll(/href=["']([^"']+)["']/gi)].map(m=>m[1]);
+      for (const href of links) {
+        if (!/(photo|gallery|media|amenit)/i.test(href)) continue;
+        add(href);
+        if (urls.length >= 6) break;
+      }
+    } catch {}
+    try {
+      const reader = await readerText(root,5000);
+      const links = [...String(reader||"").matchAll(/\[[^\]]*(?:photo|gallery|amenit)[^\]]*\]\((https?:\/\/[^)\s]+)\)/gi)].map(m=>m[1]);
+      for (const href of links) {
+        add(href);
+        if (urls.length >= 6) break;
+      }
+    } catch {}
+    return urls;
+  } catch {
+    return [];
+  }
+}
+
 async function resolveListingImage(address: string, label: string, location: string, sourceUrl = "") {
   const checkedAt = new Date().toISOString();
   const seen = new Set<string>();
@@ -347,6 +420,22 @@ async function resolveListingImage(address: string, label: string, location: str
         checkedAt,
         method:direct.method || "direct-page",
         ...(direct.dimensions ? { dimensions:direct.dimensions } : {})
+      };
+    }
+  }
+
+  // If the source is an official/community site, inspect its homepage and
+  // photo/gallery links before falling back to third-party portals.
+  for (const galleryUrl of await discoverOfficialGalleryUrls(sourceUrl,address,label)) {
+    const result = await imageFromListingPage(galleryUrl,address,label);
+    if (result?.imageUrl) {
+      return {
+        state:"found",
+        imageUrl:result.imageUrl,
+        sourceUrl:galleryUrl,
+        checkedAt,
+        method:"official-gallery-" + (result.method || "page"),
+        ...(result.dimensions ? { dimensions:result.dimensions } : {})
       };
     }
   }
@@ -412,6 +501,24 @@ async function resolveListingImage(address: string, label: string, location: str
         sourceUrl:candidateUrl,
         checkedAt,
         method:result.method || "alternate-page",
+        ...(result.dimensions ? { dimensions:result.dimensions } : {})
+      };
+    }
+  }
+
+  // Provider-specific exact-address discovery is deliberately redundant with
+  // general web search. It makes recovery resilient when one search path omits a result.
+  for (const exactUrl of await discoverExactProviderUrls(address,label,location)) {
+    if (seen.has(exactUrl)) continue;
+    seen.add(exactUrl);
+    const result = await imageFromListingPage(exactUrl,address,label);
+    if (result?.imageUrl) {
+      return {
+        state:"found",
+        imageUrl:result.imageUrl,
+        sourceUrl:exactUrl,
+        checkedAt,
+        method:"provider-exact-" + (result.method || "page"),
         ...(result.dimensions ? { dimensions:result.dimensions } : {})
       };
     }
