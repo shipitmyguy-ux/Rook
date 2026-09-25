@@ -10,11 +10,11 @@ import { rankProperties, rankProperty } from "./core/ranking.js";
 import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
-import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults } from "./integrations/providers.js?v=image-enrichment-v4";
+import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults, canonicalAddress } from "./integrations/providers.js?v=image-enrichment-v4";
 import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates } from "./integrations/maps.js?v=park-contrast-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
-import { scanHousingEmail, reconcileTourCalendar } from "./integrations/sync.js?v=gmail-oauth-v1";
+import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState } from "./integrations/sync.js?v=shared-state-v1";
 import { config } from "./config.js";
 
 const app = document.querySelector("#app");
@@ -131,6 +131,42 @@ async function scanEmailNow() {
     recordActivity("email-scan-error", null, { message:String(error?.message || error) });
   } finally {
     buttons.forEach(button => { button.disabled = false; button.textContent = "Scan email"; });
+  }
+}
+
+async function syncSharedRookState() {
+  try {
+    const rows = await fetchSharedRookState();
+    if (!rows.length) return 0;
+    let applied = 0;
+    for (const row of rows) {
+      const property = store.getAll().find(item =>
+        (row.property_id && String(item.id) === String(row.property_id)) ||
+        (row.address && canonicalAddress(item.address) === canonicalAddress(row.address)) ||
+        (row.label && canonicalAddress(item.label) === canonicalAddress(row.label))
+      );
+      if (!property) continue;
+      const metadata = {
+        ...(property.metadata || {}),
+        sharedSyncUpdatedAt: row.updated_at || null,
+        sharedSyncLastEmailAt: row.last_email_at || null,
+        sharedSyncSourceMessageIds: Array.isArray(row.source_message_ids) ? row.source_message_ids : [],
+        evidence: Array.isArray(row.evidence) ? row.evidence : (property.metadata?.evidence || [])
+      };
+      if (row.tour && typeof row.tour === "object" && Object.keys(row.tour).length) metadata.tour = row.tour;
+      store.update(property.id, {
+        ...(row.status ? { status:row.status } : {}),
+        ...(row.contact_outcome ? { contactOutcome:row.contact_outcome } : {}),
+        ...(row.showing_at ? { showingAt:row.showing_at } : {}),
+        metadata
+      });
+      applied += 1;
+    }
+    if (applied) renderList();
+    return applied;
+  } catch (error) {
+    recordActivity("shared-sync-read-error", null, { message:String(error?.message || error) });
+    return 0;
   }
 }
 
@@ -582,6 +618,7 @@ async function refreshListings(trigger = "manual") {
     const { address1, ...searchPreferences } = preferences;
     const found = await searchProviders({ ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query });
     store.upsertMany(found);
+    void syncSharedRookState();
     void resolveUnavailableListings().then(() => renderList());
     void enrichMissingImages().then(() => renderList());
     recordActivity("provider-refresh", null, { count: found.length, trigger });
@@ -1331,6 +1368,7 @@ document.addEventListener("touchend", () => {
 }, { passive: true });
 
 store.subscribe(scheduleRenderList);
+void syncSharedRookState();
 renderList();
 if (!BROWSER_QA_MODE) queueMicrotask(() => refreshListings("startup"));
 
