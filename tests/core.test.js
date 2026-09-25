@@ -11,7 +11,7 @@ import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
 import { normalizePreferences } from "../src/core/preferences.js";
 import { config } from "../src/config.js";
-import { poiLocationQuery, normalizePoiSearchCandidate, poiSearchQueries } from "../src/integrations/maps.js";
+import { poiLocationQuery, normalizePoiSearchCandidate, poiSearchQueries, mapLandLayerKind } from "../src/integrations/maps.js";
 import { normalizeTour, tourState, tourLabel, applyTour } from "../src/core/tours.js";
 import { normalizePointStyles, resolvePoiStyle, poiGlyph, poiColorHex } from "../src/core/poi-style.js";
 import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, canonicalAddress, isIncomeRestrictedListing } from "../src/integrations/providers.js";
@@ -192,6 +192,14 @@ test("income restriction detection scans provider metadata", () => {
     metadata:{ amenities:["Fitness Center", "Income Restricted"] }
   });
   assert.equal(isIncomeRestrictedListing(listing), true);
+});
+
+test("map theme distinguishes parks from generic vegetation", () => {
+  assert.equal(mapLandLayerKind("landuse_park"), "park");
+  assert.equal(mapLandLayerKind("park-boundary"), "park");
+  assert.equal(mapLandLayerKind("landcover_wood"), "vegetation");
+  assert.equal(mapLandLayerKind("grass"), "vegetation");
+  assert.equal(mapLandLayerKind("water"), "water");
 });
 
 test("overview map uses MapLibre with OpenFreeMap", () => {
