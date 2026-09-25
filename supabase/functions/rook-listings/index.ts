@@ -113,23 +113,47 @@ function usablePhotoUrl(value: unknown) {
 function imageFromBrowserSnapshot(snapshot: any, address = "", label = "") {
   const images = Array.isArray(snapshot?.images) ? snapshot.images : [];
   const pageText = String(snapshot?.text || "");
-  if ((address || label) && !contextMatchesAddress(pageText, address, label)) return null;
-  const ranked = images.map((image:any) => {
+  if ((address || label) && !contextMatchesAddress(pageText, address, label) && !pageMatchesProperty(pageText,address,label)) return null;
+  const rows = images.map((image:any) => {
     const src = usablePhotoUrl(image?.src);
     if (!src) return null;
     const width = Number(image?.naturalWidth || image?.width || 0);
     const height = Number(image?.naturalHeight || image?.height || 0);
-    if (width && height && (width < 300 || height < 180)) return null;
+    if (width && height && (width < 260 || height < 150)) return null;
     const text = [image?.alt, image?.context, src].filter(Boolean).join(" ");
     if (/(logo|icon|avatar|map|floor\s*plan|site\s*plan)/i.test(text)) return null;
+    const contextMatch = Boolean((address || label) && contextMatchesAddress(text,address,label));
     let score = Math.min(20, Math.floor((width * height) / 120000));
     if (width >= 800) score += 4;
     if (height >= 500) score += 3;
     if (/photo|home|house|apartment|townhome|property|exterior|interior|living|kitchen|bedroom/i.test(text)) score += 3;
-    if (address && contextMatchesAddress(text, address, label)) score += 5;
-    return { src, score, width, height };
-  }).filter(Boolean).sort((a:any,b:any) => b.score - a.score);
+    if (contextMatch) score += 20;
+    return { src, score, width, height, contextMatch };
+  }).filter(Boolean);
+  const contextual = rows.filter((row:any)=>row.contextMatch);
+  const ranked = (contextual.length ? contextual : rows).sort((a:any,b:any)=>b.score-a.score);
   return ranked[0] || null;
+}
+
+async function imageFromProviderIndex(pageUrl:string,address="",label="") {
+  try {
+    const snapshot = await browserSnapshot(pageUrl);
+    const images = Array.isArray(snapshot?.images) ? snapshot.images : [];
+    const matches = images.map((image:any) => {
+      const src = usablePhotoUrl(image?.src);
+      if (!src) return null;
+      const text = [image?.alt,image?.context].filter(Boolean).join(" ");
+      if (!contextMatchesAddress(text,address,label)) return null;
+      if (/(logo|icon|avatar|map|floor\s*plan|site\s*plan)/i.test(text)) return null;
+      const width = Number(image?.naturalWidth || image?.width || 0);
+      const height = Number(image?.naturalHeight || image?.height || 0);
+      if (width && height && (width < 180 || height < 120)) return null;
+      return { src, width, height, score:(width*height)||1 };
+    }).filter(Boolean).sort((a:any,b:any)=>b.score-a.score);
+    return matches[0] || null;
+  } catch {
+    return null;
+  }
 }
 
 function pageMatchesProperty(text: string, address = "", label = "") {
@@ -392,6 +416,28 @@ async function resolveListingImage(address: string, label: string, location: str
       };
     }
   }
+
+  // Provider-index fallback: comparable discovery often finds neighborhood/category
+  // pages rather than a dedicated property URL. Use an image only when that image's
+  // own card context matches the target address.
+  try {
+    const comparable = await resolveComparablePrice(address,label,location,0,0);
+    for (const evidence of comparable?.evidence || []) {
+      const evidenceUrl = String(evidence?.sourceUrl || "");
+      if (!evidenceUrl) continue;
+      const hit = await imageFromProviderIndex(evidenceUrl,address,label);
+      if (hit?.src) {
+        return {
+          state:"found",
+          imageUrl:hit.src,
+          sourceUrl:evidenceUrl,
+          checkedAt,
+          method:"provider-index-card",
+          dimensions:{width:hit.width,height:hit.height}
+        };
+      }
+    }
+  } catch {}
 
   // Community-name fallback: search for an official/community website and accept it
   // only after the destination page itself matches the property name or building address.
