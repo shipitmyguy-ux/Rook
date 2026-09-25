@@ -1929,12 +1929,35 @@ async function searchPoiSuggestions(query:string, location:string, limit=5) {
   }).slice(0, safeLimit);
 }
 
+async function readSharedRookState() {
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!serviceKey) return [];
+  try {
+    const response = await fetch(PROJECT_URL + "/rest/v1/rook_property_state?select=property_key,property_id,address,label,status,contact_outcome,showing_at,tour,evidence,source_message_ids,last_email_at,updated_at&order=updated_at.desc", {
+      headers:{
+        apikey:serviceKey,
+        authorization:"Bearer " + serviceKey,
+        accept:"application/json"
+      }
+    });
+    if (!response.ok) return [];
+    const rows = await response.json();
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "GET") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
 
   const url = new URL(req.url);
   const location = url.searchParams.get("location") || "Fort Collins, CO";
+  if (url.searchParams.get("state") === "1") {
+    const state = await readSharedRookState();
+    return new Response(JSON.stringify({ state }), { headers:corsHeaders });
+  }
   if (url.searchParams.get("poi") === "1") {
     const query = (url.searchParams.get("query") || "").trim();
     const limit = Number(url.searchParams.get("limit") || "5");
