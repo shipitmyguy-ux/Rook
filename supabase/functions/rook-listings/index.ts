@@ -591,7 +591,82 @@ async function providerZipClusterRecovery(address:string,label:string,location:s
   return null;
 }
 
+function mediaCacheKey(address="",label="") {
+  const key = canonicalAddress(address || label);
+  return key ? "property:" + key : "";
+}
+
+async function readMediaCache(address="",label="") {
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const key = mediaCacheKey(address,label);
+  if (!serviceKey || !key) return null;
+  try {
+    const url = PROJECT_URL + "/rest/v1/rook_property_media_cache?property_key=eq." + encodeURIComponent(key) + "&select=image_url,source_url,method,verified_at,metadata&limit=1";
+    const response = await fetch(url,{
+      headers:{
+        apikey:serviceKey,
+        authorization:"Bearer " + serviceKey,
+        accept:"application/json"
+      }
+    });
+    if (!response.ok) return null;
+    const rows = await response.json();
+    const row = Array.isArray(rows) ? rows[0] : null;
+    const imageUrl = usablePhotoUrl(row?.image_url);
+    if (!imageUrl) return null;
+    return {
+      state:"found",
+      imageUrl,
+      sourceUrl:String(row?.source_url || ""),
+      checkedAt:String(row?.verified_at || new Date().toISOString()),
+      method:"cache:" + String(row?.method || "verified"),
+      cached:true,
+      metadata:row?.metadata || {}
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function writeMediaCache(address="",label="",result:any=null) {
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const key = mediaCacheKey(address,label);
+  const imageUrl = usablePhotoUrl(result?.imageUrl);
+  if (!serviceKey || !key || !imageUrl) return;
+  try {
+    await fetch(PROJECT_URL + "/rest/v1/rook_property_media_cache?on_conflict=property_key",{
+      method:"POST",
+      headers:{
+        apikey:serviceKey,
+        authorization:"Bearer " + serviceKey,
+        "content-type":"application/json",
+        prefer:"resolution=merge-duplicates,return=minimal"
+      },
+      body:JSON.stringify({
+        property_key:key,
+        address:address || null,
+        label:label || null,
+        image_url:imageUrl,
+        source_url:result?.sourceUrl || null,
+        method:result?.method || "verified",
+        verified_at:result?.checkedAt || new Date().toISOString(),
+        metadata:{
+          dimensions:result?.dimensions || null
+        }
+      })
+    });
+  } catch {}
+}
+
 async function resolveListingImage(address: string, label: string, location: string, sourceUrl = "") {
+  const cached = await readMediaCache(address,label);
+  if (cached) return cached;
+  const result = await resolveListingImageFresh(address,label,location,sourceUrl);
+  if (result?.state === "found" && result?.imageUrl) await writeMediaCache(address,label,result);
+  return result;
+}
+
+async function resolveListingImageFresh(address: string, label: string, location: string, sourceUrl = "") {
   const checkedAt = new Date().toISOString();
   const seen = new Set<string>();
   const candidateUrls:string[] = [];
