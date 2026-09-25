@@ -691,7 +691,7 @@ app.innerHTML = `<main class="shell">
 </dialog>
 <dialog id="import-dialog"><form method="dialog"><h2>Add listing</h2><p class="muted">Paste a listing URL. Rook keeps the source and routes it through the shared property model.</p><input id="listing-url" type="url" placeholder="https://…" required /><div class="dialog-actions"><button value="cancel">Cancel</button><button id="import-confirm" value="default">Add</button></div></form></dialog>
 
-<dialog id="settings-dialog"><form method="dialog"><h2>Search preferences</h2>
+<dialog id="settings-dialog" class="settings-dialog-captive"><form method="dialog"><div class="dialog-heading settings-dialog-heading"><h2>Search preferences</h2><button id="close-settings" type="button" class="dialog-close settings-dialog-close" aria-label="Close search preferences">×</button></div>
 <fieldset class="poi-manager"><legend>Map points of interest</legend>
   <div class="poi-add-row"><input id="pref-poi-query" type="text" placeholder="Place, road, landmark, or full address"><button id="add-poi" type="button">Find POI</button></div>
   <div id="poi-lookup-results" class="poi-lookup-results" aria-live="polite" hidden></div>
@@ -1048,6 +1048,34 @@ function approvePoiCandidate(index) {
   renderList();
 }
 
+let settingsScrollY = 0;
+
+function lockSettingsBackground() {
+  if (document.body.dataset.settingsScrollLocked === "true") return;
+  settingsScrollY = window.scrollY || 0;
+  document.body.dataset.settingsScrollLocked = "true";
+  document.documentElement.classList.add("settings-modal-open");
+  document.body.classList.add("settings-modal-open");
+  document.body.style.position = "fixed";
+  document.body.style.top = `-${settingsScrollY}px`;
+  document.body.style.left = "0";
+  document.body.style.right = "0";
+  document.body.style.width = "100%";
+}
+
+function unlockSettingsBackground() {
+  if (document.body.dataset.settingsScrollLocked !== "true") return;
+  delete document.body.dataset.settingsScrollLocked;
+  document.documentElement.classList.remove("settings-modal-open");
+  document.body.classList.remove("settings-modal-open");
+  document.body.style.position = "";
+  document.body.style.top = "";
+  document.body.style.left = "";
+  document.body.style.right = "";
+  document.body.style.width = "";
+  window.scrollTo(0, settingsScrollY);
+}
+
 function openSettings() {
   pendingPoiLookup = null;
   renderPoiLookupResults();
@@ -1068,7 +1096,9 @@ function openSettings() {
   document.querySelector("#pref-tour-duration").value = preferences.defaultTourDurationMinutes ?? 60;
   document.querySelector("#pref-tour-reminder").value = preferences.defaultTourReminderMinutes ?? 120;
   document.querySelector("#pref-theme").value = preferences.visualTheme || "default";
-  document.querySelector("#settings-dialog").showModal();
+  const dialog = document.querySelector("#settings-dialog");
+  lockSettingsBackground();
+  dialog.showModal();
 }
 document.querySelector("#pref-poi-styles").addEventListener("change", event => {
   const row = event.target.closest("[data-poi-style-id]");
@@ -1106,6 +1136,9 @@ document.querySelector("#pref-poi-styles").addEventListener("click", event => {
   renderPoiStyleSettings();
   renderList();
 });
+document.querySelector("#close-settings").addEventListener("click", () => document.querySelector("#settings-dialog").close());
+document.querySelector("#settings-dialog").addEventListener("close", unlockSettingsBackground);
+document.querySelector("#settings-dialog").addEventListener("cancel", () => queueMicrotask(unlockSettingsBackground));
 document.querySelector("#settings-button").addEventListener("click", openSettings);
 document.querySelector("#open-settings").addEventListener("click", () => {
   document.querySelector("#actions-dialog").close();
