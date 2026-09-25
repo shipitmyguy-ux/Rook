@@ -829,6 +829,46 @@ async function searchPoiSuggestions(query:string, location:string, limit=5) {
     if (found.length >= safeLimit) break;
     if (i < variants.length - 1) await new Promise(resolve => setTimeout(resolve, 1050));
   }
+  if (!found.length) {
+    try {
+      const photon = new URL("https://photon.komoot.io/api");
+      photon.searchParams.set("q", query);
+      photon.searchParams.set("limit", String(safeLimit));
+      photon.searchParams.set("lang", "en");
+      if (/fort\s+collins/i.test(location)) {
+        photon.searchParams.set("lat", "40.5853");
+        photon.searchParams.set("lon", "-105.0844");
+        photon.searchParams.set("zoom", "12");
+        photon.searchParams.set("location_bias_scale", "0.05");
+      }
+      const response = await fetch(photon, { headers:{ "accept":"application/json", "user-agent":"Rook/1.0 (property map POI search)" } });
+      const payload = response.ok ? await response.json() : null;
+      for (const feature of Array.isArray(payload?.features) ? payload.features : []) {
+        const coords = feature?.geometry?.coordinates || [];
+        const props = feature?.properties || {};
+        const lat = Number(coords[1]), lng = Number(coords[0]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+        const parts = [props.name, props.street, props.city, props.county, props.state, props.postcode, props.country].filter(Boolean);
+        const address = [...new Set(parts.map(String))].join(", ");
+        const candidate = {
+          label:String(props.name || props.street || query),
+          address:address || String(props.name || query),
+          query,
+          lat,
+          lng,
+          placeType:props.type || props.osm_value || props.layer || null,
+          source:"OpenStreetMap/Photon",
+          matchedQuery:query
+        };
+        const key = String(candidate.address || "").toLowerCase() + "|" + candidate.lat.toFixed(5) + "|" + candidate.lng.toFixed(5);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        found.push(candidate);
+        if (found.length >= safeLimit) break;
+      }
+    } catch {}
+  }
+
   const locationTokens = String(location || "").toLowerCase().split(/[,\s]+/).filter(token => token.length > 2);
   const needle = String(query || "").trim().toLowerCase();
   return found.sort((a,b) => {
