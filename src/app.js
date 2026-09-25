@@ -1050,6 +1050,7 @@ function approvePoiCandidate(index) {
 
 let settingsScrollY = 0;
 
+// Settings is a captive modal: preserve page position and lock the background while open.
 function lockSettingsBackground() {
   if (document.body.dataset.settingsScrollLocked === "true") return;
   settingsScrollY = window.scrollY || 0;
