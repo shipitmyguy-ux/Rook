@@ -11,7 +11,7 @@ import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
 import { normalizePreferences } from "../src/core/preferences.js";
 import { config } from "../src/config.js";
-import { poiLocationQuery, normalizePoiSearchCandidate } from "../src/integrations/maps.js";
+import { poiLocationQuery, normalizePoiSearchCandidate, poiSearchQueries } from "../src/integrations/maps.js";
 import { normalizeTour, tourState, tourLabel, applyTour } from "../src/core/tours.js";
 import { normalizePointStyles, resolvePoiStyle, poiGlyph, poiColorHex } from "../src/core/poi-style.js";
 import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, canonicalAddress, isIncomeRestrictedListing } from "../src/integrations/providers.js";
@@ -97,6 +97,14 @@ test("loose POI names are scoped to the current search location", () => {
   assert.equal(poiLocationQuery({ query:"Ridge Runner" }, "Fort Collins, CO"), "Ridge Runner, Fort Collins, CO");
   assert.equal(poiLocationQuery({ address:"5480 Ziegler Rd, Fort Collins, CO 80528" }, "Fort Collins, CO"), "5480 Ziegler Rd, Fort Collins, CO 80528");
   assert.equal(poiLocationQuery({ query:"Twin Silo Park" }, "Fort Collins, CO"), "Twin Silo Park, Fort Collins, CO");
+});
+
+test("partial road names generate location-scoped suggestions", () => {
+  const queries = poiSearchQueries("Ridge Runner", "Fort Collins, CO");
+  assert.equal(queries[0], "Ridge Runner, Fort Collins, CO");
+  assert.ok(queries.includes("Ridge Runner Drive, Fort Collins, CO"));
+  assert.ok(queries.includes("Ridge Runner Road, Fort Collins, CO"));
+  assert.equal(poiSearchQueries("Ridge Runner Dr", "Fort Collins, CO").length, 1);
 });
 
 test("POI lookup candidates preserve resolved map data for approval", () => {
