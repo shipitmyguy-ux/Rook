@@ -200,16 +200,32 @@ export async function resolveMissingListing(property = {}, criteria = {}, fetchI
   if (!response.ok) throw new Error(`Listing resolver returned ${response.status}`);
   const payload = await response.json();
   const candidate = payload?.listing || null;
+  const fallback = payload?.priceFallback && Number(payload.priceFallback.price) > 0 ? payload.priceFallback : null;
   if (candidate?.sourceUrl && (!property.address || sameListingAddress(candidate.address, property.address))) {
+    const normalized = normalizeProviderResult(candidate, { id: "rook-resolver", label: candidate.source || "Recovered listing" });
+    const listing = normalized.price
+      ? normalized
+      : fallback
+        ? {
+            ...normalized,
+            price:fallback.price,
+            metadata:{
+              ...(normalized.metadata || {}),
+              priceLabel:fallback.priceLabel || null,
+              priceEvidence:fallback,
+              priceFallback:true
+            }
+          }
+        : normalized;
     return {
       state: "active",
       url: candidate.sourceUrl,
-      listing: normalizeProviderResult(candidate, { id: "rook-resolver", label: candidate.source || "Recovered listing" }),
+      listing,
+      priceFallback:fallback,
       checkedAt: payload.checkedAt || new Date().toISOString()
     };
   }
   const confirmedClosed = payload?.state === "closed" && payload?.evidence?.confirmed === true;
-  const fallback = payload?.priceFallback && Number(payload.priceFallback.price) > 0 ? payload.priceFallback : null;
   return {
     state: confirmedClosed ? "closed" : "unknown",
     url: null,
