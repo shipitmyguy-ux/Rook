@@ -10,7 +10,7 @@ import { rankProperties, rankProperty } from "./core/ranking.js";
 import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
-import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults } from "./integrations/providers.js?v=image-enrichment-v3";
+import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults } from "./integrations/providers.js?v=image-enrichment-v4";
 import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates } from "./integrations/maps.js?v=park-contrast-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
@@ -33,7 +33,7 @@ let renderQueued = false;
 let distanceObserver = null;
 const BROWSER_QA_MODE = typeof location !== "undefined" && new URLSearchParams(location.search).has("browser-qa");
 const LISTING_RESOLVER_VERSION = 4;
-const IMAGE_ENRICHMENT_VERSION = 3;
+const IMAGE_ENRICHMENT_VERSION = 4;
 // Distance values are derived once per property/address pair and persisted; rerenders only read the cache. The compact hybrid bar panel is anchored beside the card actions, scales to every configured address, and never resets during ordinary card rerenders.
 registerConfiguredProviders();
 
