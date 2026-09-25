@@ -11,7 +11,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, matchesSearchDefaults } from "./integrations/providers.js?v=income-filter-v1";
-import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates } from "./integrations/maps.js?v=poi-lookup-v2";
+import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates } from "./integrations/maps.js?v=poi-lookup-v3";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar } from "./integrations/sync.js?v=tours-v1";
