@@ -10,7 +10,7 @@ import { rankProperties, rankProperty } from "./core/ranking.js";
 import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
-import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults } from "./integrations/providers.js?v=image-enrichment-v1";
+import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults } from "./integrations/providers.js?v=image-enrichment-v2";
 import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates } from "./integrations/maps.js?v=park-contrast-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
@@ -33,6 +33,7 @@ let renderQueued = false;
 let distanceObserver = null;
 const BROWSER_QA_MODE = typeof location !== "undefined" && new URLSearchParams(location.search).has("browser-qa");
 const LISTING_RESOLVER_VERSION = 4;
+const IMAGE_ENRICHMENT_VERSION = 2;
 // Distance values are derived once per property/address pair and persisted; rerenders only read the cache. The compact hybrid bar panel is anchored beside the card actions, scales to every configured address, and never resets during ordinary card rerenders.
 registerConfiguredProviders();
 
@@ -510,19 +511,22 @@ async function enrichMissingImages() {
     if (firstImageUrl(property)) return false;
     if (property.listingState === "closed" && property.metadata?.listingClosedEvidence?.confirmed === true) return false;
     if (!property.address && !property.label && !safeListingUrl(property.sourceUrl)) return false;
+    const version = Number(property.metadata?.imageEnrichmentVersion || 0);
+    if (version < IMAGE_ENRICHMENT_VERSION) return true;
     const checkedAt = Date.parse(property.metadata?.imageCheckedAt || 0) || 0;
     const missingCooldown = property.metadata?.imageEnrichmentState === "missing" ? 24 * 60 * 60 * 1000 : 2 * 60 * 60 * 1000;
     return !checkedAt || now - checkedAt > missingCooldown;
-  }).slice(0, 6);
+  }).slice(0, 10);
 
-  for (const property of candidates) {
+  const enrichOne = async property => {
     try {
       const result = await resolveMissingImage(property, { location: preferences.location || config.search.location });
       const metadata = {
         ...(property.metadata || {}),
         imageCheckedAt: result.checkedAt || new Date().toISOString(),
         imageEnrichmentState: result.state,
-        imageEnrichmentMethod: result.method || "none"
+        imageEnrichmentMethod: result.method || "none",
+        imageEnrichmentVersion: IMAGE_ENRICHMENT_VERSION
       };
       if (result.imageUrl) {
         metadata.image = result.imageUrl;
@@ -542,11 +546,16 @@ async function enrichMissingImages() {
         metadata:{
           ...(property.metadata || {}),
           imageCheckedAt:new Date().toISOString(),
-          imageEnrichmentState:"error"
+          imageEnrichmentState:"error",
+          imageEnrichmentVersion: IMAGE_ENRICHMENT_VERSION
         }
       });
       recordActivity("image-enrichment-error", property, { message:String(error?.message || error) });
     }
+  };
+
+  for (let index = 0; index < candidates.length; index += 2) {
+    await Promise.all(candidates.slice(index, index + 2).map(enrichOne));
   }
 }
 
@@ -560,9 +569,8 @@ async function refreshListings(trigger = "manual") {
     const { address1, ...searchPreferences } = preferences;
     const found = await searchProviders({ ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query });
     store.upsertMany(found);
-    void resolveUnavailableListings()
-      .then(() => enrichMissingImages())
-      .then(() => renderList());
+    void resolveUnavailableListings().then(() => renderList());
+    void enrichMissingImages().then(() => renderList());
     recordActivity("provider-refresh", null, { count: found.length, trigger });
     const indicator = document.querySelector("#pull-indicator");
     if (indicator) indicator.textContent = found.length ? `Found ${found.length} listings · checking missing details` : "Listings checked · checking missing details";
