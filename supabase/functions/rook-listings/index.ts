@@ -74,15 +74,22 @@ async function readerText(url: string, timeoutMs = 14000) {
   }
 }
 
-async function browserWorker(body: Record<string, unknown>) {
-  const response = await fetch(BROWSER_WORKER_URL, {
-    method:"POST",
-    headers:{ "content-type":"application/json", "x-rook-client":"rook-web-v1" },
-    body:JSON.stringify(body)
-  });
-  const payload = await response.json().catch(()=>({}));
-  if (!response.ok || payload?.ok === false) throw new Error(payload?.error || "browser worker failed");
-  return payload;
+async function browserWorker(body: Record<string, unknown>, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(BROWSER_WORKER_URL, {
+      method:"POST",
+      signal:controller.signal,
+      headers:{ "content-type":"application/json", "x-rook-client":"rook-web-v1" },
+      body:JSON.stringify(body)
+    });
+    const payload = await response.json().catch(()=>({}));
+    if (!response.ok || payload?.ok === false) throw new Error(payload?.error || "browser worker failed");
+    return payload;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function browserSnapshot(url: string) {
@@ -504,13 +511,21 @@ function listingFromIndexSnapshot(snapshot:any,address="",label="") {
 }
 
 async function providerCityIndexRecovery(address:string,label:string,location:string) {
-  for (const indexUrl of providerCityIndexUrls(location)) {
+  const urls = providerCityIndexUrls(location);
+  const inspect = async (indexUrl:string) => {
     try {
       const snapshot = await browserSnapshot(indexUrl);
-      const image = await imageFromProviderIndexSnapshot(snapshot,address,label);
+      const image = imageFromProviderIndexSnapshot(snapshot,address,label);
       const listing = listingFromIndexSnapshot(snapshot,address,label);
-      if (image?.src || listing) return { indexUrl,image,listing };
-    } catch {}
+      return image?.src || listing ? { indexUrl,image,listing } : null;
+    } catch {
+      return null;
+    }
+  };
+  for (const tier of [urls.slice(0,2), urls.slice(2,4)]) {
+    const results = await Promise.all(tier.map(inspect));
+    const hit = results.find(Boolean);
+    if (hit) return hit;
   }
   return null;
 }
