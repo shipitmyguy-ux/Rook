@@ -13,6 +13,8 @@ import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing } from "./integrations/providers.js";
 import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap } from "./integrations/maps.js?v=poi-markers-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js";
+import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
+import { scanHousingEmail, reconcileTourCalendar } from "./integrations/sync.js";
 import { config } from "./config.js";
 
 const app = document.querySelector("#app");
@@ -49,6 +51,80 @@ applySyncedEvidence();
 
 function esc(value = "") {
   return String(value).replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
+}
+
+function tourChip(property) {
+  const tour = tourForProperty(property, preferences);
+  if (!tour) return "";
+  const state = tourState(tour);
+  if (state === "none") return "";
+  if (state === "past") {
+    return `<div class="tour-chip tour-chip--past" data-tour-property="${esc(property.id)}"><span aria-hidden="true">✓</span><b>How did it go?</b><button data-action="tour-interested">Interested</button><button data-action="tour-maybe">Maybe</button><button data-action="tour-pass">Pass</button></div>`;
+  }
+  const calendarTarget = tour.calendarUrl ? ` href="${esc(tour.calendarUrl)}" target="_blank" rel="noopener noreferrer"` : "";
+  return `<a class="tour-chip tour-chip--${state}" data-action="tour-open" data-tour-property="${esc(property.id)}"${calendarTarget} title="Tour: ${esc(tourLabel(tour))}"><span aria-hidden="true">▣</span><b>${esc(tourLabel(tour))}</b></a>`;
+}
+
+function renderUpcomingTours() {
+  const target = document.querySelector("#upcoming-tours");
+  if (!target) return;
+  const items = upcomingTours(store.getAll(), preferences).slice(0, 5);
+  target.hidden = !items.length;
+  target.innerHTML = items.length ? `<div class="upcoming-tours__head"><strong>Upcoming tours</strong><button type="button" id="route-tours-today">Route today</button></div>` + items.map(({ property, tour }) =>
+    `<button type="button" class="upcoming-tour" data-tour-jump="${esc(property.id)}"><b>${esc(tourLabel(tour))}</b><span>${esc(property.label || property.address)}</span></button>`
+  ).join("") : "";
+}
+
+async function scheduleTour(property, startsAt, source = "manual") {
+  if (!property || !startsAt) return;
+  let next = applyTour(property, {
+    startsAt,
+    source,
+    durationMinutes:preferences.defaultTourDurationMinutes,
+    reminderMinutes:preferences.defaultTourReminderMinutes,
+    confidence:"confirmed"
+  }, preferences);
+  const sync = await reconcileTourCalendar(next, next.metadata.tour, { preferences });
+  if (sync.connected) next = applyTour(next, sync.tour, preferences);
+  store.upsert(next);
+  recordActivity("showing-scheduled", next, { startsAt:next.metadata.tour?.startsAt, source });
+  if (!sync.connected && source === "manual") {
+    const url = googleCalendarShowingUrl(next, next.metadata.tour?.startsAt, preferences.defaultTourDurationMinutes);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
+async function scanEmailNow() {
+  const buttons = document.querySelectorAll("[data-scan-email]");
+  buttons.forEach(button => { button.disabled = true; button.textContent = "Scanning email…"; });
+  const status = document.querySelector("#email-scan-status");
+  try {
+    const result = await scanHousingEmail(store.getAll(), { since:preferences.emailScanCursor, preferences });
+    if (!result.connected) {
+      if (status) status.textContent = "Email sync is not connected to Rook yet.";
+      recordActivity("email-scan-unavailable", null);
+      return;
+    }
+    for (const update of result.updates) {
+      let property = update.property;
+      if (property?.metadata?.tour?.startsAt) {
+        const sync = await reconcileTourCalendar(property, property.metadata.tour, { preferences });
+        if (sync.connected) property = applyTour(property, sync.tour, preferences);
+      }
+      if (property) store.upsert(property);
+      recordActivity(update.kind || "email-update", property || store.getAll().find(p => p.id === update.propertyId), { messageId:update.email?.id });
+    }
+    preferences = { ...preferences, emailScanCursor:result.cursor || preferences.emailScanCursor, emailLastScanAt:result.lastScanAt };
+    savePreferences(preferences);
+    const summary = `${result.scanned} emails scanned · ${result.updates.length} updates${result.review.length ? ` · ${result.review.length} need review` : ""}`;
+    if (status) status.textContent = summary;
+    renderList();
+  } catch (error) {
+    if (status) status.textContent = "Email scan failed.";
+    recordActivity("email-scan-error", null, { message:String(error?.message || error) });
+  } finally {
+    buttons.forEach(button => { button.disabled = false; button.textContent = "Scan email"; });
+  }
 }
 
 function followUpBadge(property) {
@@ -319,6 +395,7 @@ function propertyCard(property) {
     <section class="property-card__summary">
       <header class="property-card__identity"><span class="property-type-icon" role="img" aria-label="${kind}" title="${kind}">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span><div><h2>${esc(property.label)}</h2><p class="muted">${esc(displayAddress)}</p></div></header>
       <div class="property-card__facts"><strong>${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span></div>
+      ${tourChip(property)}
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
         ${listing.url
@@ -351,7 +428,14 @@ function propertyCard(property) {
 
 function visibleProperties() {
   const filtered = searchProperties(filterProperties(store.getAll(), activeFilter), query);
-  return rankProperties(filtered, preferences);
+  const ranked = rankProperties(filtered, preferences);
+  return ranked.sort((a,b) => {
+    const at = tourForProperty(a, preferences), bt = tourForProperty(b, preferences);
+    const as = at ? tourState(at) : "none", bs = bt ? tourState(bt) : "none";
+    const priority = state => state === "soon" ? 0 : state === "upcoming" ? 1 : 2;
+    const delta = priority(as) - priority(bs);
+    return delta || ((at?.startsAt && bt?.startsAt) ? new Date(at.startsAt) - new Date(bt.startsAt) : 0);
+  });
 }
 
 function renderActivity() {
@@ -567,6 +651,7 @@ function renderList() {
   // Per-card background maps are temporarily disabled to avoid flashing and excess GPU/CPU work.
   queueDistanceUpdates(document.querySelector("#property-list"));
   renderActivity();
+  renderUpcomingTours();
   renderIgnoredProperties();
   if (mapSelectionToRestore) movePropertyCardUnderMap(mapSelectionToRestore);
 }
@@ -576,6 +661,7 @@ app.innerHTML = `<main class="shell">
 <div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div>
 <section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><div id="property-map" class="property-map" role="region" aria-label="Interactive property map"></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
 <section id="map-details" class="map-details" aria-label="Property details" aria-live="polite" hidden></section>
+<section id="upcoming-tours" class="upcoming-tours" aria-live="polite" hidden></section>
 <section class="results"><div class="section-heading"><h2>Properties</h2><span id="property-count"></span></div><div id="property-list"></div></section>
 <section class="activity-panel"><div class="section-heading"><h2>Recent activity</h2></div><ul id="activity-list"></ul></section>
 
@@ -583,7 +669,7 @@ app.innerHTML = `<main class="shell">
 <dialog id="actions-dialog" class="actions-dialog"><form method="dialog"><div class="dialog-heading"><div><p class="eyebrow">ROOK</p><h2>Actions</h2></div><button class="dialog-close" value="cancel" aria-label="Close">×</button></div>
 <label for="property-search">Search properties</label><input id="property-search" type="search" placeholder="Address, neighborhood, property…">
 <nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Favorited</button></nav>
-<div class="action-menu"><button id="open-ignored" type="button">Ignored properties</button><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route favorites</button><button type="button" data-refresh-listings>Refresh listings</button><button id="open-settings" type="button">Search preferences</button></div>
+<div class="action-menu"><button type="button" data-scan-email>Scan email</button><small id="email-scan-status" class="email-scan-status"></small><button id="open-ignored" type="button">Ignored properties</button><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route favorites</button><button type="button" data-refresh-listings>Refresh listings</button><button id="open-settings" type="button">Search preferences</button></div>
 </form></dialog>
 
 <div id="ignore-toast" class="ignore-toast" role="status" hidden><span id="ignore-message"></span><button id="undo-ignore" type="button">Undo</button><button id="dismiss-ignore" type="button" aria-label="Dismiss">×</button></div>
@@ -620,6 +706,7 @@ app.innerHTML = `<main class="shell">
 <label class="check-row"><input id="pref-exclude-mobile" type="checkbox"> Exclude mobile/manufactured homes</label>
 <label class="check-row"><input id="pref-kid-friendly" type="checkbox"> Prioritize kid-friendly areas</label>
 <label class="check-row"><input id="pref-school" type="checkbox"> Prioritize nearby schools</label>
+<fieldset class="tour-defaults"><legend>Tour defaults</legend><label>Duration (minutes)<input id="pref-tour-duration" type="number" min="15" step="15"></label><label>Reminder (minutes before)<input id="pref-tour-reminder" type="number" min="0" step="15"></label><small>Defaults: 60-minute tours and a reminder 2 hours before.</small></fieldset>
 <label>Visual theme<select id="pref-theme"><option value="default">Default · Twilight</option><option value="warm">Warm</option><option value="night">Night</option><option value="mono">Monochrome</option></select></label>
 <input id="restore-data" type="file" accept="application/json,.json" hidden><div class="dialog-actions"><button id="restore-button" type="button">Restore backup</button><button id="export-data" type="button">Export backup</button><button value="cancel">Cancel</button><button id="save-settings" value="default">Save</button></div></form></dialog>
 </main>`;
@@ -729,7 +816,7 @@ document.querySelector("#showing-already-requested").addEventListener("click", (
   }
   document.querySelector("#showing-workflow-dialog").close();
 });
-document.querySelector("#showing-schedule-confirmed").addEventListener("click", () => {
+document.querySelector("#showing-schedule-confirmed").addEventListener("click", async () => {
   const property = store.getAll().find(p => String(p.id) === workflowPropertyId);
   document.querySelector("#showing-workflow-dialog").close();
   if (!property) return;
@@ -737,10 +824,7 @@ document.querySelector("#showing-schedule-confirmed").addEventListener("click", 
   if (!value) return;
   const startsAt = new Date(value);
   if (Number.isNaN(startsAt.getTime())) return;
-  store.update(property.id, { status: PROPERTY_STATUS.SHOWING_SCHEDULED, showingAt: startsAt.toISOString(), contactOutcome: "showing-scheduled" });
-  recordActivity("showing-scheduled", property, { startsAt: startsAt.toISOString() });
-  const calendarUrl = googleCalendarShowingUrl(property, startsAt);
-  if (calendarUrl) window.open(calendarUrl, "_blank", "noopener,noreferrer");
+  await scheduleTour(property, startsAt, "manual");
 });
 function handlePropertyCardKeydown(event) {
   // Property cards are passive containers; actions are available through explicit controls only.
@@ -821,13 +905,13 @@ function handlePropertyCardClick(e) {
     const value = window.prompt("Showing date/time (example: 2026-09-29 14:30)", "");
     if (value) {
       const startsAt = new Date(value);
-      if (!Number.isNaN(startsAt.getTime())) {
-        store.update(p.id, { status: PROPERTY_STATUS.SHOWING_SCHEDULED, showingAt: startsAt.toISOString(), contactOutcome: "showing-scheduled" });
-        recordActivity("showing-scheduled", p, { startsAt: startsAt.toISOString() });
-        const calendarUrl = googleCalendarShowingUrl(p, startsAt);
-        if (calendarUrl) window.open(calendarUrl, "_blank", "noopener,noreferrer");
-      }
+      if (!Number.isNaN(startsAt.getTime())) void scheduleTour(p, startsAt, "manual");
     }
+  }
+  if (action === "tour-interested" || action === "tour-maybe" || action === "tour-pass") {
+    const outcome = action.replace("tour-", "");
+    store.update(p.id, { status: outcome === "pass" ? PROPERTY_STATUS.REJECTED : PROPERTY_STATUS.VISITED, contactOutcome:`tour-${outcome}`, saved: outcome === "interested" ? true : p.saved });
+    recordActivity(`tour-${outcome}`, p);
   }
   if (action === "archive") {
     ignoreProperty(p, PROPERTY_STATUS.ARCHIVED);
@@ -869,6 +953,25 @@ document.querySelector("#route-shortlist").addEventListener("click", () => {
 });
 
 document.querySelectorAll("[data-refresh-listings]").forEach(button => button.addEventListener("click", () => refreshListings("manual")));
+document.querySelectorAll("[data-scan-email]").forEach(button => button.addEventListener("click", () => scanEmailNow()));
+document.querySelector("#upcoming-tours").addEventListener("click", event => {
+  const jump = event.target.closest("[data-tour-jump]")?.dataset.tourJump;
+  if (jump) {
+    const card = document.querySelector(`[data-id="${CSS.escape(jump)}"]`);
+    card?.scrollIntoView({ behavior:"smooth", block:"center" });
+    return;
+  }
+  if (event.target.closest("#route-tours-today")) {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+    const tours = upcomingTours(store.getAll(), preferences).filter(({tour}) => {
+      const t = new Date(tour.startsAt);
+      return t >= today && t < tomorrow;
+    }).map(({property}) => property);
+    const url = googleMapsMultiStopUrl(tours);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  }
+});
 
 function openSettings() {
   document.querySelector("#pref-address-1").value = preferences.address1?.mapLink || "";
@@ -885,6 +988,8 @@ function openSettings() {
   document.querySelector("#pref-exclude-mobile").checked = preferences.excludeMobileHomes !== false;
   document.querySelector("#pref-kid-friendly").checked = Boolean(preferences.kidFriendlyPriority);
   document.querySelector("#pref-school").checked = Boolean(preferences.schoolPriority);
+  document.querySelector("#pref-tour-duration").value = preferences.defaultTourDurationMinutes ?? 60;
+  document.querySelector("#pref-tour-reminder").value = preferences.defaultTourReminderMinutes ?? 120;
   document.querySelector("#pref-theme").value = preferences.visualTheme || "default";
   document.querySelector("#settings-dialog").showModal();
 }
@@ -935,6 +1040,8 @@ document.querySelector("#save-settings").addEventListener("click", e => {
     ...preferences,
     address1: coordinateMatch ? { lat: Number(coordinateMatch[1]), lng: Number(coordinateMatch[2]), mapLink: address1Link } : null,
     pointStyles,
+    defaultTourDurationMinutes: Math.max(15, Number(document.querySelector("#pref-tour-duration").value) || 60),
+    defaultTourReminderMinutes: Math.max(0, Number(document.querySelector("#pref-tour-reminder").value) || 120),
     location: document.querySelector("#pref-location").value.trim() || config.search.location,
     radiusMiles: Math.max(1, Number(document.querySelector("#pref-radius").value) || 15),
     minBeds: Number(document.querySelector("#pref-min-beds").value) || 0,
