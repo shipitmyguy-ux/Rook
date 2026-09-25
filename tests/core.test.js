@@ -98,6 +98,16 @@ test("missing listing resolver carries generic comparable price evidence", async
   assert.match(result.priceFallback.priceLabel, /building 2BR/);
 });
 
+test("dedupe preserves a known image when a later listing has none", () => {
+  const image = "https://images.example.com/property.jpg";
+  const first = normalizeProperty({ id:"image-a", address:"123 Main St, Fort Collins, CO", imageUrl:image, metadata:{ image } });
+  const later = normalizeProperty({ id:"image-b", address:"123 Main St, Fort Collins, CO", price:1800, image:null, imageUrl:null, primaryImageUrl:null, metadata:{} });
+  const merged = dedupeProperties([first, later]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].imageUrl, image);
+  assert.equal(merged[0].primaryImageUrl, image);
+});
+
 test("dedupe merges the same address and preserves saved state", () => {
   const first = normalizeProperty({ id: "old", address: "702 E Myrtle St, Fort Collins, CO", saved: true, note: "Visited" });
   const newer = normalizeProperty({ id: "new", address: "702 E Myrtle St, Fort Collins, CO", price: 1800 });
