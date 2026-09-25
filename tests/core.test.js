@@ -11,6 +11,7 @@ import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
 import { normalizePreferences } from "../src/core/preferences.js";
 import { config } from "../src/config.js";
+import { poiLocationQuery } from "../src/integrations/maps.js";
 import { normalizeTour, tourState, tourLabel, applyTour } from "../src/core/tours.js";
 import { normalizePointStyles, resolvePoiStyle, poiGlyph, poiColorHex } from "../src/core/poi-style.js";
 import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, canonicalAddress } from "../src/integrations/providers.js";
@@ -91,6 +92,12 @@ test("backup parser rejects unsupported formats", () => {
   assert.throws(() => parseRookBackup('{"version":2,"properties":[]}'), /Unsupported Rook backup version/);
 });
 
+
+test("loose POI names are scoped to the current search location", () => {
+  assert.equal(poiLocationQuery({ query:"Ridge Runner" }, "Fort Collins, CO"), "Ridge Runner, Fort Collins, CO");
+  assert.equal(poiLocationQuery({ address:"5480 Ziegler Rd, Fort Collins, CO 80528" }, "Fort Collins, CO"), "5480 Ziegler Rd, Fort Collins, CO 80528");
+  assert.equal(poiLocationQuery({ query:"Twin Silo Park" }, "Fort Collins, CO"), "Twin Silo Park, Fort Collins, CO");
+});
 
 test("tour defaults use one hour and two hour reminders", () => {
   const tour = normalizeTour({ startsAt:"2026-09-29T20:30:00Z" }, {});
