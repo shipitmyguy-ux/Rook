@@ -1933,7 +1933,7 @@ async function readSharedRookState() {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!serviceKey) return [];
   try {
-    const response = await fetch(PROJECT_URL + "/rest/v1/rook_property_state?select=property_key,property_id,address,label,status,contact_outcome,showing_at,tour,evidence,source_message_ids,last_email_at,updated_at&order=updated_at.desc", {
+    const response = await fetch(PROJECT_URL + "/rest/v1/rook_property_state?select=property_key,property_id,address,label,status,contact_outcome,showing_at,tour,updated_at&order=updated_at.desc", {
       headers:{
         apikey:serviceKey,
         authorization:"Bearer " + serviceKey,
@@ -1942,7 +1942,30 @@ async function readSharedRookState() {
     });
     if (!response.ok) return [];
     const rows = await response.json();
-    return Array.isArray(rows) ? rows : [];
+    if (!Array.isArray(rows)) return [];
+    return rows.map((row:any) => {
+      const rawTour = row?.tour && typeof row.tour === "object" ? row.tour : {};
+      const tour = {
+        startsAt:rawTour.startsAt || row.showing_at || null,
+        endsAt:rawTour.endsAt || null,
+        durationMinutes:Number(rawTour.durationMinutes || 60),
+        reminderMinutes:Number(rawTour.reminderMinutes || 120),
+        status:rawTour.status || null,
+        confidence:rawTour.confidence || null,
+        source:"chatgpt-sync"
+      };
+      return {
+        property_key:row.property_key,
+        property_id:row.property_id,
+        address:row.address,
+        label:row.label,
+        status:row.status,
+        contact_outcome:row.contact_outcome,
+        showing_at:row.showing_at,
+        tour,
+        updated_at:row.updated_at
+      };
+    });
   } catch {
     return [];
   }
