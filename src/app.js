@@ -142,26 +142,34 @@ function propertyKindIcon(kind) {
 }
 
 function cardPointsOfInterest() {
-  const primary = {
+  const removed = new Set(preferences.removedPointIds || []);
+  const primary = preferences.address1 && !removed.has("address-1") ? {
     id: "address-1",
     kind: "primary",
     primary: true,
-    label: "Address 1",
+    label: preferences.address1.label || "Address 1",
     icon: "star",
     color: "gold",
-    ...(preferences.address1 || {})
-  };
+    ...preferences.address1
+  } : null;
   const configured = Array.isArray(preferences.pointsOfInterest)
-    ? preferences.pointsOfInterest.filter(p => p && (p.address || p.query || p.location || (p.lat != null && p.lng != null)))
+    ? preferences.pointsOfInterest.filter(p => p && !removed.has(String(p.id)) && (p.address || p.query || p.location || (p.lat != null && p.lng != null)))
     : [];
   const fixed = [
     { id: "address-2", kind: "poi", label: "Address 2", lat: 40.57589, lng: -105.06223, address: "1000 Locust St, Fort Collins, CO 80524" },
     { id: "address-3", kind: "poi", label: "Address 3", lat: 40.5104806, lng: -105.0171262, address: "5480 Ziegler Rd, Fort Collins, CO 80528" }
-  ];
+  ].filter(point => !removed.has(point.id));
   const secondary = [...fixed, ...configured.filter(p => !fixed.some(f => f.id === p.id))]
-    .filter(p => p.id !== primary.id && p.address !== primary.address)
+    .filter(p => !primary || (p.id !== primary.id && p.address !== primary.address && p.query !== primary.query))
     .map((point, index) => ({ ...point, ...resolvePoiStyle(point, index, preferences.pointStyles) }));
-  return [...(preferences.address1 ? [primary] : []), ...secondary];
+  return [...(primary ? [primary] : []), ...secondary];
+}
+
+function nextPoiId() {
+  const used = new Set(cardPointsOfInterest().map(point => String(point.id)));
+  let index = 2;
+  while (used.has(`address-${index}`)) index += 1;
+  return `address-${index}`;
 }
 
 function poiDisplayName(point = {}) {
@@ -189,6 +197,7 @@ function renderPoiStyleSettings() {
       <span class="poi-style-address" title="${esc(poiDisplayName(point))}">${esc(poiDisplayName(point))}</span>
       <label>Icon<select data-poi-icon>${poiStyleOptions(POI_ICON_OPTIONS, style.icon, true)}</select></label>
       <label>Color<select data-poi-color>${poiStyleOptions(POI_COLOR_OPTIONS, style.color)}</select></label>
+      <button type="button" class="poi-remove" data-remove-poi="${esc(point.id || "poi-" + index)}">Remove</button>
     </div>`;
   }).join("") : '<p class="poi-style-empty">No secondary addresses configured.</p>';
 }
@@ -692,8 +701,13 @@ app.innerHTML = `<main class="shell">
 <dialog id="import-dialog"><form method="dialog"><h2>Add listing</h2><p class="muted">Paste a listing URL. Rook keeps the source and routes it through the shared property model.</p><input id="listing-url" type="url" placeholder="https://…" required /><div class="dialog-actions"><button value="cancel">Cancel</button><button id="import-confirm" value="default">Add</button></div></form></dialog>
 
 <dialog id="settings-dialog"><form method="dialog"><h2>Search preferences</h2>
-<label>Address 1 location<input id="pref-address-1" type="text" placeholder="Paste a Google Maps place link"><small>Saved in this browser only. Leave blank to hide Address 1.</small></label>
-<fieldset class="poi-style-options"><legend>Map address markers</legend><div id="pref-poi-styles"></div><small>Choose a predefined symbol and color for each saved secondary address. The map shows only the symbol.</small></fieldset>
+<fieldset class="poi-manager"><legend>Map points of interest</legend>
+  <label>Primary place / road<input id="pref-address-1" type="text" placeholder="Ridge Runner, Ridge Runner Dr, Twin Silo Park…"></label>
+  <button id="set-address-1" type="button">Set primary POI</button>
+  <div class="poi-add-row"><input id="pref-poi-query" type="text" placeholder="Place, road, landmark, or full address"><button id="add-poi" type="button">Add POI</button></div>
+  <small>Exact street numbers are optional. Loose names are searched near the current Rook search location.</small>
+</fieldset>
+<fieldset class="poi-style-options"><legend>Saved map markers</legend><div id="pref-poi-styles"></div><small>Choose a symbol/color or remove a saved POI.</small></fieldset>
 <label>Search location<input id="pref-location" type="text" autocomplete="address-level2" placeholder="Fort Collins, CO"></label>
 <label>Search radius (miles)<input id="pref-radius" type="number" min="1" max="100" step="1"></label>
 <label>Minimum bedrooms<input id="pref-min-beds" type="number" min="0" step="1"></label>
@@ -974,7 +988,7 @@ document.querySelector("#upcoming-tours").addEventListener("click", event => {
 });
 
 function openSettings() {
-  document.querySelector("#pref-address-1").value = preferences.address1?.mapLink || "";
+  document.querySelector("#pref-address-1").value = preferences.address1?.query || preferences.address1?.address || preferences.address1?.label || "";
   renderPoiStyleSettings();
   document.querySelector("#pref-location").value = preferences.location || config.search.location;
   document.querySelector("#pref-radius").value = preferences.radiusMiles ?? 15;
@@ -1004,6 +1018,55 @@ document.querySelector("#pref-poi-styles").addEventListener("change", event => {
     preview.style.setProperty("--poi-color", poiColorHex(colorValue));
   }
 });
+document.querySelector("#set-address-1").addEventListener("click", () => {
+  const query = document.querySelector("#pref-address-1").value.trim();
+  if (!query) return;
+  preferences = {
+    ...preferences,
+    address1:{ id:"address-1", label:query, query, primary:true, kind:"primary", icon:"star", color:"gold" },
+    removedPointIds:(preferences.removedPointIds || []).filter(id => id !== "address-1")
+  };
+  savePreferences(preferences);
+  renderPoiStyleSettings();
+  renderList();
+});
+document.querySelector("#add-poi").addEventListener("click", () => {
+  const input = document.querySelector("#pref-poi-query");
+  const query = input.value.trim();
+  if (!query) return;
+  const id = nextPoiId();
+  const next = { id, label:query, query, kind:"poi" };
+  preferences = {
+    ...preferences,
+    pointsOfInterest:[...(preferences.pointsOfInterest || []), next],
+    removedPointIds:(preferences.removedPointIds || []).filter(value => value !== id)
+  };
+  savePreferences(preferences);
+  input.value = "";
+  renderPoiStyleSettings();
+  renderList();
+});
+document.querySelector("#pref-poi-query").addEventListener("keydown", event => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    document.querySelector("#add-poi").click();
+  }
+});
+document.querySelector("#pref-poi-styles").addEventListener("click", event => {
+  const id = event.target.closest("[data-remove-poi]")?.dataset.removePoi;
+  if (!id) return;
+  const isPrimary = id === "address-1";
+  preferences = {
+    ...preferences,
+    address1:isPrimary ? null : preferences.address1,
+    pointsOfInterest:(preferences.pointsOfInterest || []).filter(point => String(point.id) !== String(id)),
+    removedPointIds:[...new Set([...(preferences.removedPointIds || []), String(id)])]
+  };
+  savePreferences(preferences);
+  if (isPrimary) document.querySelector("#pref-address-1").value = "";
+  renderPoiStyleSettings();
+  renderList();
+});
 document.querySelector("#settings-button").addEventListener("click", openSettings);
 document.querySelector("#open-settings").addEventListener("click", () => {
   document.querySelector("#actions-dialog").close();
@@ -1019,14 +1082,6 @@ document.querySelector("#save-settings").addEventListener("click", e => {
     return;
   }
   document.querySelector("#pref-type-apartment").setCustomValidity("");
-  const address1Link = document.querySelector("#pref-address-1").value.trim();
-  const coordinateMatch = address1Link.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/) || address1Link.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
-  if (address1Link && (!coordinateMatch || Math.abs(Number(coordinateMatch[1])) > 90 || Math.abs(Number(coordinateMatch[2])) > 180)) {
-    document.querySelector("#pref-address-1").setCustomValidity("Paste the full Google Maps place link from the address bar.");
-    document.querySelector("#pref-address-1").reportValidity();
-    return;
-  }
-  document.querySelector("#pref-address-1").setCustomValidity("");
   const pointStyles = { ...(preferences.pointStyles || {}) };
   document.querySelectorAll("[data-poi-style-id]").forEach(row => {
     const id = row.dataset.poiStyleId;
@@ -1038,7 +1093,7 @@ document.querySelector("#save-settings").addEventListener("click", e => {
   });
   preferences = {
     ...preferences,
-    address1: coordinateMatch ? { lat: Number(coordinateMatch[1]), lng: Number(coordinateMatch[2]), mapLink: address1Link } : null,
+    address1: preferences.address1 || null,
     pointStyles,
     defaultTourDurationMinutes: Math.max(15, Number(document.querySelector("#pref-tour-duration").value) || 60),
     defaultTourReminderMinutes: Math.max(0, Number(document.querySelector("#pref-tour-reminder").value) || 120),
