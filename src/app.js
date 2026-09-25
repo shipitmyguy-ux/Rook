@@ -143,15 +143,6 @@ function propertyKindIcon(kind) {
 
 function cardPointsOfInterest() {
   const removed = new Set(preferences.removedPointIds || []);
-  const primary = preferences.address1 && !removed.has("address-1") ? {
-    id: "address-1",
-    kind: "primary",
-    primary: true,
-    label: preferences.address1.label || "Address 1",
-    icon: "star",
-    color: "gold",
-    ...preferences.address1
-  } : null;
   const configured = Array.isArray(preferences.pointsOfInterest)
     ? preferences.pointsOfInterest.filter(p => p && !removed.has(String(p.id)) && (p.address || p.query || p.location || (p.lat != null && p.lng != null)))
     : [];
@@ -159,10 +150,8 @@ function cardPointsOfInterest() {
     { id: "address-2", kind: "poi", label: "Address 2", lat: 40.57589, lng: -105.06223, address: "1000 Locust St, Fort Collins, CO 80524" },
     { id: "address-3", kind: "poi", label: "Address 3", lat: 40.5104806, lng: -105.0171262, address: "5480 Ziegler Rd, Fort Collins, CO 80528" }
   ].filter(point => !removed.has(point.id));
-  const secondary = [...fixed, ...configured.filter(p => !fixed.some(f => f.id === p.id))]
-    .filter(p => !primary || (p.id !== primary.id && p.address !== primary.address && p.query !== primary.query))
-    .map((point, index) => ({ ...point, ...resolvePoiStyle(point, index, preferences.pointStyles) }));
-  return [...(primary ? [primary] : []), ...secondary];
+  return [...fixed, ...configured.filter(p => !fixed.some(f => String(f.id) === String(p.id)))]
+    .map((point, index) => ({ ...point, primary:false, kind:"poi", ...resolvePoiStyle(point, index, preferences.pointStyles) }));
 }
 
 function nextPoiId() {
@@ -187,7 +176,7 @@ function poiStyleOptions(options, selected, glyphs = false) {
 function renderPoiStyleSettings() {
   const target = document.querySelector("#pref-poi-styles");
   if (!target) return;
-  const points = cardPointsOfInterest().filter(point => !point.primary);
+  const points = cardPointsOfInterest();
   target.innerHTML = points.length ? points.map((point, index) => {
     const style = resolvePoiStyle(point, index, preferences.pointStyles);
     const glyph = poiGlyph(style.icon);
@@ -704,11 +693,9 @@ app.innerHTML = `<main class="shell">
 
 <dialog id="settings-dialog"><form method="dialog"><h2>Search preferences</h2>
 <fieldset class="poi-manager"><legend>Map points of interest</legend>
-  <label>Primary place / road<input id="pref-address-1" type="text" placeholder="Ridge Runner, Ridge Runner Dr, Twin Silo Park…"></label>
-  <div class="poi-primary-actions"><button id="set-address-1" type="button">Find primary POI</button><button id="remove-address-1" type="button">Remove primary</button></div>
-  <div class="poi-add-row"><input id="pref-poi-query" type="text" placeholder="Place, road, landmark, or full address"><button id="add-poi" type="button">Add POI</button></div>
+  <div class="poi-add-row"><input id="pref-poi-query" type="text" placeholder="Place, road, landmark, or full address"><button id="add-poi" type="button">Find POI</button></div>
   <div id="poi-lookup-results" class="poi-lookup-results" aria-live="polite" hidden></div>
-  <small>Enter a place or road, search, then approve the resolved result before Rook adds it to the map.</small>
+  <small>Enter a partial or full place/road name, choose a suggestion, then approve it to add it to the map.</small>
 </fieldset>
 <fieldset class="poi-style-options"><legend>Saved map markers</legend><div id="pref-poi-styles"></div><small>Choose a symbol/color or remove a saved POI.</small></fieldset>
 <label>Search location<input id="pref-location" type="text" autocomplete="address-level2" placeholder="Fort Collins, CO"></label>
@@ -1000,26 +987,24 @@ function renderPoiLookupResults(message = "") {
     target.innerHTML = message ? `<p class="poi-lookup-message">${esc(message)}</p>` : "";
     return;
   }
-  const { candidates, mode, query } = pendingPoiLookup;
+  const { candidates, query } = pendingPoiLookup;
   target.hidden = false;
   if (!candidates.length) {
     target.innerHTML = `<div class="poi-lookup-empty"><b>No match found</b><span>Try adding a road suffix, neighborhood, or nearby landmark.</span></div>`;
     return;
   }
-  const label = mode === "primary" ? "Primary POI" : "New POI";
-  target.innerHTML = `<div class="poi-lookup-heading"><b>${esc(label)}</b><span>Results for “${esc(query)}”</span></div>` +
+  target.innerHTML = `<div class="poi-lookup-heading"><b>Location suggestions</b><span>Results for “${esc(query)}”</span></div>` +
     candidates.map((candidate, index) => `<div class="poi-candidate">
       <div><strong>${esc(candidate.label)}</strong><span>${esc(candidate.address)}</span></div>
       <button type="button" data-approve-poi="${index}">Approve</button>
     </div>`).join("");
 }
 
-async function lookupPoi(mode) {
-  const primary = mode === "primary";
-  const input = document.querySelector(primary ? "#pref-address-1" : "#pref-poi-query");
+async function lookupPoi() {
+  const input = document.querySelector("#pref-poi-query");
   const query = input?.value.trim() || "";
   if (!query) return;
-  const button = document.querySelector(primary ? "#set-address-1" : "#add-poi");
+  const button = document.querySelector("#add-poi");
   const target = document.querySelector("#poi-lookup-results");
   if (button) {
     button.disabled = true;
@@ -1032,7 +1017,7 @@ async function lookupPoi(mode) {
   try {
     const location = document.querySelector("#pref-location")?.value.trim() || preferences.location || config.search.location;
     const candidates = await searchPoiCandidates(query, location, 5);
-    pendingPoiLookup = { mode, query, candidates };
+    pendingPoiLookup = { query, candidates };
     renderPoiLookupResults();
   } catch {
     pendingPoiLookup = null;
@@ -1040,7 +1025,7 @@ async function lookupPoi(mode) {
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = primary ? "Find primary POI" : "Add POI";
+      button.textContent = "Find POI";
     }
   }
 }
@@ -1048,24 +1033,15 @@ async function lookupPoi(mode) {
 function approvePoiCandidate(index) {
   const candidate = pendingPoiLookup?.candidates?.[index];
   if (!candidate) return;
-  const primary = pendingPoiLookup.mode === "primary";
-  if (primary) {
-    preferences = {
-      ...preferences,
-      address1:{ id:"address-1", ...candidate, primary:true, kind:"primary", icon:"star", color:"gold" },
-      removedPointIds:(preferences.removedPointIds || []).filter(id => id !== "address-1")
-    };
-    document.querySelector("#pref-address-1").value = candidate.label;
-  } else {
-    const id = nextPoiId();
-    preferences = {
-      ...preferences,
-      pointsOfInterest:[...(preferences.pointsOfInterest || []), { id, ...candidate, kind:"poi" }],
-      removedPointIds:(preferences.removedPointIds || []).filter(value => value !== id)
-    };
-    document.querySelector("#pref-poi-query").value = "";
-  }
+  const id = nextPoiId();
+  preferences = {
+    ...preferences,
+    address1:null,
+    pointsOfInterest:[...(preferences.pointsOfInterest || []), { id, ...candidate, primary:false, kind:"poi" }],
+    removedPointIds:(preferences.removedPointIds || []).filter(value => value !== id)
+  };
   savePreferences(preferences);
+  document.querySelector("#pref-poi-query").value = "";
   pendingPoiLookup = null;
   renderPoiLookupResults();
   renderPoiStyleSettings();
@@ -1075,7 +1051,7 @@ function approvePoiCandidate(index) {
 function openSettings() {
   pendingPoiLookup = null;
   renderPoiLookupResults();
-  document.querySelector("#pref-address-1").value = preferences.address1?.label || preferences.address1?.query || preferences.address1?.address || "";
+  document.querySelector("#pref-poi-query").value = "";
   renderPoiStyleSettings();
   document.querySelector("#pref-location").value = preferences.location || config.search.location;
   document.querySelector("#pref-radius").value = preferences.radiusMiles ?? 15;
@@ -1105,31 +1081,11 @@ document.querySelector("#pref-poi-styles").addEventListener("change", event => {
     preview.style.setProperty("--poi-color", poiColorHex(colorValue));
   }
 });
-document.querySelector("#set-address-1").addEventListener("click", () => void lookupPoi("primary"));
-document.querySelector("#pref-address-1").addEventListener("keydown", event => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    void lookupPoi("primary");
-  }
-});
-document.querySelector("#remove-address-1").addEventListener("click", () => {
-  preferences = {
-    ...preferences,
-    address1:null,
-    removedPointIds:[...new Set([...(preferences.removedPointIds || []), "address-1"])]
-  };
-  savePreferences(preferences);
-  pendingPoiLookup = null;
-  renderPoiLookupResults();
-  document.querySelector("#pref-address-1").value = "";
-  renderPoiStyleSettings();
-  renderList();
-});
-document.querySelector("#add-poi").addEventListener("click", () => void lookupPoi("secondary"));
+document.querySelector("#add-poi").addEventListener("click", () => void lookupPoi());
 document.querySelector("#pref-poi-query").addEventListener("keydown", event => {
   if (event.key === "Enter") {
     event.preventDefault();
-    void lookupPoi("secondary");
+    void lookupPoi();
   }
 });
 document.querySelector("#poi-lookup-results").addEventListener("click", event => {
@@ -1140,15 +1096,13 @@ document.querySelector("#poi-lookup-results").addEventListener("click", event =>
 document.querySelector("#pref-poi-styles").addEventListener("click", event => {
   const id = event.target.closest("[data-remove-poi]")?.dataset.removePoi;
   if (!id) return;
-  const isPrimary = id === "address-1";
   preferences = {
     ...preferences,
-    address1:isPrimary ? null : preferences.address1,
+    address1:null,
     pointsOfInterest:(preferences.pointsOfInterest || []).filter(point => String(point.id) !== String(id)),
     removedPointIds:[...new Set([...(preferences.removedPointIds || []), String(id)])]
   };
   savePreferences(preferences);
-  if (isPrimary) document.querySelector("#pref-address-1").value = "";
   renderPoiStyleSettings();
   renderList();
 });
@@ -1178,7 +1132,7 @@ document.querySelector("#save-settings").addEventListener("click", e => {
   });
   preferences = {
     ...preferences,
-    address1: preferences.address1 || null,
+    address1:null,
     pointStyles,
     defaultTourDurationMinutes: Math.max(15, Number(document.querySelector("#pref-tour-duration").value) || 60),
     defaultTourReminderMinutes: Math.max(0, Number(document.querySelector("#pref-tour-reminder").value) || 120),
