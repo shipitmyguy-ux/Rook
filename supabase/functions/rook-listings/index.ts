@@ -237,6 +237,21 @@ async function sourceAdapter(id: string, source: string, url: string): Promise<A
   }
 }
 
+function incomeRestrictionText(listing: Listing) {
+  const parts: unknown[] = [listing.label, listing.address, listing.type, listing.metadata?.description];
+  try { parts.push(JSON.stringify(listing.metadata || {})); } catch {}
+  return parts.filter(Boolean).join(" ").toLowerCase();
+}
+
+function isIncomeRestrictedListing(listing: Listing) {
+  const text = incomeRestrictionText(listing);
+  if (/(income[-\s]restricted|income\s+(?:limit|limits|limited|qualified|qualification|qualifications)|income-qualified|affordable\s+housing(?:\s+programs?)?|section\s*8|\blihtc\b|low[-\s]income\s+housing\s+tax\s+credit)/i.test(text)) return true;
+  const label = String(listing.label || "");
+  const address = String(listing.address || "");
+  if (/\bbuffalo\s+run(?:\s+apartments)?\b/i.test(label)) return true;
+  return /\b1245\s+e\s+lincoln\s+ave\b/i.test(address) && /buffalo\s+run/i.test(label + " " + text);
+}
+
 function keyOf(row: Listing) {
   const address = String(row.address || "").toLowerCase().replace(/\b(street)\b/g,"st").replace(/\b(avenue)\b/g,"ave")
     .replace(/\b(road)\b/g,"rd").replace(/\b(drive)\b/g,"dr").replace(/[^a-z0-9]/g,"");
@@ -794,7 +809,8 @@ Deno.serve(async (req: Request) => {
     const text = [listing.label, listing.address, listing.type, listing.metadata?.description].filter(Boolean).join(" ").toLowerCase();
     if (minBeds && beds && beds < minBeds) return false;
     if (maxPrice && price && price > maxPrice) return false;
-    if (/(income[- ]restricted|income limits?|affordable housing|section 8|mobile home|manufactured home|trailer park)/i.test(text)) return false;
+    if (isIncomeRestrictedListing(listing)) return false;
+    if (/(mobile home|manufactured home|trailer park)/i.test(text)) return false;
     if (query && !text.includes(query)) return false;
     return true;
   });
