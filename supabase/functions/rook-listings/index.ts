@@ -162,6 +162,55 @@ function imageFromReaderText(text: string, address = "", label = "") {
   return null;
 }
 
+function isBlockedCommunityHost(hostname: string) {
+  const host = String(hostname || "").toLowerCase().replace(/^www\./,"");
+  return [
+    "google.com","bing.com","duckduckgo.com","facebook.com","instagram.com","x.com","twitter.com",
+    "youtube.com","yelp.com","mapquest.com","wikipedia.org","apartments.com","zillow.com","trulia.com",
+    "realtor.com","rent.com","apartmentlist.com","redfin.com","homes.com","hotpads.com","zumper.com","forrent.com"
+  ].some(domain => host === domain || host.endsWith("." + domain));
+}
+
+function searchCommunityUrlsFromText(text: string, address = "", label = "") {
+  const urls:string[] = [];
+  const seen = new Set<string>();
+  const cleanLabel = String(label || "").trim();
+  const labelToken = canonicalAddress(cleanLabel);
+  const buildingCore = addressCore(String(address || "").replace(/\s+(?:unit|apt|apartment|suite|#)\s*[A-Za-z0-9-]+(?=,|$)/i,""));
+  const lines = String(text || "").split(/\n+/);
+  for (let i=0; i<lines.length; i++) {
+    const context = lines.slice(Math.max(0,i-2),Math.min(lines.length,i+4)).join(" ");
+    const normalizedContext = canonicalAddress(context);
+    const labelMatch = labelToken.length >= 5 && normalizedContext.includes(labelToken);
+    const addressMatch = buildingCore.length >= 8 && normalizedContext.includes(buildingCore);
+    if (!labelMatch && !addressMatch) continue;
+    const hrefs = [
+      ...[...context.matchAll(/\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m=>m[1]),
+      ...[...context.matchAll(/(https?:\/\/[^\s<>"')]+)/g)].map(m=>m[1])
+    ];
+    for (const href of hrefs) {
+      const normalized = normalizeSearchResultUrl(href);
+      if (!normalized || seen.has(normalized)) continue;
+      try {
+        const url = new URL(normalized);
+        if (isBlockedCommunityHost(url.hostname)) continue;
+        seen.add(normalized);
+        urls.push(normalized);
+        if (urls.length >= 5) return urls;
+      } catch {}
+    }
+  }
+  return urls;
+}
+
+function streetClusterQuery(address = "", label = "") {
+  const raw = String(address || label || "");
+  const first = raw.split(",")[0] || "";
+  const withoutUnit = first.replace(/\s+(?:unit|apt|apartment|suite|#)\s*[A-Za-z0-9-]+\s*$/i,"").trim();
+  const streetOnly = withoutUnit.replace(/^\s*\d+[A-Za-z]?\s+/,"").trim();
+  return { withoutUnit, streetOnly };
+}
+
 function searchCandidateUrlsFromText(text: string, address = "", label = "") {
   const urls:string[] = [];
   const seen = new Set<string>();
@@ -315,6 +364,76 @@ async function resolveListingImage(address: string, label: string, location: str
         method:result.method || "alternate-page",
         ...(result.dimensions ? { dimensions:result.dimensions } : {})
       };
+    }
+  }
+
+  // Community-name fallback: search for an official/community website and accept it
+  // only after the destination page itself matches the property name or building address.
+  const cleanLabel = String(label || "").trim();
+  if (cleanLabel && !/^\d+\s/.test(cleanLabel)) {
+    const communityQuery = ['"' + cleanLabel + '"', location, "apartments"].filter(Boolean).join(" ");
+    const communitySearches = [
+      "https://www.google.com/search?q=" + encodeURIComponent(communityQuery),
+      "https://www.bing.com/search?q=" + encodeURIComponent(communityQuery)
+    ];
+    const communityUrls:string[] = [];
+    for (const searchUrl of communitySearches) {
+      try {
+        const reader = await readerText(searchUrl,5000);
+        for (const url of searchCommunityUrlsFromText(reader,address,label)) {
+          if (!communityUrls.includes(url)) communityUrls.push(url);
+          if (communityUrls.length >= 4) break;
+        }
+      } catch {}
+      if (communityUrls.length >= 4) break;
+    }
+    for (const communityUrl of communityUrls) {
+      const result = await imageFromListingPage(communityUrl,address,label);
+      if (result?.imageUrl) {
+        return {
+          state:"found",
+          imageUrl:result.imageUrl,
+          sourceUrl:communityUrl,
+          checkedAt,
+          method:"community-" + (result.method || "page"),
+          ...(result.dimensions ? { dimensions:result.dimensions } : {})
+        };
+      }
+    }
+  }
+
+  // Address-only fallback: search the same street/building cluster. The page still
+  // has to match the building street core before any image can be accepted.
+  const cluster = streetClusterQuery(address,label);
+  if (cluster.streetOnly) {
+    const clusterQuery = ['"' + cluster.streetOnly + '"', location, "apartments", "rental"].join(" ");
+    const clusterSearches = [
+      "https://www.google.com/search?q=" + encodeURIComponent(clusterQuery),
+      "https://www.bing.com/search?q=" + encodeURIComponent(clusterQuery)
+    ];
+    const clusterUrls:string[] = [];
+    for (const searchUrl of clusterSearches) {
+      try {
+        const reader = await readerText(searchUrl,5000);
+        for (const url of searchCandidateUrlsFromText(reader,cluster.withoutUnit,label)) {
+          if (!clusterUrls.includes(url)) clusterUrls.push(url);
+          if (clusterUrls.length >= 4) break;
+        }
+      } catch {}
+      if (clusterUrls.length >= 4) break;
+    }
+    for (const clusterUrl of clusterUrls) {
+      const result = await imageFromListingPage(clusterUrl,cluster.withoutUnit,label);
+      if (result?.imageUrl) {
+        return {
+          state:"found",
+          imageUrl:result.imageUrl,
+          sourceUrl:clusterUrl,
+          checkedAt,
+          method:"cluster-" + (result.method || "page"),
+          ...(result.dimensions ? { dimensions:result.dimensions } : {})
+        };
+      }
     }
   }
 
