@@ -59,11 +59,43 @@ test("archive filtering hides archived properties", () => {
   assert.deepEqual(filterProperties([visible, archived], "all").map(p => p.id), ["a"]);
 });
 
-test("702 E Myrtle keeps a building-level fallback price", async () => {
+test("702 E Myrtle seed does not hard-code a comparable price", async () => {
   const seed = (await import("../src/data/properties.js")).properties.find(p => p.id === "702-myrtle");
-  assert.equal(seed.price, 1395);
-  assert.match(seed.metadata?.priceLabel || "", /1,395\/mo/);
-  assert.match(seed.metadata?.priceEvidence || "", /700-718 E Myrtle/i);
+  assert.equal(seed.price, null);
+});
+
+test("missing listing resolver carries generic comparable price evidence", async () => {
+  const fetchImpl = async url => {
+    const parsed = new URL(String(url));
+    assert.equal(parsed.searchParams.get("beds"), "2");
+    assert.equal(parsed.searchParams.get("baths"), "1");
+    return {
+      ok:true,
+      async json(){
+        return {
+          state:"unknown",
+          listing:null,
+          checkedAt:"2026-09-25T00:00:00Z",
+          priceFallback:{
+            price:1395,
+            priceLabel:"$1,395/mo (building 2BR)",
+            checkedAt:"2026-09-25T00:00:00Z",
+            targetBeds:2,
+            method:"same-street-building-comparable",
+            evidence:[{source:"example",sourceUrl:"https://example.com/listing",price:1395,beds:2}]
+          }
+        };
+      }
+    };
+  };
+  const result = await resolveMissingListing(
+    { address:"702 E Myrtle St, Fort Collins, CO 80524", label:"702 E Myrtle St", beds:2, baths:1 },
+    { location:"Fort Collins, CO" },
+    fetchImpl
+  );
+  assert.equal(result.state, "unknown");
+  assert.equal(result.priceFallback.price, 1395);
+  assert.match(result.priceFallback.priceLabel, /building 2BR/);
 });
 
 test("dedupe merges the same address and preserves saved state", () => {
