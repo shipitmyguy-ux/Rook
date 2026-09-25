@@ -764,12 +764,96 @@ async function resolveListing(address: string, label: string, location: string, 
   return { state:"unknown", listing:null, checkedAt, checkedSources:successfulSources, evidence:null };
 }
 
+function poiQueryVariants(query: string, location: string) {
+  const raw = String(query || "").trim().replace(/\s+/g," ");
+  if (!raw) return [];
+  const hasSuffix = /\b(?:st|street|rd|road|dr|drive|ln|lane|way|ct|court|ave|avenue|blvd|boulevard|pkwy|parkway|pl|place|cir|circle|trl|trail)\.?$/i.test(raw);
+  const values:string[] = [];
+  const add = (value:string) => {
+    const scoped = /,|\b(?:co|colorado)\b|\b\d{5}\b/i.test(value) ? value : [value, location].filter(Boolean).join(", ");
+    if (scoped && !values.includes(scoped)) values.push(scoped);
+  };
+  add(raw);
+  if (!hasSuffix) {
+    for (const suffix of ["Drive","Road","Street","Way","Lane","Court","Avenue","Place","Trail","Park"]) add(raw + " " + suffix);
+  }
+  return values;
+}
+
+function normalizePoiCandidate(row:any, originalQuery:string) {
+  const lat = Number(row?.lat), lng = Number(row?.lon ?? row?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const displayName = String(row?.display_name || row?.name || originalQuery || "").trim();
+  const named = String(row?.namedetails?.name || row?.name || "").trim();
+  const first = displayName.split(",")[0]?.trim() || "";
+  return {
+    label:named || first || originalQuery,
+    address:displayName || named || originalQuery,
+    query:originalQuery,
+    lat,
+    lng,
+    placeType:row?.type || row?.addresstype || row?.class || null,
+    source:"OpenStreetMap"
+  };
+}
+
+async function searchPoiSuggestions(query:string, location:string, limit=5) {
+  const safeLimit = Math.max(1, Math.min(5, Number(limit) || 5));
+  const variants = poiQueryVariants(query, location);
+  const found:any[] = [];
+  const seen = new Set<string>();
+  for (let i=0; i<variants.length && found.length<safeLimit; i++) {
+    const q = variants[i];
+    const endpoint = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&dedupe=1&countrycodes=us&limit=" + safeLimit + "&q=" + encodeURIComponent(q);
+    try {
+      const response = await fetch(endpoint, {
+        headers:{
+          "accept":"application/json",
+          "accept-language":"en-US,en;q=0.9",
+          "user-agent":"Rook/1.0 (property map POI search)"
+        }
+      });
+      if (response.ok) {
+        const rows = await response.json();
+        for (const row of Array.isArray(rows) ? rows : []) {
+          const candidate = normalizePoiCandidate(row, query);
+          if (!candidate) continue;
+          const key = String(candidate.address || "").toLowerCase() + "|" + candidate.lat.toFixed(5) + "|" + candidate.lng.toFixed(5);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          found.push({ ...candidate, matchedQuery:q });
+          if (found.length >= safeLimit) break;
+        }
+      }
+    } catch {}
+    if (found.length >= safeLimit) break;
+    if (i < variants.length - 1) await new Promise(resolve => setTimeout(resolve, 1050));
+  }
+  const locationTokens = String(location || "").toLowerCase().split(/[,\s]+/).filter(token => token.length > 2);
+  const needle = String(query || "").trim().toLowerCase();
+  return found.sort((a,b) => {
+    const aText = String(a.address || "").toLowerCase(), bText = String(b.address || "").toLowerCase();
+    const aLocal = locationTokens.reduce((score, token) => score + (aText.includes(token) ? 1 : 0), 0);
+    const bLocal = locationTokens.reduce((score, token) => score + (bText.includes(token) ? 1 : 0), 0);
+    const aMatch = needle && String(a.label || a.address || "").toLowerCase().includes(needle) ? 1 : 0;
+    const bMatch = needle && String(b.label || b.address || "").toLowerCase().includes(needle) ? 1 : 0;
+    return (bLocal - aLocal) || (bMatch - aMatch);
+  }).slice(0, safeLimit);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "GET") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
 
   const url = new URL(req.url);
   const location = url.searchParams.get("location") || "Fort Collins, CO";
+  if (url.searchParams.get("poi") === "1") {
+    const query = (url.searchParams.get("query") || "").trim();
+    const limit = Number(url.searchParams.get("limit") || "5");
+    if (!query) return new Response(JSON.stringify({ candidates:[], error:"query required" }), { status:400, headers:corsHeaders });
+    const candidates = await searchPoiSuggestions(query, location, limit);
+    return new Response(JSON.stringify({ candidates, query, location }), { headers:corsHeaders });
+  }
   if (url.searchParams.get("resolve") === "1") {
     const address = (url.searchParams.get("address") || "").trim();
     const label = (url.searchParams.get("label") || "").trim();
