@@ -468,6 +468,71 @@ async function listingFromImageSearchSource(address:string,label:string,location
   return null;
 }
 
+function providerCityIndexUrls(location:string) {
+  const city = String(location || "Fort Collins, CO").split(",")[0].trim();
+  const slug = city.toLowerCase().replace(/[^a-z0-9]+/g,"-");
+  const title = city.replace(/\s+/g,"_");
+  return [
+    "https://hotpads.com/" + slug + "-co/apartments-for-rent",
+    "https://www.trulia.com/for_rent/" + title + ",CO/",
+    "https://www.apartments.com/" + slug + "-co/",
+    "https://www.zillow.com/" + slug + "-co/rentals/"
+  ];
+}
+
+function listingFromIndexSnapshot(snapshot:any,address="",label="") {
+  const links = Array.isArray(snapshot?.links) ? snapshot.links : [];
+  for (const link of links) {
+    const context = [link?.text,link?.context].filter(Boolean).join(" ");
+    if (!contextMatchesAddress(context,address,label)) continue;
+    const listing = fallbackListingFromText(context,String(link?.href||"https://example.com/"),{
+      address,label,source:(()=>{try{return new URL(String(link?.href||"")).hostname}catch{return "provider-index"}})()
+    });
+    if (Number(listing.price)>0 || listing.beds != null || listing.baths != null) return listing;
+  }
+  const images = Array.isArray(snapshot?.images) ? snapshot.images : [];
+  for (const image of images) {
+    const context = [image?.alt,image?.context].filter(Boolean).join(" ");
+    if (!contextMatchesAddress(context,address,label)) continue;
+    const sourceUrl = String(image?.href || "");
+    const listing = fallbackListingFromText(context,sourceUrl || "https://example.com/",{
+      address,label,source:(()=>{try{return new URL(sourceUrl).hostname}catch{return "provider-index"}})()
+    });
+    if (Number(listing.price)>0 || listing.beds != null || listing.baths != null) return listing;
+  }
+  return null;
+}
+
+async function providerCityIndexRecovery(address:string,label:string,location:string) {
+  for (const indexUrl of providerCityIndexUrls(location)) {
+    try {
+      const snapshot = await browserSnapshot(indexUrl);
+      const image = await imageFromProviderIndexSnapshot(snapshot,address,label);
+      const listing = listingFromIndexSnapshot(snapshot,address,label);
+      if (image?.src || listing) return { indexUrl,image,listing };
+    } catch {}
+  }
+  return null;
+}
+
+function imageFromProviderIndexSnapshot(snapshot:any,address="",label="") {
+  const images = Array.isArray(snapshot?.images) ? snapshot.images : [];
+  const matches = images.map((image:any) => {
+    const src = usablePhotoUrl(image?.dataSrc || image?.src);
+    if (!src) return null;
+    const text = [image?.alt,image?.context].filter(Boolean).join(" ");
+    if (!contextMatchesAddress(text,address,label)) return null;
+    if (/(logo|icon|avatar|map|floor\s*plan|site\s*plan)/i.test(text)) return null;
+    const width = Number(image?.naturalWidth || image?.width || 0);
+    const height = Number(image?.naturalHeight || image?.height || 0);
+    if (width && height && (width < 180 || height < 120)) return null;
+    const decoded = decodeImageSearchHref(image?.href);
+    const sourceUrl = normalizeSearchResultUrl(decoded.sourceUrl || image?.href || "");
+    return {src,width,height,sourceUrl,score:(width*height)||1};
+  }).filter(Boolean).sort((a:any,b:any)=>b.score-a.score);
+  return matches[0] || null;
+}
+
 async function resolveListingImage(address: string, label: string, location: string, sourceUrl = "") {
   const checkedAt = new Date().toISOString();
   const seen = new Set<string>();
@@ -515,6 +580,20 @@ async function resolveListingImage(address: string, label: string, location: str
         ...(result.dimensions ? { dimensions:result.dimensions } : {})
       };
     }
+  }
+
+  // City-wide provider indexes are a reliable fallback when an exact property
+  // page is absent. Only an image whose own card context matches the address is accepted.
+  const cityIndexHit = await providerCityIndexRecovery(address,label,location);
+  if (cityIndexHit?.image?.src) {
+    return {
+      state:"found",
+      imageUrl:cityIndexHit.image.src,
+      sourceUrl:cityIndexHit.image.sourceUrl || cityIndexHit.indexUrl,
+      checkedAt,
+      method:"provider-city-index-card",
+      dimensions:{width:cityIndexHit.image.width,height:cityIndexHit.image.height}
+    };
   }
 
   // Reuse the listing resolver once because it can discover a fresher exact-address
@@ -1089,6 +1168,21 @@ async function resolveComparablePrice(address: string, label: string, location: 
   const subject = address || label;
   const bedText = targetBeds > 0 ? targetBeds + " bedroom" : "";
   const query = ['"' + subject + '"', bedText, location, "rent"].filter(Boolean).join(" ");
+  try {
+    const cityIndex = await providerCityIndexRecovery(address,label,location);
+    if (cityIndex?.listing && Number(cityIndex.listing.price)>0) {
+      const price = Number(cityIndex.listing.price);
+      candidates.push({
+        price,
+        beds:Number(cityIndex.listing.beds||0)||null,
+        baths:Number(cityIndex.listing.baths||0)||null,
+        source:cityIndex.listing.source || "provider-city-index",
+        sourceUrl:cityIndex.listing.sourceUrl || cityIndex.indexUrl,
+        context:[cityIndex.listing.label,cityIndex.listing.address].filter(Boolean).join(" ")
+      });
+    }
+  } catch {}
+
   const searchUrls = [
     "https://www.bing.com/search?format=rss&q=" + encodeURIComponent(query),
     "https://www.google.com/search?q=" + encodeURIComponent(query),
