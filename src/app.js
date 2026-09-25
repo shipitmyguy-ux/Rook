@@ -11,7 +11,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, matchesSearchDefaults } from "./integrations/providers.js?v=income-filter-v1";
-import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap } from "./integrations/maps.js?v=poi-editor-v1";
+import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates } from "./integrations/maps.js?v=poi-lookup-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar } from "./integrations/sync.js?v=tours-v1";
@@ -705,9 +705,10 @@ app.innerHTML = `<main class="shell">
 <dialog id="settings-dialog"><form method="dialog"><h2>Search preferences</h2>
 <fieldset class="poi-manager"><legend>Map points of interest</legend>
   <label>Primary place / road<input id="pref-address-1" type="text" placeholder="Ridge Runner, Ridge Runner Dr, Twin Silo Park…"></label>
-  <div class="poi-primary-actions"><button id="set-address-1" type="button">Set primary POI</button><button id="remove-address-1" type="button">Remove primary</button></div>
+  <div class="poi-primary-actions"><button id="set-address-1" type="button">Find primary POI</button><button id="remove-address-1" type="button">Remove primary</button></div>
   <div class="poi-add-row"><input id="pref-poi-query" type="text" placeholder="Place, road, landmark, or full address"><button id="add-poi" type="button">Add POI</button></div>
-  <small>Exact street numbers are optional. Loose names are searched near the current Rook search location.</small>
+  <div id="poi-lookup-results" class="poi-lookup-results" aria-live="polite" hidden></div>
+  <small>Enter a place or road, search, then approve the resolved result before Rook adds it to the map.</small>
 </fieldset>
 <fieldset class="poi-style-options"><legend>Saved map markers</legend><div id="pref-poi-styles"></div><small>Choose a symbol/color or remove a saved POI.</small></fieldset>
 <label>Search location<input id="pref-location" type="text" autocomplete="address-level2" placeholder="Fort Collins, CO"></label>
@@ -989,8 +990,92 @@ document.querySelector("#upcoming-tours").addEventListener("click", event => {
   }
 });
 
+let pendingPoiLookup = null;
+
+function renderPoiLookupResults(message = "") {
+  const target = document.querySelector("#poi-lookup-results");
+  if (!target) return;
+  if (!pendingPoiLookup) {
+    target.hidden = !message;
+    target.innerHTML = message ? `<p class="poi-lookup-message">${esc(message)}</p>` : "";
+    return;
+  }
+  const { candidates, mode, query } = pendingPoiLookup;
+  target.hidden = false;
+  if (!candidates.length) {
+    target.innerHTML = `<div class="poi-lookup-empty"><b>No match found</b><span>Try adding a road suffix, neighborhood, or nearby landmark.</span></div>`;
+    return;
+  }
+  const label = mode === "primary" ? "Primary POI" : "New POI";
+  target.innerHTML = `<div class="poi-lookup-heading"><b>${esc(label)}</b><span>Results for “${esc(query)}”</span></div>` +
+    candidates.map((candidate, index) => `<div class="poi-candidate">
+      <div><strong>${esc(candidate.label)}</strong><span>${esc(candidate.address)}</span></div>
+      <button type="button" data-approve-poi="${index}">Approve</button>
+    </div>`).join("");
+}
+
+async function lookupPoi(mode) {
+  const primary = mode === "primary";
+  const input = document.querySelector(primary ? "#pref-address-1" : "#pref-poi-query");
+  const query = input?.value.trim() || "";
+  if (!query) return;
+  const button = document.querySelector(primary ? "#set-address-1" : "#add-poi");
+  const target = document.querySelector("#poi-lookup-results");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Looking up…";
+  }
+  if (target) {
+    target.hidden = false;
+    target.innerHTML = '<p class="poi-lookup-message">Looking up nearby matches…</p>';
+  }
+  try {
+    const location = document.querySelector("#pref-location")?.value.trim() || preferences.location || config.search.location;
+    const candidates = await searchPoiCandidates(query, location, 5);
+    pendingPoiLookup = { mode, query, candidates };
+    renderPoiLookupResults();
+  } catch {
+    pendingPoiLookup = null;
+    renderPoiLookupResults("Could not look up that place right now.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = primary ? "Find primary POI" : "Add POI";
+    }
+  }
+}
+
+function approvePoiCandidate(index) {
+  const candidate = pendingPoiLookup?.candidates?.[index];
+  if (!candidate) return;
+  const primary = pendingPoiLookup.mode === "primary";
+  if (primary) {
+    preferences = {
+      ...preferences,
+      address1:{ id:"address-1", ...candidate, primary:true, kind:"primary", icon:"star", color:"gold" },
+      removedPointIds:(preferences.removedPointIds || []).filter(id => id !== "address-1")
+    };
+    document.querySelector("#pref-address-1").value = candidate.label;
+  } else {
+    const id = nextPoiId();
+    preferences = {
+      ...preferences,
+      pointsOfInterest:[...(preferences.pointsOfInterest || []), { id, ...candidate, kind:"poi" }],
+      removedPointIds:(preferences.removedPointIds || []).filter(value => value !== id)
+    };
+    document.querySelector("#pref-poi-query").value = "";
+  }
+  savePreferences(preferences);
+  pendingPoiLookup = null;
+  renderPoiLookupResults();
+  renderPoiStyleSettings();
+  renderList();
+}
+
 function openSettings() {
-  document.querySelector("#pref-address-1").value = preferences.address1?.query || preferences.address1?.address || preferences.address1?.label || "";
+  pendingPoiLookup = null;
+  renderPoiLookupResults();
+  document.querySelector("#pref-address-1").value = preferences.address1?.label || preferences.address1?.query || preferences.address1?.address || "";
   renderPoiStyleSettings();
   document.querySelector("#pref-location").value = preferences.location || config.search.location;
   document.querySelector("#pref-radius").value = preferences.radiusMiles ?? 15;
@@ -1020,22 +1105,11 @@ document.querySelector("#pref-poi-styles").addEventListener("change", event => {
     preview.style.setProperty("--poi-color", poiColorHex(colorValue));
   }
 });
-document.querySelector("#set-address-1").addEventListener("click", () => {
-  const query = document.querySelector("#pref-address-1").value.trim();
-  if (!query) return;
-  preferences = {
-    ...preferences,
-    address1:{ id:"address-1", label:query, query, primary:true, kind:"primary", icon:"star", color:"gold" },
-    removedPointIds:(preferences.removedPointIds || []).filter(id => id !== "address-1")
-  };
-  savePreferences(preferences);
-  renderPoiStyleSettings();
-  renderList();
-});
+document.querySelector("#set-address-1").addEventListener("click", () => void lookupPoi("primary"));
 document.querySelector("#pref-address-1").addEventListener("keydown", event => {
   if (event.key === "Enter") {
     event.preventDefault();
-    document.querySelector("#set-address-1").click();
+    void lookupPoi("primary");
   }
 });
 document.querySelector("#remove-address-1").addEventListener("click", () => {
@@ -1045,31 +1119,23 @@ document.querySelector("#remove-address-1").addEventListener("click", () => {
     removedPointIds:[...new Set([...(preferences.removedPointIds || []), "address-1"])]
   };
   savePreferences(preferences);
+  pendingPoiLookup = null;
+  renderPoiLookupResults();
   document.querySelector("#pref-address-1").value = "";
   renderPoiStyleSettings();
   renderList();
 });
-document.querySelector("#add-poi").addEventListener("click", () => {
-  const input = document.querySelector("#pref-poi-query");
-  const query = input.value.trim();
-  if (!query) return;
-  const id = nextPoiId();
-  const next = { id, label:query, query, kind:"poi" };
-  preferences = {
-    ...preferences,
-    pointsOfInterest:[...(preferences.pointsOfInterest || []), next],
-    removedPointIds:(preferences.removedPointIds || []).filter(value => value !== id)
-  };
-  savePreferences(preferences);
-  input.value = "";
-  renderPoiStyleSettings();
-  renderList();
-});
+document.querySelector("#add-poi").addEventListener("click", () => void lookupPoi("secondary"));
 document.querySelector("#pref-poi-query").addEventListener("keydown", event => {
   if (event.key === "Enter") {
     event.preventDefault();
-    document.querySelector("#add-poi").click();
+    void lookupPoi("secondary");
   }
+});
+document.querySelector("#poi-lookup-results").addEventListener("click", event => {
+  const index = event.target.closest("[data-approve-poi]")?.dataset.approvePoi;
+  if (index == null) return;
+  approvePoiCandidate(Number(index));
 });
 document.querySelector("#pref-poi-styles").addEventListener("click", event => {
   const id = event.target.closest("[data-remove-poi]")?.dataset.removePoi;
