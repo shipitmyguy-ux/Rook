@@ -1,7 +1,10 @@
 // Connector-neutral email evidence. Gmail synchronization translates messages
 // into these events; property UI remains provider-independent.
 const RULES = [
+  ["showing-cancelled", /(?:showing|tour|appointment).{0,45}(?:cancelled|canceled)|(?:cancelled|canceled).{0,45}(?:showing|tour|appointment)/i],
+  ["showing-rescheduled", /(?:showing|tour|appointment).{0,45}(?:rescheduled|changed|moved)|(?:rescheduled|changed|moved).{0,45}(?:showing|tour|appointment)/i],
   ["showing-scheduled", /(?:showing|tour|appointment).{0,40}(?:confirmed|scheduled|booked)|(?:confirmed|scheduled).{0,40}(?:showing|tour)/i],
+  ["showing-proposed", /(?:showing|tour|appointment).{0,45}(?:available|proposed|offer|works for you)|(?:available|proposed).{0,45}(?:showing|tour|appointment)/i],
   ["showing-requested", /(?:request|requested|interested).{0,35}(?:showing|tour)|(?:showing|tour).{0,35}(?:request|requested)/i],
   ["unavailable", /(?:no longer available|already (?:rented|leased)|unit has been (?:rented|leased)|not available)/i],
   ["application", /(?:application|apply).{0,35}(?:received|submitted|complete)/i],
@@ -32,7 +35,11 @@ export function normalizeEmailEvent(input = {}) {
     direction: input.direction || "inbound",
     kind: input.kind || classifyHousingEmail(input),
     occurredAt: input.occurredAt || null,
-    subject: input.subject || ""
+    subject: input.subject || "",
+    startsAt: input.startsAt || input.tour?.startsAt || null,
+    endsAt: input.endsAt || input.tour?.endsAt || null,
+    status: input.status || input.tour?.status || null,
+    confidence: input.confidence || input.tour?.confidence || null
   };
 }
 
