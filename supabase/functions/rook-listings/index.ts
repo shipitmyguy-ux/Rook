@@ -797,76 +797,89 @@ function normalizePoiCandidate(row:any, originalQuery:string) {
   };
 }
 
+async function fetchJsonTimeout(url:string|URL, timeoutMs=5000, headers:Record<string,string>={}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal:controller.signal, headers:{ "accept":"application/json", ...headers } });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function searchPoiSuggestions(query:string, location:string, limit=5) {
   const safeLimit = Math.max(1, Math.min(5, Number(limit) || 5));
   const variants = poiQueryVariants(query, location);
   const found:any[] = [];
   const seen = new Set<string>();
-  for (let i=0; i<variants.length && found.length<safeLimit; i++) {
-    const q = variants[i];
-    const endpoint = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&dedupe=1&countrycodes=us&limit=" + safeLimit + "&q=" + encodeURIComponent(q);
-    try {
-      const response = await fetch(endpoint, {
-        headers:{
-          "accept":"application/json",
-          "accept-language":"en-US,en;q=0.9",
-          "user-agent":"Rook/1.0 (property map POI search)"
-        }
-      });
-      if (response.ok) {
-        const rows = await response.json();
-        for (const row of Array.isArray(rows) ? rows : []) {
-          const candidate = normalizePoiCandidate(row, query);
-          if (!candidate) continue;
-          const key = String(candidate.address || "").toLowerCase() + "|" + candidate.lat.toFixed(5) + "|" + candidate.lng.toFixed(5);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          found.push({ ...candidate, matchedQuery:q });
-          if (found.length >= safeLimit) break;
-        }
-      }
-    } catch {}
+
+  const addPhoton = (payload:any, matchedQuery:string) => {
+    for (const feature of Array.isArray(payload?.features) ? payload.features : []) {
+      const coords = feature?.geometry?.coordinates || [];
+      const props = feature?.properties || {};
+      const lat = Number(coords[1]), lng = Number(coords[0]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      const parts = [props.name, props.street, props.city, props.county, props.state, props.postcode, props.country].filter(Boolean);
+      const address = [...new Set(parts.map(String))].join(", ");
+      const candidate = {
+        label:String(props.name || props.street || query),
+        address:address || String(props.name || query),
+        query,
+        lat,
+        lng,
+        placeType:props.type || props.osm_value || props.layer || null,
+        source:"OpenStreetMap/Photon",
+        matchedQuery
+      };
+      const key = String(candidate.address || "").toLowerCase() + "|" + candidate.lat.toFixed(5) + "|" + candidate.lng.toFixed(5);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push(candidate);
+      if (found.length >= safeLimit) break;
+    }
+  };
+
+  // Photon is deliberately first: it is fuzzy, fast, and supports location bias.
+  for (const variant of variants.slice(0, 4)) {
     if (found.length >= safeLimit) break;
-    if (i < variants.length - 1) await new Promise(resolve => setTimeout(resolve, 1050));
+    const photon = new URL("https://photon.komoot.io/api");
+    photon.searchParams.set("q", variant.replace(/,\s*Fort Collins,?\s*CO$/i,""));
+    photon.searchParams.set("limit", String(safeLimit));
+    photon.searchParams.set("lang", "en");
+    if (/fort\s+collins/i.test(location)) {
+      photon.searchParams.set("lat", "40.5853");
+      photon.searchParams.set("lon", "-105.0844");
+      photon.searchParams.set("zoom", "12");
+      photon.searchParams.set("location_bias_scale", "0.05");
+    }
+    const payload = await fetchJsonTimeout(photon, 5000, { "user-agent":"Rook/1.0 (property map POI search)" });
+    addPhoton(payload, variant);
+    if (found.length) break;
   }
+
+  // One bounded Nominatim fallback is enough once fuzzy search has run.
   if (!found.length) {
-    try {
-      const photon = new URL("https://photon.komoot.io/api");
-      photon.searchParams.set("q", query);
-      photon.searchParams.set("limit", String(safeLimit));
-      photon.searchParams.set("lang", "en");
-      if (/fort\s+collins/i.test(location)) {
-        photon.searchParams.set("lat", "40.5853");
-        photon.searchParams.set("lon", "-105.0844");
-        photon.searchParams.set("zoom", "12");
-        photon.searchParams.set("location_bias_scale", "0.05");
-      }
-      const response = await fetch(photon, { headers:{ "accept":"application/json", "user-agent":"Rook/1.0 (property map POI search)" } });
-      const payload = response.ok ? await response.json() : null;
-      for (const feature of Array.isArray(payload?.features) ? payload.features : []) {
-        const coords = feature?.geometry?.coordinates || [];
-        const props = feature?.properties || {};
-        const lat = Number(coords[1]), lng = Number(coords[0]);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-        const parts = [props.name, props.street, props.city, props.county, props.state, props.postcode, props.country].filter(Boolean);
-        const address = [...new Set(parts.map(String))].join(", ");
-        const candidate = {
-          label:String(props.name || props.street || query),
-          address:address || String(props.name || query),
-          query,
-          lat,
-          lng,
-          placeType:props.type || props.osm_value || props.layer || null,
-          source:"OpenStreetMap/Photon",
-          matchedQuery:query
-        };
+    const q = variants.find(value => /\bdrive\b/i.test(value)) || variants[0];
+    if (q) {
+      const endpoint = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&dedupe=1&countrycodes=us&limit=" + safeLimit + "&q=" + encodeURIComponent(q);
+      const rows = await fetchJsonTimeout(endpoint, 5000, {
+        "accept-language":"en-US,en;q=0.9",
+        "user-agent":"Rook/1.0 (property map POI search)"
+      });
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const candidate = normalizePoiCandidate(row, query);
+        if (!candidate) continue;
         const key = String(candidate.address || "").toLowerCase() + "|" + candidate.lat.toFixed(5) + "|" + candidate.lng.toFixed(5);
         if (seen.has(key)) continue;
         seen.add(key);
-        found.push(candidate);
+        found.push({ ...candidate, matchedQuery:q });
         if (found.length >= safeLimit) break;
       }
-    } catch {}
+    }
   }
 
   const locationTokens = String(location || "").toLowerCase().split(/[,\s]+/).filter(token => token.length > 2);
