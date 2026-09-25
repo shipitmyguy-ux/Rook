@@ -192,6 +192,8 @@ export async function resolveMissingListing(property = {}, criteria = {}, fetchI
   if (property.address) url.searchParams.set("address", property.address);
   if (property.label) url.searchParams.set("label", property.label);
   if (property.sourceUrl) url.searchParams.set("sourceUrl", property.sourceUrl);
+  if (property.beds != null) url.searchParams.set("beds", String(property.beds));
+  if (property.baths != null) url.searchParams.set("baths", String(property.baths));
   url.searchParams.set("listingType", property.listingType === "buy" ? "buy" : "rent");
   if (criteria.location) url.searchParams.set("location", criteria.location);
   const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
@@ -207,10 +209,12 @@ export async function resolveMissingListing(property = {}, criteria = {}, fetchI
     };
   }
   const confirmedClosed = payload?.state === "closed" && payload?.evidence?.confirmed === true;
+  const fallback = payload?.priceFallback && Number(payload.priceFallback.price) > 0 ? payload.priceFallback : null;
   return {
     state: confirmedClosed ? "closed" : "unknown",
     url: null,
     evidence: confirmedClosed ? payload.evidence : null,
+    priceFallback: fallback,
     checkedAt: payload?.checkedAt || new Date().toISOString()
   };
 }
