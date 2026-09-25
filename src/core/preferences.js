@@ -13,7 +13,11 @@ export const defaultPreferences = Object.freeze({
   kidFriendlyPriority: true,
   schoolPriority: true,
   visualTheme: "default",
-  pointStyles: {}
+  pointStyles: {},
+  defaultTourDurationMinutes: 60,
+  defaultTourReminderMinutes: 120,
+  emailScanCursor: null,
+  emailLastScanAt: null
 });
 
 export function normalizePreferences(value = {}) {
@@ -30,7 +34,11 @@ export function normalizePreferences(value = {}) {
     excludeMobileHomes: value.excludeMobileHomes !== false,
     kidFriendlyPriority: value.kidFriendlyPriority !== false,
     schoolPriority: value.schoolPriority !== false,
-    pointStyles: normalizePointStyles(value.pointStyles)
+    pointStyles: normalizePointStyles(value.pointStyles),
+    defaultTourDurationMinutes: Math.max(15, Number(value.defaultTourDurationMinutes) || 60),
+    defaultTourReminderMinutes: Math.max(0, Number(value.defaultTourReminderMinutes) || 120),
+    emailScanCursor: value.emailScanCursor || null,
+    emailLastScanAt: value.emailLastScanAt || null
   };
 }
 export function loadPreferences() {
