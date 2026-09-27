@@ -205,3 +205,35 @@ html.settings-modal-open,body.settings-modal-open{overflow:hidden;overscroll-beh
 .desktop-refresh-button:hover{background:#101b26;border-color:#49657a}
 .desktop-refresh-button:disabled{opacity:.6}
 @media(max-width:699px){.desktop-refresh-button{display:none}}
+
+/* Scheduled tours must be visible at a glance in the property list. */
+.property-card.visual-card.has-scheduled-tour{
+  border-color:#d9b54a;
+  box-shadow:0 18px 55px #0008,0 0 0 1px rgba(255,206,82,.28) inset
+}
+.tour-flag{
+  position:absolute;
+  z-index:7;
+  top:7px;
+  right:48px;
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  max-width:44%;
+  min-height:28px;
+  padding:4px 8px;
+  border:1px solid #d9b54a;
+  border-radius:999px;
+  background:rgba(48,35,9,.9);
+  color:#ffdf79;
+  box-shadow:0 3px 14px rgba(0,0,0,.48);
+  pointer-events:none
+}
+.tour-flag span{font-size:11px;line-height:1}
+.tour-flag b{font:800 9px/1 system-ui;letter-spacing:.08em}
+.tour-flag em{font:700 9px/1 system-ui;font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tour-flag--soon{background:rgba(73,43,6,.94);border-color:#f0bc3a;color:#ffe08a}
+@media(max-width:699px){
+  .tour-flag{right:44px;top:6px;max-width:48%;min-height:26px;padding:3px 7px}
+  .tour-flag b,.tour-flag em{font-size:8px}
+}
