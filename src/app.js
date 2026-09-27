@@ -415,6 +415,7 @@ function openShowingWorkflow(property) {
   document.querySelector("#showing-workflow-dialog").showModal();
 }
 
+// Upcoming tours get a redundant text + border cue so they stay obvious even without relying on color.
 function tourVisualBadge(property) {
   const tour = tourForProperty(property, preferences);
   if (!tour) return { className:"", html:"" };
