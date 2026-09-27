@@ -682,6 +682,7 @@ export async function focusPropertyOnMap(property, options = {}) {
   if (!property) return;
   const container = overviewState.container;
   if (!container) return;
+  container.dataset.focusRequestedPropertyId = String(property.id);
   await ensureOverviewMap(container);
   const fallbackLocation = overviewState.latestOptions.location || "Fort Collins, CO";
   let point = cachedCoordinates(property, fallbackLocation);
