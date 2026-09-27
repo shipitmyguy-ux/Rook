@@ -31,6 +31,8 @@ let pullStartY = null;
 let pullDistance = 0;
 let renderQueued = false;
 let distanceObserver = null;
+let promotedTourPropertyId = null;
+let promotedTourResetTimer = null;
 const BROWSER_QA_MODE = typeof location !== "undefined" && new URLSearchParams(location.search).has("browser-qa");
 const LISTING_RESOLVER_VERSION = 4;
 // Increment when generic image recovery improves so prior misses retry immediately.
@@ -482,12 +484,37 @@ function propertyCard(property) {
   </article>`;
 }
 
+function promoteTourProperty(id) {
+  const propertyId = String(id || "");
+  if (!propertyId) return;
+  promotedTourPropertyId = propertyId;
+  if (promotedTourResetTimer) clearTimeout(promotedTourResetTimer);
+  renderList();
+  const property = store.getAll().find(item => String(item.id) === propertyId);
+  if (property) void focusPropertyOnMap(property);
+  requestAnimationFrame(() => {
+    const card = document.querySelector(`#property-list [data-id="${CSS.escape(propertyId)}"]`);
+    card?.scrollIntoView({ behavior:"smooth", block:"start" });
+  });
+  promotedTourResetTimer = window.setTimeout(() => {
+    if (promotedTourPropertyId !== propertyId) return;
+    promotedTourPropertyId = null;
+    promotedTourResetTimer = null;
+    renderList();
+  }, 20000);
+}
+
 function visibleProperties() {
   const restricted = filterProperties(store.getAll(), activeFilter)
     .filter(property => matchesSearchDefaults(property, preferences));
   const filtered = searchProperties(restricted, query);
   const ranked = rankProperties(filtered, preferences);
   return ranked.sort((a,b) => {
+    if (promotedTourPropertyId) {
+      const aPromoted = String(a.id) === promotedTourPropertyId;
+      const bPromoted = String(b.id) === promotedTourPropertyId;
+      if (aPromoted !== bPromoted) return aPromoted ? -1 : 1;
+    }
     const at = tourForProperty(a, preferences), bt = tourForProperty(b, preferences);
     const as = at ? tourState(at) : "none", bs = bt ? tourState(bt) : "none";
     const priority = state => state === "soon" ? 0 : state === "upcoming" ? 1 : 2;
@@ -1088,8 +1115,7 @@ document.querySelectorAll("[data-refresh-listings]").forEach(button => button.ad
 document.querySelector("#upcoming-tours").addEventListener("click", event => {
   const jump = event.target.closest("[data-tour-jump]")?.dataset.tourJump;
   if (jump) {
-    const card = document.querySelector(`[data-id="${CSS.escape(jump)}"]`);
-    card?.scrollIntoView({ behavior:"smooth", block:"center" });
+    promoteTourProperty(jump);
     return;
   }
   if (event.target.closest("#route-tours-today")) {
