@@ -492,10 +492,16 @@ function promoteTourProperty(id) {
   if (promotedTourResetTimer) clearTimeout(promotedTourResetTimer);
   renderList();
   const property = store.getAll().find(item => String(item.id) === propertyId);
-  if (property) void focusPropertyOnMap(property);
+  if (property) void focusPropertyOnMap(property, { showDetails:false });
   requestAnimationFrame(() => {
-    const card = document.querySelector(`#property-list [data-id="${CSS.escape(propertyId)}"]`);
-    card?.scrollIntoView({ behavior:"smooth", block:"start" });
+    restoreSelectedMapCard();
+    const list = document.querySelector("#property-list");
+    const card = list?.querySelector(`[data-id="${CSS.escape(propertyId)}"]`);
+    if (list && card) {
+      list.prepend(card);
+      card.classList.add("tour-promoted");
+      card.scrollIntoView({ behavior:"smooth", block:"start" });
+    }
   });
   promotedTourResetTimer = window.setTimeout(() => {
     if (promotedTourPropertyId !== propertyId) return;
