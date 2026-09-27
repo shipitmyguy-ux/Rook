@@ -415,8 +415,21 @@ function openShowingWorkflow(property) {
   document.querySelector("#showing-workflow-dialog").showModal();
 }
 
+function tourVisualBadge(property) {
+  const tour = tourForProperty(property, preferences);
+  if (!tour) return { className:"", html:"" };
+  const state = tourState(tour);
+  if (!["soon","upcoming"].includes(state)) return { className:"", html:"" };
+  const when = tourLabel(tour);
+  return {
+    className:" has-scheduled-tour",
+    html:`<div class="tour-flag tour-flag--${state}" aria-label="Tour scheduled: ${esc(when)}" title="Tour scheduled: ${esc(when)}"><span aria-hidden="true">▣</span><b>TOUR</b><em>${esc(when)}</em></div>`
+  };
+}
+
 function propertyCard(property) {
   const saved = property.saved || property.status === PROPERTY_STATUS.SHORTLISTED;
+  const tourVisual = tourVisualBadge(property);
   const score = Math.max(0, Math.min(100, rankProperty(property, preferences)));
   const kind = classifyPropertyKind(property);
   const image = firstImageUrl(property) || "";
@@ -427,7 +440,8 @@ function propertyCard(property) {
     : Number.isFinite(Number(property.price)) && Number(property.price) > 0
       ? "$" + Number(property.price).toLocaleString() + (property.listingType === "rent" ? "/mo" : "")
       : "Price unavailable");
-  return `<article class="property-card visual-card type-${kind}" data-id="${esc(property.id)}" tabindex="0" aria-label="View summary for ${esc(property.label)}" aria-haspopup="dialog" style="--score:${score}">
+  return `<article class="property-card visual-card type-${kind}${tourVisual.className}" data-id="${esc(property.id)}" tabindex="0" aria-label="View summary for ${esc(property.label)}" aria-haspopup="dialog" style="--score:${score}">
+      ${tourVisual.html}
       <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
     <section class="property-card__media" aria-label="Listing image">
       <div class="property-visual ${image ? "" : "property-visual--fallback"}" ${image ? `style="--property-image:url(\'${esc(image)}\')"` : ""} aria-hidden="true">${!image ? `<span class="property-placeholder-icon">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span>` : ""}</div>
