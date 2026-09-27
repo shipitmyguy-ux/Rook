@@ -512,9 +512,16 @@ function promoteTourProperty(id) {
 }
 
 function visibleProperties() {
-  const restricted = filterProperties(store.getAll(), activeFilter)
+  const allProperties = store.getAll();
+  const restricted = filterProperties(allProperties, activeFilter)
     .filter(property => matchesSearchDefaults(property, preferences));
-  const filtered = searchProperties(restricted, query);
+  let filtered = searchProperties(restricted, query);
+  if (promotedTourPropertyId && !filtered.some(property => String(property.id) === promotedTourPropertyId)) {
+    const promoted = allProperties.find(property => String(property.id) === promotedTourPropertyId);
+    if (promoted && ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(promoted.status)) {
+      filtered = [promoted, ...filtered];
+    }
+  }
   const ranked = rankProperties(filtered, preferences);
   return ranked.sort((a,b) => {
     if (promotedTourPropertyId) {
