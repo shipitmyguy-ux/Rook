@@ -484,6 +484,7 @@ function propertyCard(property) {
   </article>`;
 }
 
+// Upcoming-tour clicks temporarily promote the target card while preserving normal ranking afterward.
 function promoteTourProperty(id) {
   const propertyId = String(id || "");
   if (!propertyId) return;
