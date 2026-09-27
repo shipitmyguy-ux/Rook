@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import { classifyHousingEmail, matchEmailToProperty } from "../src/integrations/email.js";
 import { isShowingEvent, matchCalendarEventToProperty, googleCalendarShowingUrl } from "../src/integrations/calendar.js";
 import test from "node:test";
@@ -15,6 +16,24 @@ import { poiLocationQuery, normalizePoiSearchCandidate, poiSearchQueries, mapLan
 import { normalizeTour, tourState, tourLabel, applyTour } from "../src/core/tours.js";
 import { normalizePointStyles, resolvePoiStyle, poiGlyph, poiColorHex } from "../src/core/poi-style.js";
 import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, resolveMissingImage, canonicalAddress, isIncomeRestrictedListing } from "../src/integrations/providers.js";
+
+test("upcoming tour jump explicitly promotes the card and requests map focus without map-detail relocation", async () => {
+  const appSource = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  const mapSource = await fs.readFile(new URL("../src/integrations/maps.js", import.meta.url), "utf8");
+  assert.match(appSource, /promoteTourProperty\(jump\)/);
+  assert.match(appSource, /focusPropertyOnMap\(property, \{ showDetails:false \}\)/);
+  assert.match(appSource, /list\.prepend\(card\)/);
+  assert.match(appSource, /promotedTourPropertyId/);
+  assert.match(mapSource, /options\.showDetails !== false/);
+  assert.match(mapSource, /focusRequestedPropertyId/);
+});
+
+test("shared showing sync can materialize a missing property card", async () => {
+  const appSource = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(appSource, /if \(!property && \(row\.address \|\| row\.label\)\)/);
+  assert.match(appSource, /source:"Shared sync"/);
+  assert.match(appSource, /row\.status === "showing-scheduled" \? \{ saved:true \}/);
+});
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
   const property = normalizeProperty({
