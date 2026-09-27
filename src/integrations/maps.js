@@ -678,7 +678,7 @@ export function renderPropertyMap(container, properties = [], options = {}) {
   });
 }
 
-export async function focusPropertyOnMap(property) {
+export async function focusPropertyOnMap(property, options = {}) {
   if (!property) return;
   const container = overviewState.container;
   if (!container) return;
@@ -691,7 +691,7 @@ export async function focusPropertyOnMap(property) {
   }
   if (!point || !overviewState.map) return;
   selectFeature(String(property.id));
-  showPropertyDetails(String(property.id), true);
+  if (options.showDetails !== false) showPropertyDetails(String(property.id), true);
   overviewState.map.easeTo({
     center: [point.lng, point.lat],
     zoom: Math.max(overviewState.map.getZoom(), 14),
