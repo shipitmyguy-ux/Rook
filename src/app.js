@@ -142,11 +142,31 @@ async function syncSharedRookState() {
     if (!rows.length) return 0;
     let applied = 0;
     for (const row of rows) {
-      const property = store.getAll().find(item =>
+      let property = store.getAll().find(item =>
         (row.property_id && String(item.id) === String(row.property_id)) ||
         (row.address && canonicalAddress(item.address) === canonicalAddress(row.address)) ||
         (row.label && canonicalAddress(item.label) === canonicalAddress(row.label))
       );
+      if (!property && (row.address || row.label)) {
+        const id = row.property_id || "shared-" + canonicalAddress(row.address || row.label);
+        store.upsert({
+          id,
+          label:row.label || row.address || "Synced property",
+          address:row.address || "",
+          type:"Property",
+          listingType:"rent",
+          saved:row.status === "showing-scheduled",
+          status:row.status || PROPERTY_STATUS.NEW,
+          contactOutcome:row.contact_outcome || null,
+          showingAt:row.showing_at || null,
+          source:"Shared sync",
+          metadata:{
+            sharedSyncUpdatedAt:row.updated_at || null,
+            ...(row.tour && typeof row.tour === "object" && Object.keys(row.tour).length ? { tour:row.tour } : {})
+          }
+        });
+        property = store.getAll().find(item => String(item.id) === String(id));
+      }
       if (!property) continue;
       const metadata = {
         ...(property.metadata || {}),
