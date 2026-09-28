@@ -10,7 +10,7 @@
 // A real verified fixture exercises production filtering; QA does not bypass it.
 const checkedAt = new Date().toISOString();
 localStorage.setItem('rook.properties.v1', JSON.stringify([{
-  id:'qa-listing', label:'QA rental', address:'100 Main St, Fort Collins, CO', beds:2, price:1800,
+  id:'qa-listing', label:'QA rental', type:'Apartment', lat:40.55, lng:-105.07, address:'100 Main St, Fort Collins, CO', beds:2, price:1800,
   sourceUrl:'https://listings.example.test/qa-home', listingState:'active', listingCheckedAt:checkedAt,
   metadata:{listingResolverVersion:5,listingVerification:{confirmed:true,version:5,url:'https://listings.example.test/qa-home'}}
 }]));

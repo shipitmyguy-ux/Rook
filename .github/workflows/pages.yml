@@ -74,6 +74,8 @@ jobs:
       - name: Validate JavaScript syntax
         run: |
           for file in $(find src tests -name '*.js'); do node --check "$file"; done
+          node --check scripts/prepare-site.mjs
+          node --check scripts/smoke-listings.mjs
 
       - name: Run core regression tests
         run: npm test
