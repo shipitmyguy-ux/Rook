@@ -29,6 +29,14 @@ test("upcoming tour jump explicitly promotes the card and requests map focus wit
   assert.match(mapSource, /focusRequestedPropertyId/);
 });
 
+test("shared bookmarks materialize and persist as saved cards", async () => {
+  const appSource = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  const backendSource = await fs.readFile(new URL("../supabase/functions/rook-listings/index.ts", import.meta.url), "utf8");
+  assert.match(appSource, /saved:Boolean\(row\.saved\)/);
+  assert.match(appSource, /row\.saved \|\| row\.status === "showing-scheduled"/);
+  assert.match(backendSource, /saved:Boolean\(row\.saved\)/);
+});
+
 test("shared showing sync can materialize a missing property card", async () => {
   const appSource = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
   assert.match(appSource, /if \(!property && \(row\.address \|\| row\.label\)\)/);
