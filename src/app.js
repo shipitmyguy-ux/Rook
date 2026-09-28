@@ -1,3 +1,4 @@
+import { directListingUrl, listingAction, needsListingCheck, LISTING_RESOLVER_VERSION } from "./core/listing.js";
 import { properties as seedProperties } from "./data/properties.js";
 import { createPropertyStore } from "./core/store.js";
 import { filterProperties, searchProperties, PROPERTY_STATUS, applyEvidence, classifyPropertyKind, ignorePropertyPatch, restoreIgnoredPatch } from "./core/property.js";
@@ -34,7 +35,7 @@ let distanceObserver = null;
 let promotedTourPropertyId = null;
 let promotedTourResetTimer = null;
 const BROWSER_QA_MODE = typeof location !== "undefined" && new URLSearchParams(location.search).has("browser-qa");
-const LISTING_RESOLVER_VERSION = 4;
+let listingChecksInFlight = null;
 // Increment when generic image recovery improves so prior misses retry immediately.
 const IMAGE_ENRICHMENT_VERSION = 4;
 // Distance values are derived once per property/address pair and persisted; rerenders only read the cache. The compact hybrid bar panel is anchored beside the card actions, scales to every configured address, and never resets during ordinary card rerenders.
@@ -270,17 +271,7 @@ function propertySearchUrl(property) {
 }
 
 function propertyListingUrl(property) {
-  const direct = safeListingUrl(property?.sourceUrl);
-  const confirmedClosed = property?.listingState === "closed" && property?.metadata?.listingClosedEvidence?.confirmed === true;
-  const legacyClosedNeedsRecheck = property?.listingState === "closed" && !confirmedClosed;
-  const staleResolverState = Number(property?.metadata?.listingResolverVersion || 0) < LISTING_RESOLVER_VERSION;
-  return {
-    url: direct,
-    direct: Boolean(direct),
-    closed: confirmedClosed,
-    resolving: !direct && (staleResolverState || legacyClosedNeedsRecheck || (!confirmedClosed && !property?.listingCheckedAt)),
-    searchUrl: propertySearchUrl(property)
-  };
+  return { ...listingAction(property), searchUrl:propertySearchUrl(property) };
 }
 
 function distanceTone(distance) {
@@ -480,7 +471,7 @@ function propertyCard(property) {
         ${listing.url
           ? `<a class="status-action listing-action source-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer" aria-label="View source listing for ${esc(property.label)}" title="View source listing"><span aria-hidden="true">↗</span><b>View listing</b></a>`
           : listing.closed
-            ? `<span class="status-action listing-action listing-closed" aria-label="Listing closed" title="Rook could not find a current listing after checking live sources"><span aria-hidden="true">×</span><b>Closed</b></span>`
+            ? `<span class="status-action listing-action listing-closed" aria-label="Listing closed" title="The source confirms this listing is no longer available"><span aria-hidden="true">×</span><b>Closed</b></span>`
             : listing.resolving
               ? `<span class="status-action listing-action listing-resolving" aria-label="Rook is looking for this listing" title="Rook is checking live sources"><span aria-hidden="true">…</span><b>Finding…</b></span>`
               : `<a class="status-action listing-action listing-recovery-link" href="${esc(listing.searchUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Find a current listing for ${esc(property.label)}" title="Rook already checked live sources — search manually"><span aria-hidden="true">⌕</span><b>Find listing</b></a>`}
@@ -569,66 +560,49 @@ function renderActivity() {
 
 // Rook attempts live source recovery before exposing a manual Find listing search.
 async function resolveUnavailableListings() {
-  const candidates = store.getAll().filter(property => {
-    if (!property.address && !property.label && !safeListingUrl(property.sourceUrl)) return false;
-    const confirmedClosed = property.listingState === "closed" && property.metadata?.listingClosedEvidence?.confirmed === true;
-    if (confirmedClosed) return false;
-    if (property.listingState === "closed") return true; // legacy closed states are invalidated and rechecked immediately
-    const missingAddress = !String(property.address || "").trim();
-    const missingSource = !safeListingUrl(property.sourceUrl);
-    const missingPrice = !(Number.isFinite(Number(property.price)) && Number(property.price) > 0) && !property.metadata?.priceLabel;
-    const needsEnrichment = missingAddress || missingSource || missingPrice;
-    if (!needsEnrichment) return false;
-    const staleResolverState = Number(property.metadata?.listingResolverVersion || 0) < LISTING_RESOLVER_VERSION;
-    if (staleResolverState) return true;
-    const checkedAt = property.listingCheckedAt ? new Date(property.listingCheckedAt).getTime() : 0;
-    return !checkedAt || Date.now() - checkedAt > 30 * 60 * 1000;
-  }).slice(0, 12);
-
-  for (const property of candidates) {
-    try {
-      const result = await resolveMissingListing(property, { location: preferences.location || config.search.location });
-      if (result.state === "active" && result.listing) {
-        store.upsert({
-          ...result.listing,
-          id: property.id,
-          saved: property.saved,
-          status: property.status,
-          note: property.note,
-          listingState: "active",
-          listingCheckedAt: result.checkedAt,
-          metadata: {
-            ...(property.metadata || {}),
-            ...(result.listing.metadata || {}),
-            listingResolverVersion: LISTING_RESOLVER_VERSION
-          }
-        });
-        recordActivity("listing-recovered", property, { sourceUrl: result.url });
-      } else {
-        const nextMetadata = { ...(property.metadata || {}), listingResolverVersion: LISTING_RESOLVER_VERSION };
-        if (result.state === "closed" && result.evidence?.confirmed === true) {
-          nextMetadata.listingClosedEvidence = result.evidence;
+  if (listingChecksInFlight) return listingChecksInFlight;
+  listingChecksInFlight = (async () => {
+    const candidates = store.getAll().filter(property => needsListingCheck(property))
+      .sort((a,b) => Number(Boolean(b.sourceUrl)) - Number(Boolean(a.sourceUrl)));
+    const check = async snapshot => {
+      try {
+        const result = await resolveMissingListing(snapshot, { location:preferences.location || config.search.location });
+        const property = store.getAll().find(p => p.id === snapshot.id);
+        if (!property) return;
+        const metadata = { ...property.metadata, listingResolverVersion:LISTING_RESOLVER_VERSION };
+        delete metadata.listingVerification;
+        delete metadata.listingClosedEvidence;
+        if (result.state === 'active' && result.listing) {
+          const details = Object.fromEntries(Object.entries(result.listing).filter(([,value]) => value !== null && value !== undefined && value !== ''));
+          store.update(property.id, {
+            ...details,
+            // Keep user history and changes made while the network request was running.
+            id:property.id, saved:property.saved, status:property.status, note:property.note,
+            contactedAt:property.contactedAt, contactOutcome:property.contactOutcome, showingAt:property.showingAt,
+            listingState:'active', listingCheckedAt:result.checkedAt,
+            metadata:{ ...metadata, ...result.listing.metadata, listingResolverVersion:LISTING_RESOLVER_VERSION }
+          });
         } else {
-          delete nextMetadata.listingClosedEvidence;
+          if (result.state === 'closed') metadata.listingClosedEvidence = result.evidence;
+          const fallback = result.priceFallback && Number(result.priceFallback.price) > 0 && !(Number(property.price) > 0) ? result.priceFallback : null;
+          if (fallback) Object.assign(metadata, { priceLabel:fallback.priceLabel, priceEvidence:fallback, priceFallback:true });
+          store.update(property.id, { ...(fallback ? {price:fallback.price} : {}), listingState:result.state, listingCheckedAt:result.checkedAt, metadata });
         }
-        const fallback = result.priceFallback && Number(result.priceFallback.price) > 0 ? result.priceFallback : null;
-        if (fallback && !(Number(property.price) > 0)) {
-          nextMetadata.priceLabel = fallback.priceLabel || null;
-          nextMetadata.priceEvidence = fallback;
-          nextMetadata.priceFallback = true;
-        }
-        store.update(property.id, {
-          ...(fallback && !(Number(property.price) > 0) ? { price:fallback.price } : {}),
-          listingState: result.state,
-          listingCheckedAt: result.checkedAt,
-          metadata: nextMetadata
+      } catch (error) {
+        const property = store.getAll().find(p => p.id === snapshot.id);
+        if (property) store.update(property.id, {
+          listingState:'unknown', listingCheckedAt:new Date().toISOString(),
+          metadata:{ ...property.metadata, listingVerification:null, listingResolverVersion:LISTING_RESOLVER_VERSION }
         });
-        if (result.state === "closed" && result.evidence?.confirmed === true) recordActivity("listing-closed", property);
+        recordActivity('listing-resolve-error', snapshot, { message:String(error?.message || error) });
       }
-    } catch (error) {
-      recordActivity("listing-resolve-error", property, { message: String(error?.message || error) });
+    };
+    // Drain every due candidate, with bounded concurrency and no repeated polling.
+    for (let index = 0; index < candidates.length; index += 3) {
+      await Promise.all(candidates.slice(index, index + 3).map(check));
     }
-  }
+  })();
+  try { await listingChecksInFlight; } finally { listingChecksInFlight = null; }
 }
 
 async function enrichMissingImages() {
@@ -648,7 +622,7 @@ async function enrichMissingImages() {
     try {
       const result = await resolveMissingImage(property, { location: preferences.location || config.search.location });
       const metadata = {
-        ...(property.metadata || {}),
+        ...(store.getAll().find(p => p.id === property.id)?.metadata || {}),
         imageCheckedAt: result.checkedAt || new Date().toISOString(),
         imageEnrichmentState: result.state,
         imageEnrichmentMethod: result.method || "none",
@@ -670,7 +644,7 @@ async function enrichMissingImages() {
     } catch (error) {
       store.update(property.id, {
         metadata:{
-          ...(property.metadata || {}),
+          ...(store.getAll().find(p => p.id === property.id)?.metadata || {}),
           imageCheckedAt:new Date().toISOString(),
           imageEnrichmentState:"error",
           imageEnrichmentVersion: IMAGE_ENRICHMENT_VERSION
@@ -695,7 +669,7 @@ async function refreshListings(trigger = "manual") {
     const { address1, ...searchPreferences } = preferences;
     const found = await searchProviders({ ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query });
     store.upsertMany(found);
-    void syncSharedRookState();
+    await syncSharedRookState();
     void resolveUnavailableListings().then(() => renderList());
     void enrichMissingImages().then(() => renderList());
     recordActivity("provider-refresh", null, { count: found.length, trigger });
@@ -811,7 +785,7 @@ function renderList() {
   if (mapSelectionToRestore) restoreSelectedMapCard({ keepSelection: true });
   const visible = visibleProperties();
   document.querySelector("#property-count").textContent = `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`;
-  document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("");
+  document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("") || `<p class="empty-state">${listingChecksInFlight || refreshInFlight ? "Checking current listing links…" : "No verified listings match. Open Actions → Needs listing to review saved properties."}</p>`;
   // Map exactly the same property set the user can currently see.
   // This keeps list/map completeness as a hard invariant.
   renderPropertyMap(document.querySelector("#property-map"), visible, {
@@ -851,7 +825,7 @@ app.innerHTML = `<main class="shell">
 <button id="more-button" class="more-button" aria-label="Open Rook actions" aria-haspopup="dialog">•••</button>
 <dialog id="actions-dialog" class="actions-dialog"><form method="dialog"><div class="dialog-heading"><div><p class="eyebrow">ROOK</p><h2>Actions</h2></div><button class="dialog-close" value="cancel" aria-label="Close">×</button></div>
 <label for="property-search">Search properties</label><input id="property-search" type="search" placeholder="Address, neighborhood, property…">
-<nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Favorited</button></nav>
+<nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Favorited</button><button type="button" data-filter="review">Needs listing</button></nav>
 <div class="action-menu"><button id="open-ignored" type="button">Ignored properties</button><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route favorites</button><button type="button" data-refresh-listings>Refresh listings</button><button id="open-settings" type="button">Search preferences</button></div>
 </form></dialog>
 
@@ -963,16 +937,12 @@ document.querySelector(".filters").addEventListener("click", e => {
 });
 
 
-function safeListingUrl(value) {
-  try {
-    const url = new URL(value);
-    return ["https:", "http:"].includes(url.protocol) ? url.href : null;
-  } catch { return null; }
-}
+function safeListingUrl(value) { return directListingUrl(value); }
 function openPropertySummary(id) {
   const property = store.getAll().find(p => p.id === id);
   if (!property) return;
-  const url = safeListingUrl(property.sourceUrl);
+  const listing = listingAction(property);
+  const url = listing.url;
   const price = property.price ? "$" + Number(property.price).toLocaleString() + (property.listingType === "buy" ? "" : "/mo") : "Price TBD";
   const searchUrl = propertySearchUrl(property);
   document.querySelector("#property-summary-title").textContent = property.label || "Property summary";
@@ -982,8 +952,8 @@ function openPropertySummary(id) {
     <p>${esc(property.type || "Property")} · ${esc((property.status || "new").replaceAll("-", " "))} · Match ${rankProperty(property, preferences)}</p>
     ${property.metadata?.description ? `<p>${esc(property.metadata.description)}</p>` : ""}
     <h3>Notes</h3><p>${esc(property.note || "No notes yet.")}</p>
-    ${url ? "" : "<p class='listing-unavailable'>No original listing link is saved for this property.</p>"}
-    <div class="map-detail-actions"><a href="${esc(url || searchUrl)}" target="_blank" rel="noopener noreferrer">${url ? "Open listing" : "Find listing"}</a><button type="button" id="summary-directions">Directions</button></div>`;
+    ${url ? "" : "<p class='listing-unavailable'>No current listing has been verified for this property.</p>"}
+    <div class="map-detail-actions"><a href="${esc(url || searchUrl)}" target="_blank" rel="noopener noreferrer">${url ? "Open listing" : listing.closed ? "Closed · search again" : "Find listing"}</a><button type="button" id="summary-directions">Directions</button></div>`;
   document.querySelector("#summary-directions").addEventListener("click", () => openDirections(property));
   document.querySelector("#property-summary-dialog").showModal();
 }

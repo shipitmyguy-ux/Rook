@@ -1,3 +1,4 @@
+import { verifiedProperty, verification } from "./listing-fixtures.js";
 import fs from "node:fs/promises";
 import { classifyHousingEmail, matchEmailToProperty } from "../src/integrations/email.js";
 import { isShowingEvent, matchCalendarEventToProperty, googleCalendarShowingUrl } from "../src/integrations/calendar.js";
@@ -73,7 +74,7 @@ test("image resolver returns normalized backend image", async () => {
 });
 
 test("archive filtering hides archived properties", () => {
-  const visible = normalizeProperty({ id: "a", label: "Visible" });
+  const visible = verifiedProperty({ id: "a", label: "Visible" });
   const archived = normalizeProperty({ id: "b", label: "Archived", status: PROPERTY_STATUS.ARCHIVED });
   assert.deepEqual(filterProperties([visible, archived], "all").map(p => p.id), ["a"]);
 });
@@ -315,7 +316,7 @@ test("missing listing resolver distinguishes recovered closed and unknown states
   const recovered = await resolveMissingListing(
     { address:"123 Main St, Fort Collins, CO", label:"123 Main St" },
     { location:"Fort Collins, CO" },
-    async () => ({ ok:true, json:async()=>({ state:"active", checkedAt:"2026-09-24T17:00:00Z", listing:{ address:"123 Main Street, Fort Collins, CO", sourceUrl:"https://example.test/listing" } }) })
+    async () => ({ ok:true, json:async()=>({ state:"active", verification:verification("https://example.test/listing"), checkedAt:"2026-09-24T17:00:00Z", listing:{ address:"123 Main Street, Fort Collins, CO", sourceUrl:"https://example.test/listing" } }) })
   );
   assert.equal(recovered.state, "active");
   assert.equal(recovered.url, "https://example.test/listing");
@@ -336,9 +337,9 @@ test("missing listing resolver distinguishes recovered closed and unknown states
   assert.equal(confirmedClosed.evidence.confirmed, true);
 });
 
-test("live source URL overrides a stale closed state during dedupe", () => {
-  const live = normalizeProperty({ id:"live", address:"123 Main St, Fort Collins, CO", sourceUrl:"https://example.test/live", listingState:"active" });
-  const stale = normalizeProperty({ id:"stale", address:"123 Main Street, Fort Collins, CO", listingState:"closed", metadata:{ listingClosedEvidence:{ confirmed:true } } });
+test("newer verified listing overrides a stale closed state during dedupe", () => {
+  const live = verifiedProperty({ id:"live", listingCheckedAt:"2026-09-27T00:00:00Z", address:"123 Main St, Fort Collins, CO", sourceUrl:"https://example.test/live", listingState:"active" });
+  const stale = normalizeProperty({ id:"stale", listingCheckedAt:"2026-09-24T00:00:00Z", address:"123 Main Street, Fort Collins, CO", listingState:"closed", metadata:{ listingClosedEvidence:{ confirmed:true } } });
   const [merged] = dedupeProperties([live, stale]);
   assert.equal(merged.sourceUrl, "https://example.test/live");
   assert.equal(merged.listingState, "active");
@@ -350,6 +351,7 @@ test("resolver enrichment preserves recovered price and source URL", async () =>
     { location:"Fort Collins, CO" },
     async () => ({ ok:true, json:async()=>({
       state:"active",
+      verification:verification("https://www.prospectstation.com/floorplans/303-w-prospect-rd-2-bed%2C-2-bath"),
       checkedAt:"2026-09-24T17:00:00Z",
       listing:{
         address:"303 W Prospect Rd, Fort Collins, CO 80526",
@@ -470,7 +472,7 @@ test("Google Calendar showing handoff contains property and time", () => {
 
 
 test("active feeds hide rejected properties", () => {
-  const rows = [normalizeProperty({ id:"keep", status:PROPERTY_STATUS.NEW }), normalizeProperty({ id:"drop", status:PROPERTY_STATUS.REJECTED })];
+  const rows = [verifiedProperty({ id:"keep", status:PROPERTY_STATUS.NEW }), normalizeProperty({ id:"drop", status:PROPERTY_STATUS.REJECTED })];
   assert.deepEqual(filterProperties(rows, "all").map(p => p.id), ["keep"]);
 });
 

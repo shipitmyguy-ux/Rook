@@ -106,28 +106,8 @@ jobs:
           echo "Desktop QA:" && grep -o '{"pass"[^<]*' /tmp/rook-desktop.html | tail -1
           echo "Mobile QA:" && grep -o '{"pass"[^<]*' /tmp/rook-mobile.html | tail -1
 
-      - name: Smoke test live Fort Collins listing backend
-        run: |
-          curl --fail --retry 2 --max-time 30 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?location=Fort%20Collins%2C%20CO&minBeds=2" -o /tmp/rook-listings.json
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-listings.json","utf8"));if(!Array.isArray(p.listings)||!Array.isArray(p.meta?.adapters)||p.listings.length<1||!p.meta.adapters.some(a=>a.ok&&a.count>0))process.exit(1)'
-          curl --fail --retry 1 --max-time 30 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?poi=1&query=Ridge%20Runner&location=Fort%20Collins%2C%20CO&limit=5" -o /tmp/rook-poi.json
-          echo "POI suggestions:" && cat /tmp/rook-poi.json
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-poi.json","utf8"));if(!Array.isArray(p.candidates)||p.candidates.length<1||!p.candidates.some(x=>/ridge\s+runner/i.test(String(x.label||"")+" "+String(x.address||""))))process.exit(1)'
-          curl --fail --retry 1 --max-time 55 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?image=1&address=702%20E%20Myrtle%20St%2C%20Fort%20Collins%2C%20CO%2080524&label=702%20E%20Myrtle%20St&location=Fort%20Collins%2C%20CO" -o /tmp/rook-myrtle-image.json
-          echo "Myrtle image:" && cat /tmp/rook-myrtle-image.json
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-myrtle-image.json","utf8"));if(p.state!=="found"||!/^https?:\/\//.test(p.imageUrl||""))process.exit(1)'
-          curl --fail --retry 1 --max-time 55 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?image=1&address=303%20W%20Prospect%20Rd%2C%20Fort%20Collins%2C%20CO%2080526&label=Prospect%20Station&sourceUrl=https%3A%2F%2Fwww.prospectstation.com%2Ffloorplans%2F303-w-prospect-rd-2-bed%252C-2-bath&location=Fort%20Collins%2C%20CO" -o /tmp/rook-prospect-image.json
-          echo "Prospect image:" && cat /tmp/rook-prospect-image.json
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-prospect-image.json","utf8"));if(p.state!=="found"||!/^https?:\/\//.test(p.imageUrl||""))process.exit(1)'
-          curl --fail --retry 1 --max-time 45 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?resolve=1&address=702%20E%20Myrtle%20St%2C%20Fort%20Collins%2C%20CO%2080524&label=702%20E%20Myrtle%20St&beds=2&baths=1&location=Fort%20Collins%2C%20CO" -o /tmp/rook-resolver.json
-          echo "Myrtle resolver:" && cat /tmp/rook-resolver.json
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-resolver.json","utf8"));if(p.state==="closed"&&p.evidence?.confirmed!==true)process.exit(1);if(!["active","closed","unknown"].includes(p.state))process.exit(1);const exact=Number(p.listing?.price)>0;const fallback=Number(p.priceFallback?.price)>0&&/building|comparable/i.test(p.priceFallback?.priceLabel||"");if(!exact&&!fallback)process.exit(1)'
-          curl --fail --retry 1 --max-time 35 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?resolve=1&address=303%20W%20Prospect%20Rd%2C%20Fort%20Collins%2C%20CO%2080526&label=Prospect%20Station&sourceUrl=https%3A%2F%2Fwww.prospectstation.com%2Ffloorplans%2F303-w-prospect-rd-2-bed%252C-2-bath&location=Fort%20Collins%2C%20CO" -o /tmp/rook-prospect.json
-          echo "Prospect resolver:" && cat /tmp/rook-prospect.json
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-prospect.json","utf8"));if(p.state!=="active"||!p.listing?.sourceUrl||!(Number(p.listing?.price)>0))process.exit(1)'
-          curl --fail --retry 1 --max-time 45 -sS "https://umvmilulnqnmeqvfoxxc.supabase.co/functions/v1/rook-listings?resolve=1&address=3051%20Sage%20Creek%20Rd%20Unit%20G38%2C%20Fort%20Collins%2C%20CO%2080528&label=3051%20Sage%20Creek%20Rd%20Unit%20G38&sourceUrl=https%3A%2F%2Fwww.trulia.com%2Fhome%2F3051-sage-creek-rd-g38-fort-collins-co-80528-54689602&location=Fort%20Collins%2C%20CO" -o /tmp/rook-sage-creek.json
-          echo "Sage Creek resolver:" && cat /tmp/rook-sage-creek.json
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("/tmp/rook-sage-creek.json","utf8"));let h="";try{h=new URL(p.listing?.sourceUrl||"").hostname}catch{};if(p.state!=="active"||!p.listing?.sourceUrl||/^(www\\.)?(google\\.com|example\\.com)$/.test(h))process.exit(1)'
+      - name: Verify live discovery and direct listing validation
+        run: node scripts/smoke-listings.mjs
 
   deploy-visual:
     needs: detect
@@ -142,15 +122,7 @@ jobs:
 
       - name: Prepare minimal cache-busted site
         run: |
-          rm -rf _site
-          mkdir -p _site
-          cp index.html _site/
-          cp -R src assets _site/
-          BUILD="${{ github.sha }}"
-          sed -E -i "s#rook-ui-v3\.css\?v=[^\"']+#rook-ui-v3.css?v=$BUILD#g" _site/index.html
-          sed -E -i "s#app\.js\?v=[^\"']+#app.js?v=$BUILD#g" _site/index.html
-          find _site/src -name '*.css' -type f -print0 | xargs -0 -r sed -E -i "s#(\.\./assets/[^)'\"?]+)(\?v=[^)'\"]+)?#\1?v=$BUILD#g"
-          echo "$BUILD" > _site/build.txt
+          node scripts/prepare-site.mjs "${{ github.sha }}"
 
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -173,15 +145,7 @@ jobs:
 
       - name: Prepare minimal cache-busted site
         run: |
-          rm -rf _site
-          mkdir -p _site
-          cp index.html _site/
-          cp -R src assets _site/
-          BUILD="${{ github.sha }}"
-          sed -E -i "s#rook-ui-v3\.css\?v=[^\"']+#rook-ui-v3.css?v=$BUILD#g" _site/index.html
-          sed -E -i "s#app\.js\?v=[^\"']+#app.js?v=$BUILD#g" _site/index.html
-          find _site/src -name '*.css' -type f -print0 | xargs -0 -r sed -E -i "s#(\.\./assets/[^)'\"?]+)(\?v=[^)'\"]+)?#\1?v=$BUILD#g"
-          echo "$BUILD" > _site/build.txt
+          node scripts/prepare-site.mjs "${{ github.sha }}"
 
       - uses: actions/upload-pages-artifact@v3
         with:

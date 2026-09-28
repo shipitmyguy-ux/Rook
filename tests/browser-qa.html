@@ -6,6 +6,15 @@
   iframe{display:block;width:100%;height:100%;border:0}
   #result{position:absolute;left:-9999px;top:-9999px}
 </style>
+<script>
+// A real verified fixture exercises production filtering; QA does not bypass it.
+const checkedAt = new Date().toISOString();
+localStorage.setItem('rook.properties.v1', JSON.stringify([{
+  id:'qa-listing', label:'QA rental', address:'100 Main St, Fort Collins, CO', beds:2, price:1800,
+  sourceUrl:'https://listings.example.test/qa-home', listingState:'active', listingCheckedAt:checkedAt,
+  metadata:{listingResolverVersion:5,listingVerification:{confirmed:true,version:5,url:'https://listings.example.test/qa-home'}}
+}]));
+</script>
 <iframe id="rook" src="../index.html?browser-qa=1"></iframe>
 <pre id="result">waiting</pre>
 <script>
@@ -54,6 +63,7 @@ function finish(){
       cardMapLabelFree:!doc.querySelector(".card-map-frame")&&!doc.querySelector(".map-marker small"),
       noPrimaryContact:[...doc.querySelectorAll(".compact-actions")].every(el=>!/\bContact\b/i.test(el.textContent||"")),
       noCardMapRuntime:!doc.querySelector(".property-card .maplibregl-map,.property-card canvas"),
+      onlyVerifiedResults:[...doc.querySelectorAll('.property-card')].every(card=>card.dataset.id === 'qa-listing' && card.querySelector('.source-link')),
       strictSourceLinks:[...doc.querySelectorAll(".source-link")].every(link=>{try{const u=new URL(link.href);return !/google\.com$/i.test(u.hostname)&&!u.pathname.includes("/search");}catch{return false}}),
       listingActionsUsable:[...doc.querySelectorAll(".listing-action")].every(el=>el.tagName==="A"||el.classList.contains("listing-closed")||el.classList.contains("listing-resolving")),
       listingActionsCompact:[...doc.querySelectorAll(".listing-action")].every(el=>el.getBoundingClientRect().width<cardRect.width*.38),

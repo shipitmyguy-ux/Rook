@@ -1,3 +1,4 @@
+import { hasVerifiedListing } from "./listing.js";
 export const PROPERTY_STATUS = Object.freeze({
   NEW: "new",
   VIEWED: "viewed",
@@ -42,7 +43,7 @@ export function normalizeProperty(input = {}) {
     image: input.image || input.imageUrl || input.primaryImageUrl || input.metadata?.image || null,
     imageUrl: input.imageUrl || input.primaryImageUrl || input.image || input.metadata?.image || null,
     primaryImageUrl: input.primaryImageUrl || input.imageUrl || input.image || input.metadata?.image || null,
-    listingState: ["active","closed","unknown"].includes(input.listingState) ? input.listingState : (input.sourceUrl ? "active" : "unknown"),
+    listingState: ["active","closed","unknown"].includes(input.listingState) ? input.listingState : "unknown",
     listingCheckedAt: input.listingCheckedAt || null,
     contactedAt: input.contactedAt || null,
     contactOutcome: input.contactOutcome || null,
@@ -66,9 +67,10 @@ export function searchProperties(properties, query) {
 
 export function filterProperties(properties, filter) {
   const active = p => ![PROPERTY_STATUS.ARCHIVED, PROPERTY_STATUS.REJECTED].includes(p.status);
-  if (filter === "all") return properties.filter(active);
-  if (filter === "shortlist") return properties.filter(p => (p.saved || p.status === PROPERTY_STATUS.SHORTLISTED) && active(p));
-  return properties.filter(p => p.listingType === filter && active(p));
+  if (filter === "review") return properties.filter(p => active(p) && !hasVerifiedListing(p));
+  if (filter === "all") return properties.filter(p => active(p) && hasVerifiedListing(p));
+  if (filter === "shortlist") return properties.filter(p => (p.saved || p.status === PROPERTY_STATUS.SHORTLISTED) && active(p) && hasVerifiedListing(p));
+  return properties.filter(p => p.listingType === filter && active(p) && hasVerifiedListing(p));
 }
 
 export function applyEvidence(property, evidence = {}) {

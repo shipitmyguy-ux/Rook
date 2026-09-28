@@ -1,3 +1,6 @@
+import { directListingUrl } from "../../../src/core/listing.js";
+import { verifyDirectListing } from "./verification.js";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://shipitmyguy-ux.github.io",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -1245,13 +1248,17 @@ function closedStatusReason(html: string) {
 
 async function inspectListingUrl(url: string) {
   try {
-    const html = await fetchText(url);
+    const response = await fetch(url, {
+      signal:AbortSignal.timeout(8000),
+      headers:{ accept:"text/html,application/xhtml+xml", "user-agent":"Mozilla/5.0 (compatible; Rook/1.0; property-search)" }
+    });
+    const finalUrl = response.url || url;
+    if (!response.ok) return { reachable:false, closed:[404,410].includes(response.status), reason:[404,410].includes(response.status) ? "http-404-410" : null, html:"", finalUrl };
+    const html = await response.text();
     const reason = closedStatusReason(html);
-    return { reachable: true, closed: Boolean(reason), reason, html };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const closed = /^(404|410)$/.test(message);
-    return { reachable: false, closed, reason: closed ? "http-404-410" : null, html: "" };
+    return { reachable:true, closed:Boolean(reason), reason, html, finalUrl };
+  } catch {
+    return { reachable:false, closed:false, reason:null, html:"", finalUrl:url };
   }
 }
 
@@ -1473,7 +1480,39 @@ async function resolveComparablePrice(address: string, label: string, location: 
   };
 }
 
-async function resolveListing(address: string, label: string, location: string, sourceUrl = "") {
+const listingVerificationCache = new Map<string, { expires:number; result:any }>();
+
+async function resolveListing(address: string, label: string, location: string, sourceUrl = "", listingType = "rent") {
+  const key = JSON.stringify([address,label,sourceUrl,listingType]);
+  const cached = listingVerificationCache.get(key);
+  if (cached && cached.expires > Date.now()) return cached.result;
+  // Discovery only proposes a candidate. Search snippets and ZIP pages never verify it.
+  const discovered = directListingUrl(sourceUrl)
+    ? { state:"active", listing:{ address, label, sourceUrl } }
+    : await discoverListing(address, label, location);
+  let result:any = { state:"unknown", listing:null, checkedAt:new Date().toISOString() };
+  if (discovered.state === "closed") result = discovered;
+  else if (discovered.listing?.sourceUrl) {
+    const verification = await verifyDirectListing({ address, label, listingType, sourceUrl:discovered.listing.sourceUrl }, {
+      inspect:inspectListingUrl, reader:(url:string) => readerText(url,8000)
+    });
+    const { content, ...status } = verification;
+    result = status;
+    if (verification.state === "active") {
+      const verifiedUrl = verification.sourceUrl;
+      const known = { address,label,source:new URL(verifiedUrl).hostname };
+      const facts = verification.method === "direct-page"
+        ? fallbackListingFromHtml(content,verifiedUrl,known)
+        : fallbackListingFromText(content,verifiedUrl,known);
+      result.listing = { ...discovered.listing, ...facts, sourceUrl:verifiedUrl, listingType };
+    }
+  }
+  if (listingVerificationCache.size >= 200) listingVerificationCache.delete(listingVerificationCache.keys().next().value!);
+  listingVerificationCache.set(key,{ expires:Date.now() + (result.state === "unknown" ? 60000 : 15*60000), result });
+  return result;
+}
+
+async function discoverListing(address: string, label: string, location: string, sourceUrl = "") {
   const checkedAt = new Date().toISOString();
   const citySlug = location.toLowerCase().replace(/,.*$/, "").trim().replace(/[^a-z0-9]+/g, "-");
   const sourcePages = [
@@ -2003,9 +2042,9 @@ Deno.serve(async (req: Request) => {
     const targetBeds = Number(url.searchParams.get("beds") || "0");
     const targetBaths = Number(url.searchParams.get("baths") || "0");
     if (!address && !label && !sourceUrl) return new Response(JSON.stringify({ state:"unknown", listing:null, checkedAt:new Date().toISOString(), error:"address, label, or sourceUrl required" }), { status:400, headers:corsHeaders });
-    const result = await resolveListing(address, label, location, sourceUrl);
+    const result = await resolveListing(address, label, location, sourceUrl, url.searchParams.get("listingType") === "buy" ? "buy" : "rent");
     let priceFallback = null;
-    if (!(Number(result?.listing?.price) > 0)) {
+    if (url.searchParams.get("comparables") === "1" && !(Number(result?.listing?.price) > 0)) {
       priceFallback = await resolveComparablePrice(address, label, location, targetBeds, targetBaths);
       if (!priceFallback && targetBeds > 0) {
         const relaxed = await resolveComparablePrice(address, label, location, 0, targetBaths);
@@ -2051,6 +2090,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const listings = [...merged.values()].filter((listing) => {
+    if (!directListingUrl(listing.sourceUrl)) return false;
     const beds = Number(listing.beds ?? 0);
     const price = Number(listing.price ?? 0);
     const text = [listing.label, listing.address, listing.type, listing.metadata?.description].filter(Boolean).join(" ").toLowerCase();

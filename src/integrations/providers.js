@@ -1,3 +1,4 @@
+import { directListingUrl, LISTING_RESOLVER_VERSION } from "../core/listing.js";
 import { config } from "../config.js";
 import { classifyPropertyKind } from "../core/property.js";
 
@@ -189,6 +190,7 @@ export async function resolveMissingListing(property = {}, criteria = {}, fetchI
   if (!endpoint) return { state: "unknown", url: null, checkedAt: new Date().toISOString() };
   const url = new URL(endpoint, typeof window !== "undefined" ? window.location.href : "http://localhost/");
   url.searchParams.set("resolve", "1");
+  if (!(Number(property.price) > 0)) url.searchParams.set("comparables", "1");
   if (property.address) url.searchParams.set("address", property.address);
   if (property.label) url.searchParams.set("label", property.label);
   if (property.sourceUrl) url.searchParams.set("sourceUrl", property.sourceUrl);
@@ -196,13 +198,17 @@ export async function resolveMissingListing(property = {}, criteria = {}, fetchI
   if (property.baths != null) url.searchParams.set("baths", String(property.baths));
   url.searchParams.set("listingType", property.listingType === "buy" ? "buy" : "rent");
   if (criteria.location) url.searchParams.set("location", criteria.location);
-  const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
+  const response = await fetchImpl(url, { headers: { Accept: "application/json" }, signal:AbortSignal.timeout(60000) });
   if (!response.ok) throw new Error(`Listing resolver returned ${response.status}`);
   const payload = await response.json();
   const candidate = payload?.listing || null;
   const fallback = payload?.priceFallback && Number(payload.priceFallback.price) > 0 ? payload.priceFallback : null;
-  if (candidate?.sourceUrl && (!property.address || sameListingAddress(candidate.address, property.address))) {
+  if (payload?.state === "active" && directListingUrl(candidate?.sourceUrl)
+      && payload?.verification?.confirmed === true && payload.verification.version >= LISTING_RESOLVER_VERSION
+      && directListingUrl(payload.verification.url) === directListingUrl(candidate.sourceUrl)
+      && (!property.address || sameListingAddress(candidate.address, property.address))) {
     const normalized = normalizeProviderResult(candidate, { id: "rook-resolver", label: candidate.source || "Recovered listing" });
+    normalized.metadata.listingVerification = payload.verification;
     const listing = normalized.price
       ? normalized
       : fallback

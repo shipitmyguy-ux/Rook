@@ -15,16 +15,16 @@ export function propertyIdentity(property) {
 }
 
 function mergeProperty(prior, property) {
-  const sourceUrl = prior.sourceUrl || property.sourceUrl || null;
+  // Verification timestamps, not seed order or the presence of a URL, decide availability.
+  const checked = value => Date.parse(value.listingCheckedAt || '') || 0;
+  const verified = checked(property) > checked(prior) ? property : prior;
+  const sourceUrl = verified.sourceUrl || prior.sourceUrl || property.sourceUrl || null;
   const metadata = { ...(property.metadata || {}), ...(prior.metadata || {}) };
-  const confirmedClosed = metadata?.listingClosedEvidence?.confirmed === true;
-  const listingState = sourceUrl
-    ? "active"
-    : confirmedClosed && (property.listingState === "closed" || prior.listingState === "closed")
-      ? "closed"
-      : property.listingState === "active" || prior.listingState === "active"
-        ? "active"
-        : "unknown";
+  for (const key of ['listingVerification', 'listingClosedEvidence', 'listingResolverVersion']) {
+    delete metadata[key];
+    if (verified.metadata?.[key] != null) metadata[key] = verified.metadata[key];
+  }
+  const listingState = verified.listingState || 'unknown';
   return {
     ...prior,
     ...property,
@@ -41,7 +41,7 @@ function mergeProperty(prior, property) {
     imageUrl: prior.imageUrl || property.imageUrl || prior.primaryImageUrl || property.primaryImageUrl || prior.image || property.image || prior.metadata?.image || property.metadata?.image || null,
     primaryImageUrl: prior.primaryImageUrl || property.primaryImageUrl || prior.imageUrl || property.imageUrl || prior.image || property.image || prior.metadata?.image || property.metadata?.image || null,
     listingState,
-    listingCheckedAt: property.listingCheckedAt || prior.listingCheckedAt || null,
+    listingCheckedAt: verified.listingCheckedAt || null,
     metadata,
     saved: Boolean(prior.saved || property.saved),
     status: property.status || prior.status,
