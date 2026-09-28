@@ -526,7 +526,7 @@ function promoteTourProperty(id) {
 function visibleProperties() {
   const allProperties = store.getAll();
   const restricted = filterProperties(allProperties, activeFilter)
-    .filter(property => matchesSearchDefaults(property, preferences));
+    .filter(property => activeFilter === "review" || matchesSearchDefaults(property, preferences));
   let filtered = searchProperties(restricted, query);
   if (promotedTourPropertyId && !filtered.some(property => String(property.id) === promotedTourPropertyId)) {
     const promoted = allProperties.find(property => String(property.id) === promotedTourPropertyId);
@@ -578,6 +578,7 @@ async function resolveUnavailableListings() {
             ...details,
             // Keep user history and changes made while the network request was running.
             id:property.id, saved:property.saved, status:property.status, note:property.note,
+            type:details.type === "Property" && property.type !== "Property" ? property.type : details.type,
             contactedAt:property.contactedAt, contactOutcome:property.contactOutcome, showingAt:property.showingAt,
             listingState:'active', listingCheckedAt:result.checkedAt,
             metadata:{ ...metadata, ...result.listing.metadata, listingResolverVersion:LISTING_RESOLVER_VERSION }

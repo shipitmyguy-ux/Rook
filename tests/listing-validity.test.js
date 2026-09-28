@@ -71,7 +71,7 @@ test('fresh closure survives refresh and seed reload; only newer verification ca
 
 test('backend requires matching property and positive availability, including the correct unit', () => {
   assert.equal(assessListingPage('100 Main St Unit A is for rent at $1,800/mo',property).state,'active');
-  for (const text of ['200 Main St Unit A is for rent at $1,800/mo','100 Main St Unit B is for rent at $1,800/mo','100 Main St Unit AB is for rent at $1,800/mo','100 Main St Unit A. 2 beds, 1 bath. Rent Zestimate: $1,800','100 Main St Unit A. Sold in 2022.']) assert.equal(assessListingPage(text,property).state,'unknown',text);
+  for (const text of ['200 Main St Unit A is for rent at $1,800/mo','1100 Main St Unit A is for rent at $1,800/mo','100 Main St Unit B is for rent at $1,800/mo','100 Main St Unit AB is for rent at $1,800/mo','100 Main St Unit A. 2 beds, 1 bath. Rent Zestimate: $1,800','100 Main St Unit A. Sold in 2022.']) assert.equal(assessListingPage(text,property).state,'unknown',text);
   assert.equal(assessListingPage('100 Main St Unit A is no longer for rent. Previously $1,800/mo',property).state,'closed');
 });
 

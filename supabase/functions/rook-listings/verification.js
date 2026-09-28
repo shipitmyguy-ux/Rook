@@ -16,7 +16,10 @@ export function matchesPropertyText(text, property) {
     const words = String(text).toLowerCase().replace(/-/g,'').split(/[^a-z0-9]+/);
     if (!words.includes(compactUnit)) return false;
   }
-  return Boolean(target && tokens(target).length >= 8 && tokens(text).includes(tokens(target)));
+  const needle = tokens(target), haystack = tokens(text);
+  const index = haystack.indexOf(needle);
+  return Boolean(target && needle.length >= 8 && index >= 0
+    && (!/^\d/.test(needle) || index === 0 || !/\d/.test(haystack[index - 1])));
 }
 
 function primaryText(html) {
