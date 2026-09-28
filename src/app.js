@@ -137,6 +137,7 @@ async function scanEmailNow() {
   }
 }
 
+// Shared sync carries lifecycle state and explicit bookmarks from ChatGPT-managed Rook sync.
 async function syncSharedRookState() {
   try {
     const rows = await fetchSharedRookState();
