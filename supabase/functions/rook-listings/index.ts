@@ -1972,7 +1972,7 @@ async function readSharedRookState() {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!serviceKey) return [];
   try {
-    const response = await fetch(PROJECT_URL + "/rest/v1/rook_property_state?select=property_key,property_id,address,label,status,contact_outcome,showing_at,tour,updated_at&order=updated_at.desc", {
+    const response = await fetch(PROJECT_URL + "/rest/v1/rook_property_state?select=property_key,property_id,address,label,saved,status,contact_outcome,showing_at,tour,updated_at&order=updated_at.desc", {
       headers:{
         apikey:serviceKey,
         authorization:"Bearer " + serviceKey,
@@ -1998,6 +1998,7 @@ async function readSharedRookState() {
         property_id:row.property_id,
         address:row.address,
         label:row.label,
+        saved:Boolean(row.saved),
         status:row.status,
         contact_outcome:row.contact_outcome,
         showing_at:row.showing_at,
