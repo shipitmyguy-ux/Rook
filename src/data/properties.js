@@ -198,5 +198,40 @@ export const properties = [
     saved: false,
     status: "rejected",
     note: "Explicitly removed from shortlist."
-  }
+  },
+
+  {
+    id: "569-vicot-a",
+    label: "569 Vicot Way #A",
+    address: "569 Vicot Way #A, Fort Collins, CO 80524",
+    type: "Condo",
+    listingType: "rent",
+    price: 2300,
+    beds: 2,
+    baths: 2,
+    source: "Noble PMG",
+    sourceUrl: "https://www.zumper.com/address/569-vicot-way-fort-collins-co-80524-usa",
+    saved: true,
+    status: "showing-requested",
+    contactedAt: "2026-09-28T21:19:22Z",
+    contactOutcome: "showing-requested",
+    note: "Bryan Farr at Noble PMG offered to schedule a viewing. Availability sent; awaiting a confirmed showing time."
+  },
+  {
+    id: "802-waterglen-j40",
+    label: "802 Waterglen Dr Unit J40",
+    address: "802 Waterglen Dr Unit J40, Fort Collins, CO 80524",
+    type: "Condo",
+    listingType: "rent",
+    price: 2300,
+    beds: 3,
+    baths: 2.5,
+    source: "Avail",
+    sourceUrl: "https://www.realtor.com/rentals/details/802-Waterglen-Dr-Unit-J40_Fort-Collins_CO_80524_M24762-90529",
+    saved: true,
+    status: "showing-requested",
+    contactedAt: "2026-09-28T15:00:32Z",
+    contactOutcome: "showing-requested",
+    note: "Viewing inquiry delivered to the landlord through Avail; awaiting a response and confirmed showing time."
+  },
 ];
