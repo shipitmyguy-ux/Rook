@@ -156,7 +156,7 @@ async function syncSharedRookState() {
           address:row.address || "",
           type:"Property",
           listingType:"rent",
-          saved:row.status === "showing-scheduled",
+          saved:Boolean(row.saved) || row.status === "showing-scheduled",
           status:row.status || PROPERTY_STATUS.NEW,
           contactOutcome:row.contact_outcome || null,
           showingAt:row.showing_at || null,
@@ -179,7 +179,7 @@ async function syncSharedRookState() {
       if (row.tour && typeof row.tour === "object" && Object.keys(row.tour).length) metadata.tour = row.tour;
       store.update(property.id, {
         ...(row.status ? { status:row.status } : {}),
-        ...(row.status === "showing-scheduled" ? { saved:true } : {}),
+        ...((row.saved || row.status === "showing-scheduled") ? { saved:true } : {}),
         ...(row.contact_outcome ? { contactOutcome:row.contact_outcome } : {}),
         ...(row.showing_at ? { showingAt:row.showing_at } : {}),
         metadata
