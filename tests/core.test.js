@@ -41,7 +41,7 @@ test("shared showing sync can materialize a missing property card", async () => 
   const appSource = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
   assert.match(appSource, /if \(!property && \(row\.address \|\| row\.label\)\)/);
   assert.match(appSource, /source:"Shared sync"/);
-  assert.match(appSource, /row\.status === "showing-scheduled" \? \{ saved:true \}/);
+  assert.match(appSource, /Boolean\(row\.saved\) \|\| row\.status === "showing-scheduled"/);
 });
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
