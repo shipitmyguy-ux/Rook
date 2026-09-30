@@ -458,6 +458,7 @@ function propertyCard(property) {
       : "Price unavailable");
   return `<article class="property-card visual-card type-${kind}${tourVisual.className}" data-id="${esc(property.id)}" tabindex="0" aria-label="View summary for ${esc(property.label)}" aria-haspopup="dialog" style="--score:${score}">
       ${tourVisual.html}
+      <button class="quick-ignore-button" data-action="reject" aria-label="Ignore ${esc(property.label)}" title="Ignore property">×</button>
       <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
     <section class="property-card__media" aria-label="Listing image">
       <div class="property-visual ${image ? "" : "property-visual--fallback"}" ${image ? `style="--property-image:url(\'${esc(image)}\')"` : ""} aria-hidden="true">${!image ? `<span class="property-placeholder-icon">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span>` : ""}</div>
