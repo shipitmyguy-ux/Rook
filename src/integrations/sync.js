@@ -172,6 +172,53 @@ export function getRookSyncBridge() {
   return globalThis.rookSyncBridge || null;
 }
 
+
+function emailText(message = {}) {
+  return [message.subject, message.snippet, message.body].filter(Boolean).join(" ");
+}
+
+function inferredPropertyFromEmail(message = {}) {
+  const text = emailText(message);
+  const match = text.match(/\b(\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,5}\s+(?:St|Street|Ave|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Way|Blvd|Boulevard|Pl|Place|Cir|Circle)(?:\s*#\s*[A-Za-z0-9-]+)?)(?=\b|,)/i);
+  if (!match) return null;
+  const address = match[1].replace(/\s+/g, " ").trim();
+  return {
+    id:"email-" + address.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+    label:address,
+    address,
+    type:"Property",
+    listingType:"rent",
+    saved:true,
+    status:"new",
+    source:"Gmail",
+    metadata:{ emailDiscovered:true }
+  };
+}
+
+function inferConfirmedTour(message = {}) {
+  const text = emailText(message);
+  // Require explicit conversational acceptance/confirmation; a proposed time alone is not enough.
+  if (!/(?:\bsee you\b|\bworks(?:\s+for\s+me)?\b|\bsounds good\b|\bconfirmed\b|\bscheduled\b|\bbooked\b)/i.test(text)) return null;
+  const timeMatch = text.match(/\b(?:at\s*)?(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(am|pm)\b/i);
+  if (!timeMatch) return null;
+  const base = message.occurredAt ? new Date(message.occurredAt) : new Date();
+  if (Number.isNaN(base.getTime())) return null;
+  const lower = text.toLowerCase();
+  const weekdays = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+  let targetDay = weekdays.findIndex(day => new RegExp("\\b(?:this\\s+|next\\s+)?" + day + "\\b", "i").test(text));
+  if (targetDay < 0) return null;
+  const date = new Date(base);
+  let delta = (targetDay - date.getDay() + 7) % 7;
+  if (/\bnext\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i.test(lower)) delta = delta === 0 ? 7 : delta + 7;
+  date.setDate(date.getDate() + delta);
+  let hour = Number(timeMatch[1]) % 12;
+  if (timeMatch[3].toLowerCase() === "pm") hour += 12;
+  date.setHours(hour, Number(timeMatch[2] || 0), 0, 0);
+  // Never infer a confirmation into the past.
+  if (date.getTime() < base.getTime() - 5 * 60 * 1000) return null;
+  return { startsAt:date.toISOString(), status:"confirmed", confidence:"confirmed" };
+}
+
 export async function scanHousingEmail(properties = [], options = {}) {
   const bridge = getRookSyncBridge();
   const payload = bridge?.scanEmail
@@ -186,17 +233,19 @@ export async function scanHousingEmail(properties = [], options = {}) {
   const updates = [];
   const review = [];
   for (const message of messages) {
-    const property = matchEmailToProperty(message, properties);
+    const property = matchEmailToProperty(message, properties) || inferredPropertyFromEmail(message);
     if (!property) continue;
     const event = normalizeEmailEvent({ ...message, propertyId:property.id });
     const kind = event.kind || classifyHousingEmail(message);
-    const tour = message.tour || (message.startsAt ? { startsAt:message.startsAt, endsAt:message.endsAt, status:message.status, confidence:message.confidence } : null);
+    const inferredTour = inferConfirmedTour(message);
+    const tour = message.tour || (message.startsAt ? { startsAt:message.startsAt, endsAt:message.endsAt, status:message.status, confidence:message.confidence } : null) || inferredTour;
     const confidence = message.confidence || tour?.confidence || "possible";
-    if (kind === "showing-scheduled" && tour?.startsAt && confidence === "confirmed") {
+    const inferredKind = inferredTour ? "showing-scheduled" : kind;
+    if (inferredKind === "showing-scheduled" && tour?.startsAt && confidence === "confirmed") {
       updates.push({
         propertyId:property.id,
-        kind,
-        property:applyTour(applyEvidence(property, { ...event, kind, startsAt:tour.startsAt }), {
+        kind:inferredKind,
+        property:applyTour(applyEvidence(property, { ...event, kind:inferredKind, startsAt:tour.startsAt }), {
           ...normalizeTour({ ...tour, propertyId:property.id, source:"email", sourceMessageId:message.id, sourceThreadId:message.threadId }, options.preferences),
           sourceMessageId:message.id,
           sourceThreadId:message.threadId
