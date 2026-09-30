@@ -1,5 +1,20 @@
 export const properties = [
   {
+    id: "2702-barnstormer-a",
+    label: "2702 Barnstormer St Unit A",
+    address: "2702 Barnstormer St Unit A, Fort Collins, CO 80524",
+    type: "Condo",
+    listingType: "rent",
+    price: 2000,
+    beds: 2,
+    baths: 2,
+    source: "Zillow",
+    sourceUrl: "https://www.zillow.com/homedetails/2702-Barnstormer-St-UNIT-A-Fort-Collins-CO-80524/2057973930_zpid/",
+    saved: true,
+    status: "shortlisted",
+    note: "1,166 sq ft; built 2023; attached 1-car garage; community pools and park. Zillow page currently shows the rental listing as removed, with $2,000/mo as the last recorded asking rent; preserve source link and re-verify availability before applying."
+  },
+  {
     id: "timberwood-area",
     label: "Timberwood area",
     address: "Timberwood Dr area, Fort Collins, CO 80528",
