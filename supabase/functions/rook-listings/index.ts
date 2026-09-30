@@ -112,6 +112,25 @@ async function browserSnapshot(url: string) {
   }
 }
 
+async function browserDiscoverySnapshot(url: string) {
+  let sessionId = "";
+  try {
+    const started = await browserWorker({ action:"start" });
+    sessionId = String(started.sessionId || "");
+    if (!sessionId) throw new Error("browser session unavailable");
+    await browserWorker({ action:"open", sessionId, url });
+    await browserWorker({ action:"wait", sessionId, ms:1400 });
+    await browserWorker({ action:"scroll", sessionId, y:1400, times:5, delayMs:650 }, 16000);
+    await browserWorker({ action:"wait", sessionId, ms:900 });
+    const snap = await browserWorker({ action:"snapshot", sessionId });
+    return snap?.snapshot || null;
+  } finally {
+    if (sessionId) {
+      try { await browserWorker({ action:"stop", sessionId }); } catch {}
+    }
+  }
+}
+
 function usablePhotoUrl(value: unknown) {
   const raw = String(value || "").trim();
   if (!raw || !/^https?:\/\//i.test(raw)) return "";
@@ -1103,7 +1122,7 @@ async function sourceAdapter(id: string, source: string, url: string): Promise<A
     const structured = jsonLdListings(html, source, url);
     if (structured.length >= 5) return { id, listings:structured };
     try {
-      const snapshot = await browserSnapshot(url);
+      const snapshot = await browserDiscoverySnapshot(url);
       const browserRows = browserDiscoveryListings(snapshot, source);
       const merged = new Map<string, Listing>();
       for (const row of [...structured, ...browserRows]) {
@@ -1116,7 +1135,7 @@ async function sourceAdapter(id: string, source: string, url: string): Promise<A
     }
   } catch (error) {
     try {
-      const snapshot = await browserSnapshot(url);
+      const snapshot = await browserDiscoverySnapshot(url);
       const browserRows = browserDiscoveryListings(snapshot, source);
       return { id, listings:browserRows, error:browserRows.length ? undefined : (error instanceof Error ? error.message : "source failed") };
     } catch {
