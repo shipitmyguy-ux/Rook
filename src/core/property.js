@@ -1,4 +1,4 @@
-import { hasVerifiedListing } from "./listing.js";
+import { hasVerifiedListing, directListingUrl, confirmedClosed } from "./listing.js";
 export const PROPERTY_STATUS = Object.freeze({
   NEW: "new",
   VIEWED: "viewed",
@@ -67,10 +67,15 @@ export function searchProperties(properties, query) {
 
 export function filterProperties(properties, filter) {
   const active = p => ![PROPERTY_STATUS.ARCHIVED, PROPERTY_STATUS.REJECTED].includes(p.status);
+  const pendingLiveDiscovery = p => active(p)
+    && !confirmedClosed(p)
+    && p?.metadata?.providerId === "rook-live"
+    && Boolean(directListingUrl(p.sourceUrl));
+  const visibleListing = p => hasVerifiedListing(p) || pendingLiveDiscovery(p);
   if (filter === "review") return properties.filter(p => active(p) && !hasVerifiedListing(p));
-  if (filter === "all") return properties.filter(p => active(p) && hasVerifiedListing(p));
-  if (filter === "shortlist") return properties.filter(p => (p.saved || p.status === PROPERTY_STATUS.SHORTLISTED) && active(p) && hasVerifiedListing(p));
-  return properties.filter(p => p.listingType === filter && active(p) && hasVerifiedListing(p));
+  if (filter === "all") return properties.filter(p => active(p) && visibleListing(p));
+  if (filter === "shortlist") return properties.filter(p => (p.saved || p.status === PROPERTY_STATUS.SHORTLISTED) && active(p) && visibleListing(p));
+  return properties.filter(p => p.listingType === filter && active(p) && visibleListing(p));
 }
 
 export function applyEvidence(property, evidence = {}) {
