@@ -195,11 +195,31 @@ function inferredPropertyFromEmail(message = {}) {
   };
 }
 
+function unquotedEmailText(message = {}) {
+  const body = String(message.body || "");
+  const cut = body.search(/(?:^|\n)\s*On .{0,240}wrote:\s*|(?:^|\n)\s*>/i);
+  const currentBody = cut >= 0 ? body.slice(0, cut) : body;
+  return [message.subject, message.snippet, currentBody].filter(Boolean).join(" ");
+}
+
+function tourProposalText(message = {}) {
+  const body = String(message.body || "");
+  const quoted = body.match(/(?:^|\n)\s*On .{0,240}wrote:\s*([\s\S]*)$/i)?.[1] || "";
+  return [unquotedEmailText(message), quoted].filter(Boolean).join(" ");
+}
+
 function inferConfirmedTour(message = {}) {
-  const text = emailText(message);
-  // Require explicit conversational acceptance/confirmation; a proposed time alone is not enough.
-  if (!/(?:\bsee you\b|\bworks(?:\s+for\s+me)?\b|\bsounds good\b|\bconfirmed\b|\bscheduled\b|\bbooked\b)/i.test(text)) return null;
-  const timeMatch = text.match(/\b(?:at\s*)?(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(am|pm)\b/i);
+  const currentText = unquotedEmailText(message);
+  // Confirmation must come from the current message, never from quoted history.
+  if (!/(?:\bsee you\b|\bworks(?:\s+for\s+me)?\b|\bsounds good\b|\bconfirmed\b|\bscheduled\b|\bbooked\b)/i.test(currentText)) return null;
+  const text = tourProposalText(message);
+  // Prefer appointment-like times near scheduling language, which avoids reply-header timestamps.
+  const candidates = [...text.matchAll(/\b(?:at\s*)?(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(am|pm)\b/gi)];
+  const timeMatch = candidates.find(match => {
+    const around = text.slice(Math.max(0, match.index - 45), Math.min(text.length, match.index + match[0].length + 70));
+    return /(?:this|next)?\s*(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)|showing|tour|property|works|see you/i.test(around)
+      && !/(?:^|\s)(?:On|at)\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,?\s+.{0,45}$/i.test(text.slice(Math.max(0, match.index - 70), match.index));
+  }) || candidates[0];
   if (!timeMatch) return null;
   const base = message.occurredAt ? new Date(message.occurredAt) : new Date();
   if (Number.isNaN(base.getTime())) return null;
@@ -214,7 +234,6 @@ function inferConfirmedTour(message = {}) {
   let hour = Number(timeMatch[1]) % 12;
   if (timeMatch[3].toLowerCase() === "pm") hour += 12;
   date.setHours(hour, Number(timeMatch[2] || 0), 0, 0);
-  // Never infer a confirmation into the past.
   if (date.getTime() < base.getTime() - 5 * 60 * 1000) return null;
   return { startsAt:date.toISOString(), status:"confirmed", confidence:"confirmed" };
 }
