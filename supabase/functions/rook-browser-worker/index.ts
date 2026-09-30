@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const ORIGINS = new Set(["https://shipitmyguy-ux.github.io","http://localhost:3000","http://localhost:5173"]);
-const ALLOWED = new Set(["ping","start","stop","open","snapshot","screenshot","click","type","select","wait","smoke"]);
+const ALLOWED = new Set(["ping","start","stop","open","snapshot","screenshot","click","type","select","wait","scroll","smoke"]);
 
 function H(req:Request){
   const o=req.headers.get("origin")||"";
@@ -47,6 +47,7 @@ async function act(a:string,b:any){
       await c.send("Page.enable",{},s);await c.send("Page.navigate",{url:u},s);return{ok:true,action:a,url:u};
     }
     if(a==="wait"){const ms=Math.max(0,Math.min(10000,Number(b.ms||500)));await new Promise(r=>setTimeout(r,ms));return{ok:true,action:a,ms}}
+    if(a==="scroll"){const y=Math.max(200,Math.min(5000,Number(b.y||1200)));const times=Math.max(1,Math.min(8,Number(b.times||1)));for(let i=0;i<times;i++){await ev(c,s,`window.scrollBy({top:${y},behavior:'instant'}); document.documentElement.scrollTop = Math.max(document.documentElement.scrollTop, window.scrollY);`);await new Promise(r=>setTimeout(r,Math.max(150,Math.min(2000,Number(b.delayMs||500)))))}return{ok:true,action:a,y,times,scrollY:await ev(c,s,"window.scrollY")}}
     if(a==="snapshot"){const v=await ev(c,s,`JSON.stringify({url:location.href,title:document.title,text:(document.body?.innerText||'').slice(0,30000),links:[...document.querySelectorAll('a[href]')].slice(0,800).map(a=>({text:(a.innerText||a.textContent||'').trim().slice(0,240),href:a.href,context:(a.closest('div,li,article')?.innerText||a.parentElement?.innerText||'').trim().slice(0,1200)})).filter(x=>/^https?:/i.test(x.href)),images:[...document.querySelectorAll('img')].slice(0,500).map(img=>({src:img.currentSrc||img.src||'',alt:(img.alt||'').trim().slice(0,240),href:img.closest('a[href]')?.href||'',dataSrc:img.getAttribute('data-src')||img.getAttribute('data-original')||img.getAttribute('data-imgurl')||'',width:img.width||0,height:img.height||0,naturalWidth:img.naturalWidth||0,naturalHeight:img.naturalHeight||0,context:(img.closest('figure,article,section,li,div')?.innerText||'').trim().slice(0,900)})).filter(x=>/^https?:/i.test(x.src)||/^https?:/i.test(x.dataSrc))})`);return{ok:true,action:a,snapshot:JSON.parse(v||"{}")}}
     if(a==="screenshot"){await c.send("Page.enable",{},s);const r=await c.send("Page.captureScreenshot",{format:"png",fromSurface:true},s);return{ok:true,action:a,mime:"image/png",data:r.data,bytes:Math.round((r.data?.length||0)*.75)}}
 
