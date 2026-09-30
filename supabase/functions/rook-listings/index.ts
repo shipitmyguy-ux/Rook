@@ -1071,12 +1071,57 @@ function fallbackListingFromHtml(html: string, pageUrl: string, known: { address
   };
 }
 
+function addressFromDiscoveryContext(text: string) {
+  const normalized = String(text || "").replace(/\s+/g, " ");
+  const match = normalized.match(/\b(\d{1,6}\s+[A-Za-z0-9.'#-]+(?:\s+[A-Za-z0-9.'#-]+){0,7}\s+(?:St|Street|Ave|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Way|Blvd|Boulevard|Pl|Place|Cir|Circle))(?:\s*,?\s*(?:Fort\s+Collins))?(?:\s*,?\s*CO)?(?:\s+\d{5})?/i);
+  return match?.[0]?.trim() || "";
+}
+
+function browserDiscoveryListings(snapshot: any, source: string): Listing[] {
+  const rows: Listing[] = [];
+  const seen = new Set<string>();
+  const links = Array.isArray(snapshot?.links) ? snapshot.links : [];
+  for (const link of links) {
+    const href = normalizeSearchResultUrl(link?.href);
+    const direct = directListingUrl(href);
+    if (!direct || seen.has(direct)) continue;
+    const context = [link?.text, link?.context].filter(Boolean).join(" ");
+    const address = addressFromDiscoveryContext(context);
+    if (!address) continue;
+    const listing = fallbackListingFromText(context, direct, { address, label:address, source });
+    if (!(Number(listing.price) > 0 || Number(listing.beds) > 0)) continue;
+    seen.add(direct);
+    rows.push(listing);
+    if (rows.length >= 40) break;
+  }
+  return rows;
+}
+
 async function sourceAdapter(id: string, source: string, url: string): Promise<AdapterResult> {
   try {
     const html = await fetchText(url);
-    return { id, listings: jsonLdListings(html, source, url) };
+    const structured = jsonLdListings(html, source, url);
+    if (structured.length >= 5) return { id, listings:structured };
+    try {
+      const snapshot = await browserSnapshot(url);
+      const browserRows = browserDiscoveryListings(snapshot, source);
+      const merged = new Map<string, Listing>();
+      for (const row of [...structured, ...browserRows]) {
+        const key = keyOf(row);
+        if (key && !merged.has(key)) merged.set(key, row);
+      }
+      return { id, listings:[...merged.values()] };
+    } catch {
+      return { id, listings:structured };
+    }
   } catch (error) {
-    return { id, listings: [], error: error instanceof Error ? error.message : "source failed" };
+    try {
+      const snapshot = await browserSnapshot(url);
+      const browserRows = browserDiscoveryListings(snapshot, source);
+      return { id, listings:browserRows, error:browserRows.length ? undefined : (error instanceof Error ? error.message : "source failed") };
+    } catch {
+      return { id, listings:[], error:error instanceof Error ? error.message : "source failed" };
+    }
   }
 }
 
@@ -2075,7 +2120,11 @@ Deno.serve(async (req: Request) => {
   const adapters = await Promise.all([
     sourceAdapter("realtor", "Realtor.com", `https://www.realtor.com/apartments/${slug}_CO`),
     sourceAdapter("rent", "Rent.com", `https://www.rent.com/colorado/${slug}-apartments`),
-    sourceAdapter("apartmentlist", "Apartment List", `https://www.apartmentlist.com/co/${slug}`)
+    sourceAdapter("apartmentlist", "Apartment List", `https://www.apartmentlist.com/co/${slug}`),
+    sourceAdapter("apartments", "Apartments.com", `https://www.apartments.com/${slug}-co/`),
+    sourceAdapter("hotpads", "HotPads", `https://hotpads.com/${slug}-co/apartments-for-rent`),
+    sourceAdapter("trulia", "Trulia", `https://www.trulia.com/for_rent/${location.split(",")[0].trim().replace(/\\s+/g,"_")},CO/`),
+    sourceAdapter("zillow", "Zillow", `https://www.zillow.com/${slug}-co/rentals/`)
   ]);
 
   const merged = new Map<string, Listing>();
