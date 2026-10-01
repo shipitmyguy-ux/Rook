@@ -6,7 +6,7 @@ import {nextPageUrl} from "../rook-browser-worker/pagination.js";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://shipitmyguy-ux.github.io",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Content-Type": "application/json"
 };
 
@@ -2155,6 +2155,55 @@ async function searchPoiSuggestions(query:string, location:string, limit=5) {
   }).slice(0, safeLimit);
 }
 
+async function recordRuntimeErrorServer(source:string, kind:string, message:string, context:any={}) {
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!serviceKey) return false;
+  try {
+    const payload = {
+      source:String(source || "server").slice(0,80),
+      kind:String(kind || "runtime").slice(0,80),
+      message:String(message || "Unknown runtime error").slice(0,1800),
+      context:context && typeof context === "object" ? context : {detail:String(context || "").slice(0,3500)}
+    };
+    const response = await fetch(PROJECT_URL + "/rest/v1/rook_runtime_errors", {
+      method:"POST",
+      headers:{
+        apikey:serviceKey,
+        authorization:"Bearer " + serviceKey,
+        "content-type":"application/json",
+        prefer:"return=minimal"
+      },
+      body:JSON.stringify(payload)
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function validateBackendRuntimeConfig(fileName:string, value:any) {
+  if (!value || typeof value !== "object") throw new Error(fileName + " must be an object");
+  if (fileName === "providers.json") {
+    const rows=Array.isArray(value.providers)?value.providers:[];
+    if (!rows.length) throw new Error("providers.json has no providers");
+    for (const row of rows) if (!row?.id || !String(row?.cityFeed || "").startsWith("https://")) throw new Error("Invalid provider config");
+  } else if (fileName === "search-areas.json") {
+    const areas=Array.isArray(value.areas)?value.areas:[];
+    if (!value.defaultLocation || !areas.length) throw new Error("Invalid search-area config");
+  } else if (fileName === "community-sources.json") {
+    for (const source of Array.isArray(value.sources)?value.sources:[]) {
+      if (!source?.id || !String(source?.baseAddressTemplate || "").includes("{unit}")) throw new Error("Invalid community source config");
+      for (const field of ["splitRegex","unitRegex","priceRegex","availableRegex"]) if (source?.parser?.[field]) new RegExp(source.parser[field],"i");
+    }
+  } else if (fileName === "exclusions.json") {
+    for (const rule of Array.isArray(value.listingRules)?value.listingRules:[]) {
+      if (rule?.labelRegex) new RegExp(rule.labelRegex,"i");
+      if (rule?.addressRegex) new RegExp(rule.addressRegex,"i");
+    }
+  }
+  return value;
+}
+
 const RUNTIME_CONFIG_BASE = (Deno.env.get("ROOK_RUNTIME_CONFIG_BASE") || "https://shipitmyguy-ux.github.io/Rook/config").replace(/\/$/,"");
 const runtimeConfigMemory = new Map<string,{at:number,value:any}>();
 const RUNTIME_CONFIG_TTL_MS = 60_000;
@@ -2167,12 +2216,16 @@ async function runtimeConfigJson(fileName:string, fallback:any) {
       "accept":"application/json",
       "user-agent":"Rook/1.0 (runtime config)"
     });
-    if (payload && typeof payload === "object") {
-      runtimeConfigMemory.set(fileName,{at:Date.now(),value:payload});
-      return payload;
-    }
-  } catch {}
-  return prior?.value || fallback;
+    const valid = validateBackendRuntimeConfig(fileName, payload);
+    runtimeConfigMemory.set(fileName,{at:Date.now(),value:valid});
+    return valid;
+  } catch (error) {
+    void recordRuntimeErrorServer("runtime-config","config-load",String(error?.message || error),{
+      fileName,
+      recovery:prior ? "Used last known good runtime config." : "Used built-in runtime fallback."
+    });
+    return prior?.value || fallback;
+  }
 }
 
 async function loadDiscoveryRuntimeConfig() {
@@ -2394,9 +2447,25 @@ async function readSharedRookState() {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const url = new URL(req.url);
+  if (req.method === "POST" && url.searchParams.get("reportError") === "1") {
+    const origin=String(req.headers.get("origin") || "");
+    if (origin && origin !== "https://shipitmyguy-ux.github.io") return new Response(JSON.stringify({ok:false}),{status:403,headers:corsHeaders});
+    try {
+      const body=await req.json();
+      await recordRuntimeErrorServer(
+        String(body?.source || "browser"),
+        String(body?.kind || "runtime"),
+        String(body?.message || "Unknown runtime error"),
+        body?.context && typeof body.context === "object" ? body.context : {}
+      );
+      return new Response(JSON.stringify({ok:true}),{headers:corsHeaders});
+    } catch {
+      return new Response(JSON.stringify({ok:false}),{status:400,headers:corsHeaders});
+    }
+  }
   if (req.method !== "GET") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
 
-  const url = new URL(req.url);
   const runtimeDefaults = await loadDiscoveryRuntimeConfig();
   const location = url.searchParams.get("location") || runtimeDefaults.searchAreas?.defaultLocation || FALLBACK_LOCATION;
   if (url.searchParams.get("state") === "1") {
