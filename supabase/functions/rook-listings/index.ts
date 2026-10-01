@@ -2176,9 +2176,22 @@ function runtimeSearchArea(config:any, location:string) {
     || null;
 }
 
+function milesBetween(a:any,b:any) {
+  const toRad=(value:any)=>Number(value)*Math.PI/180;
+  const lat1=toRad(a?.lat),lat2=toRad(b?.lat);
+  const dLat=lat2-lat1,dLng=toRad(b?.lng)-toRad(a?.lng);
+  const h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+  return 3958.7613*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));
+}
+
 function runtimeDiscoveryPlaces(area:any, primaryCity:string, radiusMiles:number) {
   const rows = Array.isArray(area?.discoveryPlaces) ? area.discoveryPlaces : [];
-  const matches = rows.filter((row:any) => radiusMiles >= Number(row?.minRadiusMiles || 0))
+  const center=area?.center;
+  const matches = rows.filter((row:any) => {
+      if (!center || !Number.isFinite(Number(row?.lat)) || !Number.isFinite(Number(row?.lng))) return true;
+      const edgeDistance=Math.max(0,milesBetween(center,row)-Number(row?.coverageRadiusMiles||0));
+      return edgeDistance <= radiusMiles;
+    })
     .map((row:any) => ({city:String(row.city || "").trim(),state:String(row.state || "CO").trim() || "CO"}))
     .filter((row:any) => row.city);
   return matches.length ? matches : [{city:primaryCity,state:"CO"}];
@@ -2436,7 +2449,7 @@ Deno.serve(async (req: Request) => {
   const adapterTasks = providerAdapterTasksFromConfig(runtimeDiscovery.providers, discoveryPlaces, primaryCity);
 
   for (const feed of Array.isArray(searchArea?.extraIndexFeeds) ? searchArea.extraIndexFeeds : []) {
-    if (radiusMiles < Number(feed?.minRadiusMiles || 0)) continue;
+    if (feed?.city && !discoveryCities.some((city:any)=>String(city).toLowerCase()===String(feed.city).toLowerCase())) continue;
     adapterTasks.push(configuredIndexFeedDiscovery(feed));
   }
   for (const sourceConfig of Array.isArray(runtimeDiscovery.communitySources?.sources) ? runtimeDiscovery.communitySources.sources : []) {
