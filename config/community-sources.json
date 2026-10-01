@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "bloom",
+      "enabled": true,
+      "matchCities": [
+        "Fort Collins"
+      ],
+      "source": "Bloom Rental Living",
+      "listingType": "rent",
+      "propertyType": "Townhome",
+      "baseAddressTemplate": "180 N Aria Way Unit {unit}, Fort Collins, CO 80524",
+      "static": {
+        "beds": 2,
+        "baths": 2
+      },
+      "parser": {
+        "splitRegex": "Apartment:\\\\s*#\\\\s*",
+        "unitRegex": "^([A-Za-z0-9-]+)",
+        "priceRegex": "Starting at:\\\\s*\\\\$([\\\\d,.]+)",
+        "availableRegex": "Date Available:\\\\s*([0-9/]+)"
+      },
+      "plans": [
+        {
+          "name": "Cache",
+          "path": "cache",
+          "sqft": 1166,
+          "url": "https://www.rentbloomhomes.com/floorplans/cache"
+        },
+        {
+          "name": "Horsetooth",
+          "path": "horsetooth",
+          "sqft": 1171,
+          "url": "https://www.rentbloomhomes.com/floorplans/horsetooth"
+        },
+        {
+          "name": "Platte",
+          "path": "platte",
+          "sqft": 1395,
+          "url": "https://www.rentbloomhomes.com/floorplans/platte"
+        }
+      ]
+    }
+  ]
+}
