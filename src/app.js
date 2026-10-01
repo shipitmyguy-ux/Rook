@@ -18,7 +18,9 @@ import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from 
 import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState, applySharedRookStateRow } from "./integrations/sync.js?v=shared-state-v2";
 import { config } from "./config.js";
 import { loadRuntimeConfig, runtimePointsOfInterest, runtimeSeedProperties, runtimePreferenceDefaults, runtimeHousingEvidence } from "./runtime-config.js";
+import { installRuntimeErrorHooks, reportRuntimeError } from "./runtime-errors.js";
 
+installRuntimeErrorHooks();
 await loadRuntimeConfig();
 
 const app = document.querySelector("#app");
@@ -140,6 +142,7 @@ async function scanEmailNow() {
   } catch (error) {
     if (status) status.textContent = "Email scan failed.";
     recordActivity("email-scan-error", null, { message:String(error?.message || error) });
+    void reportRuntimeError(error, { source:"email-sync", kind:"scan", recovery:"Left existing tour/property state unchanged." });
   } finally {
     buttons.forEach(button => { button.disabled = false; button.textContent = "Scan email"; });
   }
@@ -188,6 +191,7 @@ async function syncSharedRookState() {
     return applied;
   } catch (error) {
     recordActivity("shared-sync-read-error", null, { message:String(error?.message || error) });
+    void reportRuntimeError(error, { source:"shared-state", kind:"sync", recovery:"Kept local property state and will retry on the next focus/interval." });
     return 0;
   }
 }
@@ -598,6 +602,7 @@ async function resolveUnavailableListings() {
           metadata:{ ...property.metadata, listingVerification:null, listingResolverVersion:LISTING_RESOLVER_VERSION }
         });
         recordActivity('listing-resolve-error', snapshot, { message:String(error?.message || error) });
+        void reportRuntimeError(error, { source:"listing-resolver", kind:"resolve", detail:snapshot.id, recovery:"Marked listing unknown and preserved the saved card." });
       }
     };
     // Prioritize missing-price listings and use a larger bounded pool. The server
@@ -662,6 +667,7 @@ async function enrichMissingImages() {
         }
       });
       recordActivity("image-enrichment-error", property, { message:String(error?.message || error) });
+      void reportRuntimeError(error, { source:"image-enrichment", kind:"enrich", detail:property.id, recovery:"Kept existing property image/state and scheduled a later retry." });
     }
   };
 
@@ -701,6 +707,7 @@ async function refreshListings(trigger = "manual") {
     if (indicator) indicator.textContent = found.length ? `Found ${found.length} listings · checking missing details` : "Listings checked · checking missing details";
   } catch (error) {
     recordActivity("provider-refresh-error", null, { trigger, message: String(error?.message || error) });
+    void reportRuntimeError(error, { source:"listing-refresh", kind:"refresh", detail:trigger, recovery:"Kept saved/current listings and left refresh available for retry." });
     const indicator = document.querySelector("#pull-indicator");
     if (indicator) indicator.textContent = "Refresh failed · saved listings kept";
   } finally {
@@ -1389,6 +1396,7 @@ document.querySelector("#restore-data").addEventListener("change", async e => {
     document.querySelector("#settings-dialog").close();
     renderList();
   } catch (error) {
+    void reportRuntimeError(error, { source:"backup-restore", kind:"parse", recovery:"Rejected the backup without changing current Rook data." });
     window.alert(error?.message || "Could not restore this Rook backup.");
   } finally {
     e.target.value = "";
