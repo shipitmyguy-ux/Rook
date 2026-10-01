@@ -33,15 +33,15 @@ export async function reportRuntimeError(error, context = {}) {
     kind,
     message,
     context: {
-      path: location?.pathname || "",
-      build: document?.documentElement?.dataset?.build || null,
+      path: globalThis.location?.pathname || "",
+      build: globalThis.document?.documentElement?.dataset?.build || null,
       detail: compact(context.detail || ""),
       recovery: compact(context.recovery || "")
     }
   };
 
   try {
-    const url = new URL(endpoint, location.href);
+    const url = new URL(endpoint, globalThis.location?.href || "https://shipitmyguy-ux.github.io/Rook/");
     url.searchParams.set("reportError", "1");
     await fetch(url, {
       method:"POST",
