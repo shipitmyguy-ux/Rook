@@ -43,7 +43,8 @@
       ],
       "displayName": "Bloom Rental Living",
       "communityAddress": "180 N Aria Way, Fort Collins, CO 80524",
-      "aggregate": "community"
+      "aggregate": "community",
+      "mapAddress": "180 N Aria Way Unit 101, Fort Collins, CO 80524"
     }
   ]
 }
