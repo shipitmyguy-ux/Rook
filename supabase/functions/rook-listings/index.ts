@@ -1123,31 +1123,41 @@ async function searchEngineDiscoveryAdapter(location: string): Promise<AdapterRe
   const city = String(location || "Fort Collins, CO").split(",")[0].trim();
   const rows: Listing[] = [];
   const seen = new Set<string>();
-  for (const domain of domains) {
+  // These public RSS requests each have an 8s timeout. Run them together so a
+  // slow search provider does not make an otherwise healthy discovery request
+  // exceed the caller's overall timeout.
+  const searches = await Promise.allSettled(domains.map(async (domain) => {
     const query = `site:${domain} "${city}" CO ("for rent" OR rental) (house OR townhome OR apartment)`;
     const searchUrl = "https://www.bing.com/search?format=rss&count=50&q=" + encodeURIComponent(query);
-    try {
-      const rss = await fetchText(searchUrl);
-      const items = [...rss.matchAll(/<item>([\s\S]*?)<\/item>/gi)].map(m => m[1]);
-      for (const item of items) {
-        const href = item.match(/<link>\s*(https?:\/\/[^<\s]+)\s*<\/link>/i)?.[1]?.replace(/&amp;/g,"&") || "";
-        const direct = directListingUrl(normalizeSearchResultUrl(href));
-        if (!direct || seen.has(direct)) continue;
-        let host = "";
-        try { host = new URL(direct).hostname; } catch { continue; }
-        if (!isAllowedListingHost(host)) continue;
-        const title = String(item.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || "").replace(/<!\[CDATA\[|\]\]>/g," ").replace(/<[^>]+>/g," ");
-        const description = String(item.match(/<description>([\s\S]*?)<\/description>/i)?.[1] || "").replace(/<!\[CDATA\[|\]\]>/g," ").replace(/<[^>]+>/g," ");
-        const context = (title + " " + description).replace(/&amp;/g,"&").replace(/\s+/g," ").trim();
-        const address = addressFromDiscoveryContext(context);
-        if (!address || !/fort\s+collins/i.test(context + " " + address)) continue;
-        const listing = fallbackListingFromText(context, direct, { address, label:title || address, source:host });
-        if (!(Number(listing.price)>0 || Number(listing.beds)>0 || /for rent|rental/i.test(context))) continue;
-        seen.add(direct);
-        rows.push({ ...listing, metadata:{ ...(listing.metadata||{}), discoveryMethod:"search-index" } });
-        if (rows.length >= 80) break;
-      }
-    } catch {}
+    const rss = await fetchText(searchUrl);
+    const items = [...rss.matchAll(/<item>([\s\S]*?)<\/item>/gi)].map(m => m[1]);
+    const found: Listing[] = [];
+    for (const item of items) {
+      const href = item.match(/<link>\s*(https?:\/\/[^<\s]+)\s*<\/link>/i)?.[1]?.replace(/&amp;/g,"&") || "";
+      const direct = directListingUrl(normalizeSearchResultUrl(href));
+      if (!direct) continue;
+      let host = "";
+      try { host = new URL(direct).hostname; } catch { continue; }
+      if (!isAllowedListingHost(host)) continue;
+      const title = String(item.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || "").replace(/<!\[CDATA\[|\]\]>/g," ").replace(/<[^>]+>/g," ");
+      const description = String(item.match(/<description>([\s\S]*?)<\/description>/i)?.[1] || "").replace(/<!\[CDATA\[|\]\]>/g," ").replace(/<[^>]+>/g," ");
+      const context = (title + " " + description).replace(/&amp;/g,"&").replace(/\s+/g," ").trim();
+      const address = addressFromDiscoveryContext(context);
+      if (!address || !/fort\s+collins/i.test(context + " " + address)) continue;
+      const listing = fallbackListingFromText(context, direct, { address, label:title || address, source:host });
+      if (!(Number(listing.price)>0 || Number(listing.beds)>0 || /for rent|rental/i.test(context))) continue;
+      found.push({ ...listing, metadata:{ ...(listing.metadata||{}), discoveryMethod:"search-index" } });
+    }
+    return found;
+  }));
+  for (const search of searches) {
+    if (search.status !== "fulfilled") continue;
+    for (const listing of search.value) {
+      if (seen.has(listing.sourceUrl)) continue;
+      seen.add(listing.sourceUrl);
+      rows.push(listing);
+      if (rows.length >= 80) break;
+    }
     if (rows.length >= 80) break;
   }
   return { id, listings:rows };
