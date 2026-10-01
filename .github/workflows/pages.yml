@@ -46,7 +46,7 @@ jobs:
               VISUAL_ONLY=true
               while IFS= read -r file; do
                 case "$file" in
-                  src/*.css|assets/*.png|assets/*.jpg|assets/*.jpeg|assets/*.webp|assets/*.svg|assets/*.gif|assets/*.avif|assets/*.ico|assets/*.woff|assets/*.woff2|assets/*.ttf|assets/*.otf|config/*.json)
+                  src/*.css|assets/*.png|assets/*.jpg|assets/*.jpeg|assets/*.webp|assets/*.svg|assets/*.gif|assets/*.avif|assets/*.ico|assets/*.woff|assets/*.woff2|assets/*.ttf|assets/*.otf|config/*.json|config/*.txt|config/*.csv|config/*.list)
                     ;;
                   *)
                     VISUAL_ONLY=false
