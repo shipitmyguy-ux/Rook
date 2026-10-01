@@ -4,7 +4,8 @@ const FILES = Object.freeze({
   communitySources: "../config/community-sources.json",
   exclusions: "../config/exclusions.json",
   uiDefaults: "../config/ui-defaults.json",
-  properties: "../config/properties.json"
+  properties: "../config/properties.json",
+  evidence: "../config/evidence.json"
 });
 
 const fallback = Object.freeze({
@@ -13,7 +14,8 @@ const fallback = Object.freeze({
   communitySources:{version:1,sources:[]},
   exclusions:{version:1,listingRules:[]},
   uiDefaults:{version:1,pointsOfInterest:[]},
-  properties:{version:1,properties:[]}
+  properties:{version:1,properties:[]},
+  evidence:{version:1,housingEvidence:[]}
 });
 
 let state = fallback;
@@ -63,4 +65,16 @@ export function runtimePointsOfInterest() {
 
 export function runtimeSeedProperties() {
   return Array.isArray(state.properties?.properties) ? state.properties.properties : [];
+}
+
+export function runtimePreferenceDefaults() {
+  const areaDefault = state.searchAreas?.defaultLocation || null;
+  return {
+    ...(state.uiDefaults?.preferenceDefaults || {}),
+    ...(areaDefault ? { location:areaDefault } : {})
+  };
+}
+
+export function runtimeHousingEvidence() {
+  return Array.isArray(state.evidence?.housingEvidence) ? state.evidence.housingEvidence : [];
 }
