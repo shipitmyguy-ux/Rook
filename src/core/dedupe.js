@@ -8,18 +8,20 @@ function addressLikeLabel(value = "") {
   return /^\d{1,6}\s+.+\b(?:st|street|ave|avenue|rd|road|dr|drive|ln|lane|ct|court|way|blvd|boulevard|pl|place|cir|circle)\b/i.test(label) ? label : "";
 }
 
-function communityIdentity(property = {}) {
+function communityKeys(property = {}) {
   const metadata=property.metadata || {};
-  if (metadata.communityId) return "community:" + clean(metadata.communityId);
-  if (metadata.configuredSourceId && metadata.discoveryMethod === "configured-community") return "community:" + clean(metadata.configuredSourceId);
-  if (metadata.floorPlan && property.source && String(property.label||"").includes("·")) return "community-source:" + clean(property.source);
-  return "";
+  const keys=[];
+  const id=metadata.communityId || (metadata.discoveryMethod === "configured-community" ? metadata.configuredSourceId : null);
+  if (id) keys.push("community:" + clean(id));
+  if ((metadata.floorPlan || metadata.discoveryMethod === "configured-community") && property.source) {
+    keys.push("community-source:" + clean(property.source));
+  }
+  return [...new Set(keys.filter(Boolean))];
 }
 
 function propertyKeys(property = {}) {
   const keys = [];
-  const communityKey=communityIdentity(property);
-  if (communityKey) keys.push(communityKey);
+  keys.push(...communityKeys(property));
   if (property.address) keys.push("address:" + clean(property.address));
   if (property.address) keys.push("street:"+streetKey(property));
   const labelAddress=addressLikeLabel(property.label);
