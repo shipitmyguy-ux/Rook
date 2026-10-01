@@ -75,7 +75,6 @@ function finish(){
       mapAddressIconsOnly:(()=>{const markers=[...doc.querySelectorAll(".overview-poi--neutral")];return markers.length>=2&&markers.every(el=>!el.querySelector(".overview-poi__label")&&(el.textContent||"").trim().length<=2)})(),
       poiEditorControls:Boolean(doc.querySelector("#add-poi")&&doc.querySelector("#pref-poi-query")&&!doc.querySelector("#set-address-1")&&!doc.querySelector("#pref-address-1")&&!doc.querySelector("#remove-address-1")),
       poiLookupApproval:Boolean(doc.querySelector("#poi-lookup-results")&&/Find POI/i.test(doc.querySelector("#add-poi")?.textContent||"")),
-      poiDistanceSortControl:Boolean(doc.querySelector("[data-poi-sort-priority]")),
       poiEditorLoosePlaceholder:/place|road|landmark/i.test(doc.querySelector("#pref-poi-query")?.getAttribute("placeholder")||""),
       settingsDialogClose:Boolean(doc.querySelector("#settings-dialog.settings-dialog-captive")&&doc.querySelector("#close-settings.settings-dialog-close")),
       settingsDialogCaptive:(()=>{const dlg=doc.querySelector("#settings-dialog");if(!dlg)return false;const s=getComputedStyle(dlg);return /auto|scroll/.test(s.overflowY||s.overflow)&&s.maxHeight!=="none"})(),
