@@ -1,3 +1,4 @@
+import { canonicalAddress } from "./address.js";
 export const DEFAULT_TOUR_DURATION_MINUTES = 60;
 export const DEFAULT_TOUR_REMINDER_MINUTES = 120;
 
@@ -62,8 +63,20 @@ export function tourLabel(tour, now = new Date()) {
 }
 
 export function upcomingTours(properties = [], preferences = {}, now = new Date()) {
+  const seen = new Set();
   return properties.map(property => ({ property, tour: tourForProperty(property, preferences) }))
     .filter(item => item.tour && ["upcoming","soon"].includes(tourState(item.tour, now)))
+    .filter(item => {
+      const tour=item.tour;
+      const community=item.property?.metadata?.communityId || tour?.communityId || "";
+      const place=community || canonicalAddress(item.property?.address || item.property?.label || item.property?.id || "");
+      const key=tour.calendarEventId
+        ? "calendar:"+tour.calendarEventId
+        : [place,new Date(tour.startsAt).toISOString()].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .sort((a,b) => new Date(a.tour.startsAt) - new Date(b.tour.startsAt));
 }
 
