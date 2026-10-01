@@ -234,7 +234,7 @@ async function geocodeProperty(property, fallbackLocation = "Fort Collins, CO") 
   const direct = validCoordinates(property, fallbackLocation);
   if (direct) return direct;
   for (const q of mapLocationQueries(property, fallbackLocation)) {
-    const point = await geocode(q);
+    const point = await geocode(q, fallbackLocation);
     const valid = validCoordinates(point, fallbackLocation);
     if (valid) return valid;
   }
@@ -261,10 +261,47 @@ function propertyFeature(property, fallbackLocation = "Fort Collins, CO") {
   };
 }
 
+function spreadCoincidentFeatures(features = []) {
+  const groups = new Map();
+  for (const feature of features) {
+    const [lng, lat] = feature.geometry.coordinates;
+    const key = lng.toFixed(5) + "|" + lat.toFixed(5);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(feature);
+  }
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    group.sort((a,b) => String(a.id).localeCompare(String(b.id)));
+    const [baseLng, baseLat] = group[0].geometry.coordinates;
+    // Visual-only fan-out for multiple units at one building. Routing, distance,
+    // geocode cache and property data all retain the true base coordinate.
+    const radius = Math.min(0.0015, 0.00055 + Math.max(0, group.length - 4) * 0.00008);
+    const lngScale = Math.max(0.35, Math.cos(baseLat * Math.PI / 180));
+    group.forEach((feature, index) => {
+      const angle = -Math.PI / 2 + (Math.PI * 2 * index / group.length);
+      feature.properties = {
+        ...feature.properties,
+        coincidentCount:group.length,
+        baseLng,
+        baseLat
+      };
+      feature.geometry = {
+        ...feature.geometry,
+        coordinates:[
+          baseLng + Math.cos(angle) * radius / lngScale,
+          baseLat + Math.sin(angle) * radius
+        ]
+      };
+    });
+  }
+  return features;
+}
+
 function listingGeoJson(properties = [], fallbackLocation = "Fort Collins, CO") {
+  const features = properties.map(property => propertyFeature(property, fallbackLocation)).filter(Boolean);
   return {
     type: "FeatureCollection",
-    features: properties.map(property => propertyFeature(property, fallbackLocation)).filter(Boolean)
+    features: spreadCoincidentFeatures(features)
   };
 }
 
@@ -814,7 +851,7 @@ function normalizeQuery(value = "") {
   return String(value).trim().replace(/\s+/g, " ");
 }
 
-async function geocode(query) {
+async function geocode(query, fallbackLocation = config.search.location) {
   const q = normalizeQuery(query);
   if (!q) return null;
   const cachedEntry = readGeocodeCache()[q];
@@ -835,6 +872,30 @@ async function geocode(query) {
       const rows = await response.json();
       const row = rows?.[0];
       if (!row) {
+        // Generic second chance: reuse Rook's fuzzy Photon/Nominatim server search.
+        // This keeps card/map parity for valid addresses that the browser-side
+        // Nominatim query cannot resolve, without source-specific coordinates.
+        try {
+          if (config.listings?.endpoint) {
+            const endpoint = new URL(config.listings.endpoint, typeof window !== "undefined" ? window.location.href : "http://localhost/");
+            endpoint.searchParams.set("poi", "1");
+            endpoint.searchParams.set("query", q);
+            endpoint.searchParams.set("location", fallbackLocation || config.search.location);
+            endpoint.searchParams.set("limit", "1");
+            const fallbackResponse = await fetch(endpoint, { headers:{ "Accept":"application/json" } });
+            if (fallbackResponse.ok) {
+              const payload = await fallbackResponse.json();
+              const candidate = Array.isArray(payload?.candidates) ? payload.candidates[0] : null;
+              const value = candidate && { lat:Number(candidate.lat), lng:Number(candidate.lng) };
+              if (value && Number.isFinite(value.lat) && Number.isFinite(value.lng)) {
+                const next = readGeocodeCache();
+                next[q] = value;
+                writeGeocodeCache(next);
+                return value;
+              }
+            }
+          }
+        } catch {}
         const next = readGeocodeCache();
         next[q] = { missedAt: Date.now() };
         writeGeocodeCache(next);
