@@ -252,3 +252,42 @@ html.settings-modal-open,body.settings-modal-open{overflow:hidden;overscroll-beh
 @media(max-width:699px){.map-details{width:100%;margin:0 0 10px;padding:4px;border-radius:14px}.map-details .property-card.visual-card{margin:0}}
 
 @media(max-width:699px){.poi-style-row{grid-template-columns:28px minmax(0,1fr);align-items:start}.poi-style-row>label,.poi-style-row>.poi-remove{grid-column:2}.poi-style-row select{width:100%}}
+
+#discovery-summary{
+  position:fixed;
+  z-index:28;
+  top:76px;
+  right:18px;
+  max-width:min(320px,calc(100vw - 36px));
+  margin:0;
+  padding:7px 10px;
+  border:1px solid rgba(88,234,220,.28);
+  border-radius:999px;
+  background:rgba(7,17,27,.88);
+  color:#c9d8df;
+  box-shadow:0 8px 24px rgba(0,0,0,.28);
+  backdrop-filter:blur(8px);
+  font-size:11px;
+  line-height:1.2;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  opacity:0;
+  visibility:hidden;
+  transform:translateY(-4px);
+  pointer-events:none;
+  transition:opacity .4s ease,transform .4s ease,visibility 0s linear .4s;
+}
+#discovery-summary.is-visible{
+  opacity:.88;
+  visibility:visible;
+  transform:translateY(0);
+  transition-delay:0s;
+}
+#discovery-summary.is-fading{opacity:0;transform:translateY(-4px)}
+@media(max-width:699px){
+  #discovery-summary{top:64px;right:10px;max-width:calc(100vw - 20px);font-size:10px;padding:6px 9px}
+}
+@media(prefers-reduced-motion:reduce){
+  #discovery-summary{transition:none}
+}
