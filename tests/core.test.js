@@ -14,7 +14,7 @@ import { parseRookBackup } from "../src/core/export.js";
 import { normalizePreferences } from "../src/core/preferences.js";
 import { config } from "../src/config.js";
 import { poiLocationQuery, normalizePoiSearchCandidate, poiSearchQueries, mapLandLayerKind } from "../src/integrations/maps.js";
-import { normalizeTour, tourState, tourLabel, applyTour } from "../src/core/tours.js";
+import { normalizeTour, tourState, tourLabel, applyTour, upcomingTours } from "../src/core/tours.js";
 import { applySharedRookStateRow } from "../src/integrations/sync.js";
 import { normalizePointStyles, resolvePoiStyle, poiGlyph, poiColorHex } from "../src/core/poi-style.js";
 import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, resolveMissingImage, canonicalAddress, isIncomeRestrictedListing } from "../src/integrations/providers.js";
@@ -81,12 +81,18 @@ test("address in label collapses with equivalent explicit unit address", () => {
   assert.equal(rows.length,1);
 });
 
-test("upcoming tours suppress duplicate calendar/property-time entries", async () => {
+test("upcoming tours suppress duplicate calendar/property-time entries", () => {
   const properties=[
     normalizeProperty({id:"a",label:"Bloom Rental Living",address:"180 N Aria Way, Fort Collins, CO",showingAt:"2099-10-02T17:00:00Z",metadata:{communityId:"bloom",tour:{startsAt:"2099-10-02T17:00:00Z",calendarEventId:"event-1"}}}),
     normalizeProperty({id:"b",label:"Bloom Rental Living · Cache",address:"180 N Aria Way Unit 2, Fort Collins, CO",showingAt:"2099-10-02T17:00:00Z",metadata:{communityId:"bloom",tour:{startsAt:"2099-10-02T17:00:00Z",calendarEventId:"event-1"}}})
   ];
-  assert.equal((await import("../src/core/tours.js")).upcomingTours(properties,{},new Date("2099-10-01T00:00:00Z")).length,1);
+  assert.equal(upcomingTours(properties,{},new Date("2099-10-01T00:00:00Z")).length,1);
+});
+
+test("POI styles preserve configurable distance sort priority", () => {
+  const styles=normalizePointStyles({ridge:{icon:"star",color:"gold",sortPriority:1},school:{sortPriority:3}});
+  assert.equal(styles.ridge.sortPriority,1);
+  assert.equal(styles.school.sortPriority,3);
 });
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
