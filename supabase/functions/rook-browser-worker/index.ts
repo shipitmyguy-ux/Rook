@@ -1,7 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import {nextPageUrl} from "./pagination.js";
 
 const ORIGINS = new Set(["https://shipitmyguy-ux.github.io","http://localhost:3000","http://localhost:5173"]);
-const ALLOWED = new Set(["ping","start","stop","open","snapshot","screenshot","click","type","select","wait","scroll","smoke"]);
+const ALLOWED = new Set(["ping","start","stop","open","snapshot","screenshot","click","type","select","wait","scroll","smoke","discover"]);
 
 function H(req:Request){
   const o=req.headers.get("origin")||"";
@@ -10,7 +11,7 @@ function H(req:Request){
 function O(req:Request,d:any,s=200){return new Response(JSON.stringify(d),{status:s,headers:H(req)})}
 function key(){const k=Deno.env.get("STEEL_API_KEY");if(!k)throw Error("STEEL_API_KEY unavailable");return k}
 async function steel(path:string,init:RequestInit={}){
-  const r=await fetch("https://api.steel.dev"+path,{...init,headers:{"steel-api-key":key(),"content-type":"application/json",...(init.headers||{})}});
+  const r=await fetch("https://api.steel.dev"+path,{signal:AbortSignal.timeout(4000),...init,headers:{"steel-api-key":key(),"content-type":"application/json",...(init.headers||{})}});
   const t=await r.text();let b:any={};try{b=t?JSON.parse(t):{}}catch{b={raw:t.slice(0,500)}}
   if(!r.ok)throw Error(b?.message||b?.error||("Steel API "+r.status));return b;
 }
@@ -20,9 +21,9 @@ async function start(){
 async function stop(id:string){return await steel("/v1/sessions/"+encodeURIComponent(id)+"/release",{method:"POST"})}
 
 class C{
-  ws:WebSocket;n=0;p=new Map<number,any>();
-  constructor(w:WebSocket){this.ws=w;w.onmessage=e=>{try{const m=JSON.parse(String(e.data)),p=this.p.get(m.id);if(!p)return;clearTimeout(p.t);this.p.delete(m.id);m.error?p.j(Error(m.error.message)):p.r(m.result||{})}catch{}}}
-  send(method:string,params:any={},sessionId?:string){const id=++this.n;return new Promise<any>((r,j)=>{const t=setTimeout(()=>{this.p.delete(id);j(Error("CDP timeout: "+method))},15000);this.p.set(id,{r,j,t});this.ws.send(JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})}))})}
+  ws:WebSocket;n=0;p=new Map<number,any>();deadline=Infinity;events:((m:any)=>void)[]=[];
+  constructor(w:WebSocket){this.ws=w;w.onmessage=e=>{try{const m=JSON.parse(String(e.data)),p=this.p.get(m.id);if(!p){for(const handler of this.events)handler(m);return;}clearTimeout(p.t);this.p.delete(m.id);m.error?p.j(Error(m.error.message)):p.r(m.result||{})}catch{}}}
+  send(method:string,params:any={},sessionId?:string){const id=++this.n;return new Promise<any>((r,j)=>{const t=setTimeout(()=>{this.p.delete(id);j(Error("CDP timeout: "+method))},Math.max(1,Math.min(15000,this.deadline-Date.now())));this.p.set(id,{r,j,t});this.ws.send(JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})}))})}
 }
 async function conn(id:string){
   const w=new WebSocket("wss://connect.steel.dev?apiKey="+encodeURIComponent(key())+"&sessionId="+encodeURIComponent(id));
@@ -86,6 +87,65 @@ async function smoke(){
   }finally{try{await stop(id)}catch{}}
 }
 
+async function discover(b:any){
+  const target=new URL(String(b.url||""));
+  const hosts=["realtor.com","rent.com","apartmentlist.com","apartments.com","hotpads.com","trulia.com","zillow.com"];
+  if(target.protocol!=="https:"||!hosts.some(h=>target.hostname===h||target.hostname.endsWith("."+h)))throw Error("Unsupported discovery host");
+  const started=Date.now(),deadline=started+18000;
+  const session=await start(),id=String(session.id||"");if(!id)throw Error("No browser session");
+  try{return await withPage(id,async(c,s)=>{
+    c.deadline=deadline;
+    const responses:any[]=[];
+    c.events.push(m=>{const r=m.params?.response;if(m.method==="Network.responseReceived"&&r?.mimeType?.includes("json")&&responses.length<12){try{if(new URL(r.url).origin===target.origin)responses.push({requestId:m.params.requestId,url:r.url})}catch{}}});
+    await c.send("Network.enable",{},s);
+    await c.send("Page.enable",{},s);
+    await c.send("Page.navigate",{url:target.href},s);
+    await new Promise(r=>setTimeout(r,1400));
+    const links=new Map<string,any>(),visited=new Set<string>(),jsonData:any[]=[];
+    let pages=1,steps=0,stale=0,reason="step-limit",last:any={};
+    for(;steps<16&&Date.now()<deadline;steps++){
+      try {last=await ev(c,s,`(()=>{
+        const links=[...document.querySelectorAll('a[href]')].map(a=>({text:(a.innerText||a.textContent||'').trim().slice(0,240),href:a.href,context:(()=>{let e=a,best=a.innerText||'';for(let i=0;e&&i<7;i++,e=e.parentElement){const t=e.innerText||'';if(t.length>2200)break;if(t.length>best.length)best=t;if(/\\$[\\d,]+/.test(t)&&/(?:bed|bd|br)\\b/i.test(t))return t;}return best;})().trim().slice(0,2200)}));
+        const next=[...document.querySelectorAll('a[rel="next"],a[aria-label*="Next"],button[aria-label*="Next"],a,button')].find(a=>!a.disabled&&a.getAttribute('aria-disabled')!=='true'&&(a.rel==='next'||/^(next(?: page)?|load more|show more)(?:\\s*[›»→])?$/i.test((a.innerText||a.getAttribute('aria-label')||'').trim())));
+        return {url:location.href,title:document.title,text:(document.body?.innerText||'').slice(0,30000),links:links.slice(0,1600),jsonData:[...document.querySelectorAll('script[type="application/ld+json"],script#__NEXT_DATA__')].map(e=>e.textContent).filter(t=>t&&t.length<500000).slice(0,8),next:next?.href||null,hasNext:!!next};
+      })()`);}catch{reason="deadline";break}
+      if((last.links?.length||0)<10&&String(last.text||"").length<400&&Date.now()-started<9000){await new Promise(r=>setTimeout(r,600));continue}
+      last.next=last.next||nextPageUrl(last.url,last.links);last.hasNext=last.hasNext||!!last.next;
+      if(/captcha|verify you are human|access denied|unusual traffic/i.test(last.text||"")){reason="challenge";break}
+      for(const raw of last.jsonData||[])if(jsonData.length<32){try{jsonData.push(JSON.parse(raw))}catch{}}
+      const before=links.size;
+      for(const link of last.links||[]){
+        try{const u=new URL(link.href);u.hash="";for(const k of [...u.searchParams.keys()])if(/^(utm_|tracking)/i.test(k))u.searchParams.delete(k);
+          const key=u.href;if(!links.has(key)&&links.size<1600)links.set(key,{...link,href:key});
+        }catch{}
+      }
+      stale=links.size===before?stale+1:0;
+      visited.add(last.url);
+      if(links.size>=1600){reason="candidate-limit";break}
+      if(stale>=2){
+        if(!last.hasNext){reason="exhausted";break}
+        if(pages>=4){reason="page-limit";break}
+        if(last.next){const next=new URL(last.next,last.url);if(next.origin!==target.origin||visited.has(next.href)){reason="repeated-page";break}}
+        const moved=last.next ? await c.send("Page.navigate",{url:last.next},s).then(()=>true).catch(()=>false) : await ev(c,s,`(()=>{
+          const a=[...document.querySelectorAll('a[rel="next"],a[aria-label*="Next"],button[aria-label*="Next"],a,button')].find(a=>!a.disabled&&a.getAttribute('aria-disabled')!=='true'&&(a.rel==='next'||/^(next(?: page)?|load more|show more)(?:\\s*[›»→])?$/i.test((a.innerText||a.getAttribute('aria-label')||'').trim())));
+          if(!a)return false;a.click();return true;
+        })()`);
+        if(!moved){reason="exhausted";break}pages++;stale=0;
+        await new Promise(r=>setTimeout(r,1000));
+      }else{
+        try{await ev(c,s,`(()=>{
+          window.scrollBy({top:1400,behavior:'instant'});
+          for(const e of document.querySelectorAll('main,section,div'))if(e.clientHeight>200&&e.scrollHeight>e.clientHeight+200&&/(auto|scroll)/.test(getComputedStyle(e).overflowY))e.scrollTop+=1400;
+        })()`);}catch{reason="deadline";break}
+        await new Promise(r=>setTimeout(r,550));
+      }
+    }
+    if(Date.now()>=deadline)reason="deadline";
+    for(const response of responses.slice(-4)){if(Date.now()>deadline-700)break;try{const body=await c.send("Network.getResponseBody",{requestId:response.requestId},s);if(!body.base64Encoded&&body.body?.length<500000)jsonData.push(JSON.parse(body.body))}catch{}}
+    return {ok:true,action:"discover",snapshot:{...last,links:[...links.values()],jsonData,images:[]},discovery:{pages,steps,uniqueLinks:links.size,reason,nextUrl:["deadline","page-limit","step-limit"].includes(reason)?last.next:null,elapsedMs:Date.now()-started}};
+  })}finally{try{await stop(id)}catch{}}
+}
+
 Deno.serve(async(req:Request)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:H(req)});
   if(req.method!=="POST")return O(req,{error:"POST required"},405);
@@ -93,10 +153,11 @@ Deno.serve(async(req:Request)=>{
   if(req.headers.get("x-rook-client")!=="rook-web-v1")return O(req,{error:"Rook client header required"},403);
   try{
     const b=await req.json(),a=String(b.action||"");if(!ALLOWED.has(a))return O(req,{error:"Unsupported browser action"},400);
-    if(a==="ping")return O(req,{ok:true,service:"rook-browser-worker",version:1,steelKeyConfigured:!!Deno.env.get("STEEL_API_KEY")});
+    if(a==="ping")return O(req,{ok:true,service:"rook-browser-worker",version:2,steelKeyConfigured:!!Deno.env.get("STEEL_API_KEY")});
     if(a==="start"){const s=await start();return O(req,{ok:true,action:a,sessionId:s.id,viewerUrl:s.sessionViewerUrl||s.debugUrl||null})}
     if(a==="stop"){const id=String(b.sessionId||"");if(!id)return O(req,{error:"sessionId required"},400);await stop(id);return O(req,{ok:true,action:a,sessionId:id})}
     if(a==="smoke"){const r=await smoke();return O(req,r,r.ok?200:500)}
+    if(a==="discover")return O(req,await discover(b));
     return O(req,await act(a,b));
   }catch(e){return O(req,{ok:false,error:e instanceof Error?e.message:String(e)},500)}
 });

@@ -2,6 +2,8 @@ import { normalizeProperty, PROPERTY_STATUS } from "./property.js";
 import { dedupeProperties } from "./dedupe.js";
 
 const STORAGE_KEY = "rook.properties.v1";
+const IGNORED_KEY = "rook.ignored-identities.v1";
+const ignoredIdentities = p => [p.id && "id:"+p.id, p.address && "address:"+p.address.toLowerCase().replace(/[^a-z0-9]/g,""),p.sourceUrl && "url:"+p.sourceUrl].filter(Boolean);
 
 export function createPropertyStore(seed = []) {
   let properties = load(seed);
@@ -18,6 +20,7 @@ export function createPropertyStore(seed = []) {
 
   function persist() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(properties));
+    localStorage.setItem(IGNORED_KEY, JSON.stringify(properties.filter(p=>[PROPERTY_STATUS.REJECTED,PROPERTY_STATUS.ARCHIVED].includes(p.status)).flatMap(ignoredIdentities)));
     listeners.forEach(listener => listener(properties));
   }
 
@@ -42,6 +45,10 @@ export function createPropertyStore(seed = []) {
     },
     upsertMany(incoming = []) {
       if (!Array.isArray(incoming) || !incoming.length) return;
+      let ignored=new Set();
+      try{ignored=new Set(JSON.parse(localStorage.getItem(IGNORED_KEY)||"[]"))}catch{}
+      incoming=incoming.filter(p=>!ignoredIdentities(p).some(key=>ignored.has(key)));
+      if(!incoming.length)return;
       properties = dedupeProperties([...incoming.map(normalizeProperty), ...properties]).map(normalizeProperty);
       persist();
     },

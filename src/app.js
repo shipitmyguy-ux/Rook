@@ -25,6 +25,7 @@ let query = "";
 let preferences = loadPreferences();
 document.documentElement.dataset.theme = preferences.visualTheme || "default";
 let refreshInFlight = false;
+let discoveryTelemetry=null;
 let selectedMapPropertyId = null;
 let selectedMapCard = null;
 let selectedMapCardPlaceholder = null;
@@ -564,13 +565,12 @@ function renderActivity() {
 async function resolveUnavailableListings() {
   if (listingChecksInFlight) return listingChecksInFlight;
   listingChecksInFlight = (async () => {
-    const candidates = store.getAll().filter(property => needsListingCheck(property))
-      .sort((a,b) => Number(Boolean(b.sourceUrl)) - Number(Boolean(a.sourceUrl)));
+    const attempted=new Set();
     const check = async snapshot => {
       try {
         const result = await resolveMissingListing(snapshot, { location:preferences.location || config.search.location });
         const property = store.getAll().find(p => p.id === snapshot.id);
-        if (!property) return;
+        if (!property || [PROPERTY_STATUS.REJECTED,PROPERTY_STATUS.ARCHIVED].includes(property.status)) return;
         const metadata = { ...property.metadata, listingResolverVersion:LISTING_RESOLVER_VERSION };
         delete metadata.listingVerification;
         delete metadata.listingClosedEvidence;
@@ -601,9 +601,11 @@ async function resolveUnavailableListings() {
       }
     };
     // Drain every due candidate, with bounded concurrency and no repeated polling.
-    for (let index = 0; index < candidates.length; index += 3) {
-      await Promise.all(candidates.slice(index, index + 3).map(check));
-    }
+    const worker=async()=>{while(true){
+      const snapshot=store.getAll().filter(property=>!attempted.has(property.id)&&needsListingCheck(property)).sort((a,b)=>Number(Boolean(b.sourceUrl))-Number(Boolean(a.sourceUrl)))[0];
+      if(!snapshot)break;attempted.add(snapshot.id);await check(snapshot);renderList();
+    }};
+    await Promise.all(Array.from({length:5},worker));
   })();
   try { await listingChecksInFlight; } finally { listingChecksInFlight = null; }
 }
@@ -611,6 +613,7 @@ async function resolveUnavailableListings() {
 async function enrichMissingImages() {
   const now = Date.now();
   const candidates = store.getAll().filter(property => {
+    if ([PROPERTY_STATUS.REJECTED,PROPERTY_STATUS.ARCHIVED].includes(property.status))return false;
     if (firstImageUrl(property)) return false;
     if (property.listingState === "closed" && property.metadata?.listingClosedEvidence?.confirmed === true) return false;
     if (!property.address && !property.label && !safeListingUrl(property.sourceUrl)) return false;
@@ -670,12 +673,25 @@ async function refreshListings(trigger = "manual") {
   document.querySelector("#pull-indicator")?.classList.add("refreshing");
   try {
     const { address1, ...searchPreferences } = preferences;
-    const found = await searchProviders({ ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query });
+    discoveryTelemetry={adapters:[],count:0};
+    const before=new Set(store.getAll().map(p=>canonicalAddress(p.address)||p.sourceUrl));
+    const found = await searchProviders({ ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query },{onResults:(rows,meta)=>{
+      store.upsertMany(rows);
+      if(meta?.adapter)discoveryTelemetry.adapters.push(meta.adapter);
+      if(meta)Object.assign(discoveryTelemetry,Object.fromEntries(Object.entries(meta).filter(([key])=>key!=="adapter")));
+      const indicator=document.querySelector("#pull-indicator");
+      if(indicator)indicator.textContent=`Found ${discoveryTelemetry.count} candidates · ${discoveryTelemetry.adapters.length}/8 sources checked`;
+      renderList();
+      void resolveUnavailableListings().then(()=>renderList());
+    }});
+    discoveryTelemetry.newCount=found.filter(p=>!before.has(canonicalAddress(p.address)||p.sourceUrl)).length;
     store.upsertMany(found);
     await syncSharedRookState();
     void resolveUnavailableListings().then(() => renderList());
     void enrichMissingImages().then(() => renderList());
-    recordActivity("provider-refresh", null, { count: found.length, trigger });
+    recordActivity("provider-refresh", null, { count: found.length, trigger,discovery:discoveryTelemetry });
+    const summary=document.querySelector("#discovery-summary");
+    if(summary){summary.textContent=discoveryTelemetry.adapters.map(a=>`${a.id}: ${a.count}${a.discovery?.degraded||!a.ok?" (limited)":""}`).join(" · ")+` · ${discoveryTelemetry.newCount} new · ${discoveryTelemetry.duplicates||0} duplicates · ${discoveryTelemetry.filtered||0} filtered`;summary.title=`${Math.round((discoveryTelemetry.elapsedMs||0)/1000)} seconds`; }
     const indicator = document.querySelector("#pull-indicator");
     if (indicator) indicator.textContent = found.length ? `Found ${found.length} listings · checking missing details` : "Listings checked · checking missing details";
   } catch (error) {
@@ -818,7 +834,7 @@ function renderList() {
 
 app.innerHTML = `<main class="shell">
 <header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><div class="topbar-actions"><button type="button" class="desktop-refresh-button" data-refresh-listings aria-label="Refresh listings" title="Refresh listings">↻ <span>Refresh listings</span></button><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></div></header>
-<div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div>
+<div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div><p id="discovery-summary" class="muted" aria-live="polite"></p>
 <section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><div id="property-map" class="property-map" role="region" aria-label="Interactive property map"></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
 <section id="map-details" class="map-details" aria-label="Property details" aria-live="polite" hidden></section>
 <section id="upcoming-tours" class="upcoming-tours" aria-live="polite" hidden></section>
@@ -1413,6 +1429,3 @@ store.subscribe(scheduleRenderList);
 void syncSharedRookState();
 renderList();
 if (!BROWSER_QA_MODE) queueMicrotask(() => refreshListings("startup"));
-
-
-

@@ -156,6 +156,13 @@ export function matchesSearchDefaults(property, criteria = {}) {
   return true;
 }
 
+// Retain unknown property kinds for enrichment; the visible feed still applies
+// the user's complete criteria after facts have been recovered.
+export function matchesDiscoveryDefaults(property, criteria = {}) {
+  const unresolvedKind=classifyPropertyKind(property)==="rental" && !property.metadata?.listingVerification?.confirmed;
+  return matchesSearchDefaults(property, unresolvedKind ? {...criteria,propertyTypes:undefined} : criteria);
+}
+
 export function dedupeProviderResults(rows = []) {
   const merged = new Map();
   for (const row of rows) {
@@ -269,14 +276,18 @@ export async function resolveMissingImage(property = {}, criteria = {}, fetchImp
   };
 }
 
-export async function searchProviders(criteria = {}) {
+export async function searchProviders(criteria = {}, options = {}) {
   const active = [...providers.values()].filter(provider => provider.enabled !== false);
   const settled = await Promise.allSettled(active.map(async provider => {
-    const rows = await provider.search(criteria);
+    const rows = await provider.search(criteria, {onResults:(rows,meta)=>{
+      const normalized=rows.map(row=>normalizeProviderResult(row,provider)).filter(property=>matchesDiscoveryDefaults(property,criteria));
+      options.onResults?.(dedupeProviderResults(normalized),meta);
+    }});
     if (!Array.isArray(rows)) return [];
     return rows.map(row => normalizeProviderResult(row, provider))
-      .filter(property => matchesSearchDefaults(property, criteria));
+      .filter(property => matchesDiscoveryDefaults(property, criteria));
   }));
+  if(active.length && settled.every(result=>result.status==="rejected"))throw new Error("All listing providers failed");
   return dedupeProviderResults(settled.flatMap(result => result.status === "fulfilled" ? result.value : []));
 }
 
@@ -287,16 +298,24 @@ export function createJsonProvider({ id, label, endpoint, mapResult = value => v
   return {
     id,
     label: label || id,
-    async search(criteria = {}) {
+    async search(criteria = {}, options = {}) {
       const baseUrl = typeof window !== "undefined" ? window.location.href : "http://localhost/";
       const url = new URL(endpoint, baseUrl);
       Object.entries(criteria).forEach(([key, value]) => {
         if (value !== null && value !== undefined && value !== "") url.searchParams.set(key, String(value));
       });
-      const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
+      if(options.onResults)url.searchParams.set("stream","1");
+      const response = await fetchImpl(url, { headers: { Accept: "application/json" },signal:AbortSignal.timeout(35000) });
       if (!response.ok) throw new Error(`${label || id} returned ${response.status}`);
+      if(response.headers?.get("content-type")?.includes("application/x-ndjson")&&response.body){
+        const reader=response.body.getReader(),decoder=new TextDecoder();let pending="",rows=[];
+        const consume=line=>{if(!line.trim())return;const payload=JSON.parse(line);if(payload.error)throw new Error(payload.error);const batch=(payload.listings||[]).map(mapResult);if(payload.meta?.authoritative)rows=batch;else rows.push(...batch);options.onResults?.(batch,payload.meta);};
+        try{while(true){const {done,value}=await reader.read();pending+=decoder.decode(value||new Uint8Array(),{stream:!done});let newline;while((newline=pending.indexOf("\n"))>=0){consume(pending.slice(0,newline));pending=pending.slice(newline+1)}if(done)break;}if(pending.trim())consume(pending);}finally{reader.releaseLock()}
+        return rows;
+      }
       const payload = await response.json();
       const rows = Array.isArray(payload) ? payload : payload.listings;
+      if(options.onResults)options.onResults(Array.isArray(rows)?rows.map(mapResult):[],payload.meta);
       return Array.isArray(rows) ? rows.map(mapResult) : [];
     }
   };
