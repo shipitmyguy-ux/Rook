@@ -338,7 +338,10 @@ async function imageFromListingPage(pageUrl: string, address = "", label = "") {
 async function discoverExactProviderUrls(address:string,label:string,location:string) {
   const subject = address || label;
   if (!subject) return [];
-  const providers = ["forrent.com","trulia.com","hotpads.com","zillow.com","apartments.com","realtor.com","rent.com","redfin.com","homes.com","zumper.com"];
+  const runtime = await loadDiscoveryRuntimeConfig();
+  const providers = Array.isArray(runtime.providers?.searchDomains) && runtime.providers.searchDomains.length
+    ? runtime.providers.searchDomains
+    : ["forrent.com","trulia.com","hotpads.com","zillow.com","apartments.com","realtor.com","rent.com","redfin.com","homes.com","zumper.com"];
   const urls:string[] = [];
   const seen = new Set<string>();
   for (const domain of providers) {
@@ -1686,12 +1689,18 @@ async function resolveListing(address: string, label: string, location: string, 
 
 async function discoverListing(address: string, label: string, location: string, sourceUrl = "") {
   const checkedAt = new Date().toISOString();
-  const citySlug = location.toLowerCase().replace(/,.*$/, "").trim().replace(/[^a-z0-9]+/g, "-");
-  const sourcePages = [
-    { id:"realtor", source:"Realtor.com", url:`https://www.realtor.com/apartments/${citySlug}_CO` },
-    { id:"rent", source:"Rent.com", url:`https://www.rent.com/colorado/${citySlug}-apartments` },
-    { id:"apartmentlist", source:"Apartment List", url:`https://www.apartmentlist.com/co/${citySlug}` }
-  ];
+  const runtime = await loadDiscoveryRuntimeConfig();
+  const locationParts = String(location || runtime.searchAreas?.defaultLocation || "Fort Collins, CO").split(",");
+  const city = locationParts[0]?.trim() || "Fort Collins";
+  const state = locationParts[1]?.trim() || "CO";
+  const citySlug = city.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const sourcePages = (Array.isArray(runtime.providers?.providers) ? runtime.providers.providers : [])
+    .filter((provider:any)=>provider?.verificationFeed)
+    .map((provider:any)=>({
+      id:String(provider.id),
+      source:String(provider.label || provider.id),
+      url:renderFeedTemplate(provider.verificationFeed,city,state)
+    }));
 
   if (sourceUrl) {
     try {
@@ -1952,48 +1961,47 @@ async function discoverListing(address: string, label: string, location: string,
     }
   } catch {}
 
-  // One targeted ZIP index is a bounded provider fallback. Exact street/unit
-  // matching is still required, and it runs only after exact-address search.
+  // Targeted ZIP indexes are configured per provider. Exact street/unit
+  // matching is still required, and these run only after exact-address search.
   const postalCode = String(address || "").match(/\b(\d{5})(?:-\d{4})?\b/)?.[1] || "";
   if (postalCode) {
-    const zipIndexUrl = `https://www.zillow.com/${citySlug}-co-${postalCode}/rentals/`;
-    try {
-      const reader = await readerText(zipIndexUrl, 5000);
-      const match = listingFromReaderIndex(reader, address, label, "Zillow", zipIndexUrl);
-      if (match?.sourceUrl) {
-        return {
-          state:"active",
-          listing:match,
-          checkedAt,
-          checkedSources:successfulSources,
-          readerIndex:true
-        };
-      }
+    const zipProviders=(Array.isArray(runtime.providers?.providers)?runtime.providers.providers:[]).filter((provider:any)=>provider?.zipFeed);
+    for (const provider of zipProviders) {
+      const zipIndexUrl = renderFeedTemplate(provider.zipFeed,city,state).replaceAll("{zip}",postalCode);
+      try {
+        const reader = await readerText(zipIndexUrl, 5000);
+        const providerName=String(provider.label || provider.id);
+        const match = listingFromReaderIndex(reader, address, label, providerName, zipIndexUrl);
+        if (match?.sourceUrl) {
+          return {
+            state:"active",
+            listing:match,
+            checkedAt,
+            checkedSources:successfulSources,
+            readerIndex:true
+          };
+        }
 
-      // Some provider indexes expose the full active listing facts but hide the
-      // property-page href from reader/search output. An exact street+unit match
-      // on the live rental index is still positive availability evidence. Use the
-      // index itself as the source instead of incorrectly falling through to the
-      // manual "Find listing" state.
-      const lines = String(reader || "").split(/\n+/);
-      for (let i = 0; i < lines.length; i += 1) {
-        const context = lines.slice(Math.max(0, i - 4), Math.min(lines.length, i + 8)).join(" ");
-        if (!contextMatchesAddress(context, address, label)) continue;
-        const indexed = fallbackListingFromText(context, zipIndexUrl, { address, label, source:"Zillow" });
-        return {
-          state:"active",
-          listing:{
-            ...indexed,
-            sourceUrl:zipIndexUrl,
-            metadata:{ ...(indexed.metadata || {}), exactIndexMatch:true }
-          },
-          checkedAt,
-          checkedSources:successfulSources,
-          readerIndex:true,
-          exactIndexMatch:true
-        };
-      }
-    } catch {}
+        const lines = String(reader || "").split(/\n+/);
+        for (let i = 0; i < lines.length; i += 1) {
+          const context = lines.slice(Math.max(0, i - 4), Math.min(lines.length, i + 8)).join(" ");
+          if (!contextMatchesAddress(context, address, label)) continue;
+          const indexed = fallbackListingFromText(context, zipIndexUrl, { address, label, source:providerName });
+          return {
+            state:"active",
+            listing:{
+              ...indexed,
+              sourceUrl:zipIndexUrl,
+              metadata:{ ...(indexed.metadata || {}), exactIndexMatch:true }
+            },
+            checkedAt,
+            checkedSources:successfulSources,
+            readerIndex:true,
+            exactIndexMatch:true
+          };
+        }
+      } catch {}
+    }
   }
 
   // Absence from search/index pages is never closure evidence. Only an exact
