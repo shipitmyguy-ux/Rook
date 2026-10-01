@@ -107,6 +107,39 @@ test("every already-visible property with a resolvable location reaches the map 
 });
 
 
+test("co-located visible listings keep one distinct map feature per card", async () => {
+  let data;
+  let onStyle;
+  globalThis.localStorage = { getItem:() => null, setItem(){} };
+  globalThis.fetch = async () => ({ ok:false });
+  const source = { setData(value) { data = value; } };
+  const map = {
+    addControl() {},
+    on(event, handler) { if (event === "style.load") onStyle = handler; },
+    getSource() { return source; },
+    getLayer() { return true; },
+    setFilter() {},
+    fitBounds() {},
+    jumpTo() {},
+    getStyle() { return { layers:[], sources:{} }; }
+  };
+  globalThis.window = { maplibregl:{ Map:function(){ return map; }, AttributionControl:function(){} } };
+  const container = { replaceChildren(){}, dataset:{} };
+  renderPropertyMap(container, [
+    { id:"unit-a", label:"Unit A", address:"100 Shared Way Unit A, Fort Collins, CO", type:"Townhome", listingType:"rent", lat:40.58, lng:-105.08 },
+    { id:"unit-b", label:"Unit B", address:"100 Shared Way Unit B, Fort Collins, CO", type:"Townhome", listingType:"rent", lat:40.58, lng:-105.08 }
+  ], { dataAlreadyFiltered:true, location:"Fort Collins, CO" });
+  await new Promise(resolve => setImmediate(resolve));
+  onStyle();
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.equal(data.features.length, 2);
+  assert.equal(container.dataset.mapExpectedPropertyCount, "2");
+  assert.equal(container.dataset.mapFeatureCount, "2");
+  assert.notDeepEqual(data.features[0].geometry.coordinates, data.features[1].geometry.coordinates);
+  assert.ok(data.features.every(feature => feature.properties.coincidentCount === 2));
+});
+
 test("property distances are calculated once and reused from persistent cache", async () => {
   const memory = {};
   globalThis.localStorage = {
