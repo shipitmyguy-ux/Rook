@@ -1567,32 +1567,35 @@ async function resolveComparablePrice(address: string, label: string, location: 
     "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query)
   ];
 
-  for (const searchUrl of searchUrls) {
-    try {
-      const text = await readerText(searchUrl, 5000);
-      const lines = String(text || "").split(/\n+/);
-      for (let i=0; i<lines.length; i++) {
-        const context = lines.slice(Math.max(0,i-3), Math.min(lines.length,i+5)).join(" ");
-        if (!comparableContextMatches(context, address || label, targetBeds)) continue;
-        const hrefs = [
-          ...[...context.matchAll(/\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m=>m[1]),
-          ...[...context.matchAll(/(https?:\/\/[^\s<>"')]+)/g)].map(m=>m[1])
-        ];
-        let acceptedUrl = "";
-        for (const href of hrefs) {
-          const normalized = normalizeSearchResultUrl(href);
-          if (!normalized) continue;
-          try {
-            const u = new URL(normalized);
-            if (!isAllowedListingHost(u.hostname)) continue;
-            acceptedUrl = normalized;
-            break;
-          } catch {}
-        }
-        if (!acceptedUrl) continue;
-        consider(context, acceptedUrl, new URL(acceptedUrl).hostname);
+  // Search fallbacks are independent. Query them concurrently instead of paying
+  // up to three sequential 5s waits for every missing-price property.
+  const searchTexts = await Promise.all(searchUrls.map(async searchUrl => {
+    try { return { searchUrl, text:await readerText(searchUrl, 3500) }; }
+    catch { return { searchUrl, text:"" }; }
+  }));
+  for (const { searchUrl, text } of searchTexts) {
+    const lines = String(text || "").split(/\n+/);
+    for (let i=0; i<lines.length; i++) {
+      const context = lines.slice(Math.max(0,i-3), Math.min(lines.length,i+5)).join(" ");
+      if (!comparableContextMatches(context, address || label, targetBeds)) continue;
+      const hrefs = [
+        ...[...context.matchAll(/\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m=>m[1]),
+        ...[...context.matchAll(/(https?:\/\/[^\s<>"')]+)/g)].map(m=>m[1])
+      ];
+      let acceptedUrl = "";
+      for (const href of hrefs) {
+        const normalized = normalizeSearchResultUrl(href);
+        if (!normalized) continue;
+        try {
+          const u = new URL(normalized);
+          if (!isAllowedListingHost(u.hostname)) continue;
+          acceptedUrl = normalized;
+          break;
+        } catch {}
       }
-    } catch {}
+      if (!acceptedUrl) continue;
+      consider(context, acceptedUrl, new URL(acceptedUrl).hostname);
+    }
     if (candidates.length >= 4) break;
   }
 
