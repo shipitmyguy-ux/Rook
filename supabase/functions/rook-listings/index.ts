@@ -1146,9 +1146,8 @@ async function uncachedSearchDiscovery(location: string): Promise<AdapterResult>
       const description = String(item.match(/<description>([\s\S]*?)<\/description>/i)?.[1] || "").replace(/<!\[CDATA\[|\]\]>/g," ").replace(/<[^>]+>/g," ");
       const context = (title + " " + description).replace(/&amp;/g,"&").replace(/\s+/g," ").trim();
       const address = addressFromDiscoveryContext(context);
-      const cityPattern = new RegExp("\\b" + city.replace(/[.*+?^$\{\}()|[\\]\\]/g,"\\      const address = addressFromDiscoveryContext(context);
-      if (!address || !/fort\s+collins/i.test(context + " " + address)) continue;").replace(/\\s+/g,"\\s+") + "\\b","i");
-      if (!address || !cityPattern.test(context + " " + address)) continue;
+      const cityToken = canonicalAddress(city);
+      if (!address || !canonicalAddress(context + " " + address).includes(cityToken)) continue;
       const listing = fallbackListingFromText(context, direct, { address, label:title || address, source:host });
       if (!(Number(listing.price)>0 || Number(listing.beds)>0 || /for rent|rental/i.test(context))) continue;
       found.push({ ...listing, metadata:{ ...(listing.metadata||{}), discoveryMethod:"search-index" } });
