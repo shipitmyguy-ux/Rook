@@ -1,6 +1,8 @@
 import { directListingUrl, LISTING_RESOLVER_VERSION } from "../core/listing.js";
 import { config } from "../config.js";
 import { classifyPropertyKind } from "../core/property.js";
+import { canonicalAddress, listingIdentity } from "../core/address.js";
+export { canonicalAddress, listingIdentity } from "../core/address.js";
 
 // Provider adapters normalize every source into the same Rook property shape.
 // Network-specific scraping/API logic belongs in adapters, never in the UI.
@@ -17,25 +19,6 @@ export function unregisterProvider(id) {
 
 export function clearProviders() {
   providers.clear();
-}
-
-export function canonicalAddress(value = "") {
-  return String(value).toLowerCase()
-    .replace(/\b(street)\b/g, "st").replace(/\b(avenue)\b/g, "ave")
-    .replace(/\b(road)\b/g, "rd").replace(/\b(drive)\b/g, "dr")
-    .replace(/\b(lane)\b/g, "ln").replace(/\b(court)\b/g, "ct")
-    .replace(/\b(boulevard)\b/g, "blvd")
-    .replace(/\b(?:apartment|apt|unit|suite|ste)\s*#?\s*([a-z0-9-]+)\b/g, "unit$1")
-    .replace(/#\s*([a-z0-9-]+)\b/g, "unit$1")
-    .replace(/[^a-z0-9]/g, "");
-}
-
-export function listingIdentity(input = {}) {
-  const address = canonicalAddress(input.address);
-  if (address) return `address:${address}`;
-  const lat = Number(input.lat), lng = Number(input.lng);
-  if (Number.isFinite(lat) && Number.isFinite(lng)) return `geo:${lat.toFixed(4)},${lng.toFixed(4)}`;
-  return input.sourceUrl || input.url || input.id || input.label || null;
 }
 
 export function firstImageUrl(input = {}) {
