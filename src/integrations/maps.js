@@ -175,7 +175,7 @@ export function mapLocationQueries(property, fallbackLocation = config.search.lo
     if (q && !values.includes(q)) values.push(q);
   };
   const address = String(property?.address || "").trim();
-  const metadataAddress = String(property?.metadata?.address || property?.metadata?.streetAddress || "").trim();
+  const metadataAddress = String(property?.metadata?.mapAddress || property?.metadata?.address || property?.metadata?.streetAddress || "").trim();
   const label = String(property?.label || "").trim();
 
   push(address);
