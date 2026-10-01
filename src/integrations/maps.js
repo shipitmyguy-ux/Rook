@@ -9,6 +9,7 @@ const ROOK_SOURCE_ID = "rook-listings";
 const ROOK_LAYER_ID = "rook-listings-symbols";
 const ROOK_HALO_LAYER_ID = "rook-listings-halo";
 const ROOK_PRICE_LAYER_ID = "rook-listings-price-ping";
+const ROOK_TOUR_LABEL_LAYER_ID = "rook-listings-tour-labels";
 const FORT_COLLINS_CENTER = [-105.0844, 40.5853];
 
 let maplibrePromise = null;
@@ -194,7 +195,7 @@ export function mapLocationQueries(property, fallbackLocation = "Fort Collins, C
     // variant so any community-style property can resolve without bespoke coords.
     const baseLabel = label
       .split(/\s+[·|]\s+|\s+-\s+/)[0]
-      .replace(/\s+(?:unit|apt|apartment|suite|#)\s*#?\s*[A-Za-z0-9-]+.*$/i, "")
+      .replace(/\s+(?:(?:unit|apt|apartment|suite)\b|#)\s*#?\s*[A-Za-z0-9-]+.*$/i, "")
       .trim();
     if (baseLabel && baseLabel !== label) push([baseLabel, fallbackLocation].filter(Boolean).join(", "));
   }
