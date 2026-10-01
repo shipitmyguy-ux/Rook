@@ -1,6 +1,7 @@
 import { classifyPropertyKind } from "../core/property.js";
 import { resolvePoiStyle, poiGlyph, poiColorHex } from "../core/poi-style.js";
 import { config } from "../config.js";
+import { searchAreaForLocation } from "../runtime-config.js";
 
 const MAPLIBRE_SCRIPT_URL = "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js";
 const OPENFREEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
@@ -10,7 +11,6 @@ const ROOK_LAYER_ID = "rook-listings-symbols";
 const ROOK_HALO_LAYER_ID = "rook-listings-halo";
 const ROOK_PRICE_LAYER_ID = "rook-listings-price-ping";
 const ROOK_TOUR_LABEL_LAYER_ID = "rook-listings-tour-labels";
-const FORT_COLLINS_CENTER = [-105.0844, 40.5853];
 
 let maplibrePromise = null;
 // Pan, zoom, hover, selection, and map filter state are intentionally session-only; OpenFreeMap base layers are required for QA and property markers use WebGL symbol icons.
@@ -213,6 +213,15 @@ export function poiLocationQuery(poi = {}, fallbackLocation = "Fort Collins, CO"
   return hasContext || !fallbackLocation ? raw : [raw, fallbackLocation].filter(Boolean).join(", ");
 }
 
+function milesBetweenPoints(a, b) {
+  const toRad = value => Number(value) * Math.PI / 180;
+  const lat1 = toRad(a?.lat), lat2 = toRad(b?.lat);
+  const dLat = lat2 - lat1;
+  const dLng = toRad(b?.lng) - toRad(a?.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 3958.7613 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
 function validCoordinates(point, fallbackLocation = "") {
   // Missing values must reach geocoding, never Number(null) / Number("") = 0.
   const isNumeric = value => (typeof value === "number" || typeof value === "string")
@@ -221,11 +230,11 @@ function validCoordinates(point, fallbackLocation = "") {
   const lat = Number(point.lat);
   const lng = Number(point.lng);
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
-  // Rook's Fort Collins-area search must never let a bad geocode/source result
-  // elsewhere in the country distort map bounds. This box comfortably covers
-  // Fort Collins, Wellington, Laporte, Timnath, Windsor, Bellvue and Loveland.
-  if (/fort\s+collins/i.test(String(fallbackLocation || "")) && !(lat === 0 && lng === 0)) {
-    if (lat < 40.25 || lat > 40.90 || lng < -105.45 || lng > -104.70) return null;
+  // Search-area guardrails are data, not city-specific map code. Keep the
+  // legacy zero-coordinate regression case intact for tests and imported data.
+  const area = searchAreaForLocation(fallbackLocation);
+  if (area?.center && Number(area.guardRadiusMiles) > 0 && !(lat === 0 && lng === 0)) {
+    if (milesBetweenPoints({lat,lng}, area.center) > Number(area.guardRadiusMiles)) return null;
   }
   return { lat, lng };
 }
@@ -715,10 +724,12 @@ async function ensureOverviewMap(container) {
 
   container.dataset.mapStatus = "loading";
   container.dataset.mapFirstPaint = "pending";
+  const area = searchAreaForLocation(overviewState.latestOptions.location || config.search.location);
+  const center = area?.center ? [Number(area.center.lng), Number(area.center.lat)] : [-105.0844, 40.5853];
   const map = new maplibregl.Map({
     container,
     style: OPENFREEMAP_STYLE_URL,
-    center: FORT_COLLINS_CENTER,
+    center,
     zoom: 11,
     attributionControl: false,
     dragPan: true,
