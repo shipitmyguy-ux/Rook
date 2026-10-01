@@ -24,7 +24,8 @@ export function normalizePoiStyle(value = {}, index = 0) {
   const fallbackIcon = DEFAULT_ICONS[Math.max(0, Number(index) || 0) % DEFAULT_ICONS.length];
   const icon = ICONS.has(value?.icon) ? value.icon : fallbackIcon;
   const color = COLORS.has(value?.color) ? value.color : "slate";
-  return { icon, color };
+  const sortPriority = Math.max(0, Math.min(3, Number(value?.sortPriority) || 0));
+  return { icon, color, sortPriority };
 }
 
 export function normalizePointStyles(value = {}) {
