@@ -244,3 +244,7 @@ html.settings-modal-open,body.settings-modal-open{overflow:hidden;overscroll-beh
 .rook-price-ping-popup .maplibregl-popup-content{padding:3px 7px;border:1px solid rgba(216,173,255,.9);border-radius:7px;background:#241233;color:#f0ddff;box-shadow:0 0 16px rgba(180,108,255,.72);font:800 12px/1.2 system-ui}
 .rook-price-ping-popup .maplibregl-popup-tip{display:none}
 @media(prefers-reduced-motion:reduce){.price-discovered-ping{animation:none;color:#e1c0ff;text-shadow:0 0 10px rgba(180,108,255,.7)}}
+
+@keyframes rook-refresh-spin{to{transform:rotate(360deg)}}
+.desktop-refresh-button.is-refreshing>span{display:inline-block;animation:rook-refresh-spin .7s linear infinite}
+@media(prefers-reduced-motion:reduce){.desktop-refresh-button.is-refreshing>span{animation-duration:1.6s}}
