@@ -24,4 +24,5 @@ const results=await Promise.all(feed.listings.slice(0,3).map(async listing=>{
   return result.state;
 }));
 assert.ok(results.includes('active'),'No directly verified public listing was returned');
-console.log(JSON.stringify({discovered:feed.listings.length,verifiedSamples:results}));
+const wellington=feed.listings.filter(listing=>/wellington/i.test([listing.address,listing.label,listing.metadata?.description].filter(Boolean).join(" ")));
+console.log(JSON.stringify({discovered:feed.listings.length,wellington:wellington.length,adapterCounts:feed.meta?.adapters?.filter(a=>/wellington/i.test(a.id)).map(a=>({id:a.id,count:a.count,ok:a.ok})),verifiedSamples:results}));
