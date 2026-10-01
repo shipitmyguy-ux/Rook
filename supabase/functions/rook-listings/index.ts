@@ -2289,6 +2289,10 @@ Deno.serve(async (req: Request) => {
     if(maxPrice&&listing.price&&Number(listing.price)>maxPrice)return false;
     if(isIncomeRestrictedListing(listing))return false;
     const text=[listing.label,listing.address,listing.type,listing.metadata?.description].filter(Boolean).join(" ").toLowerCase();
+    // Reject explicit out-of-state candidates before they reach enrichment/geocoding.
+    // Unknown-state snippets remain eligible so incomplete but local listings are not lost.
+    const explicitState = text.match(/\b(?:ca|california|wy|wyoming|ne|nebraska|ks|kansas|ut|utah|nm|new mexico|az|arizona|tx|texas)\b/i);
+    if(explicitState && !/\b(?:co|colorado)\b/i.test(text))return false;
     return !/(mobile home|manufactured home|trailer park)/i.test(text)&&(!query||text.includes(query));
   });
   if(url.searchParams.get("stream")==="1"){
