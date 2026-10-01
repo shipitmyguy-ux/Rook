@@ -97,6 +97,17 @@ test("upcoming tours suppress duplicate calendar/property-time entries", () => {
   assert.equal(upcomingTours(properties,{},new Date("2099-10-01T00:00:00Z")).length,1);
 });
 
+test("discovery status stays out of document flow and tour labels avoid overlap", async () => {
+  const appSource = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  const cssSource = await fs.readFile(new URL("../src/rook-ui-v3.css", import.meta.url), "utf8");
+  const mapSource = await fs.readFile(new URL("../src/integrations/maps.js", import.meta.url), "utf8");
+  assert.match(appSource,/showDiscoveryStatus/);
+  assert.match(cssSource,/#discovery-summary\{[\s\S]*position:fixed/);
+  assert.match(mapSource,/"text-allow-overlap": false/);
+  assert.match(mapSource,/"text-ignore-placement": false/);
+  assert.match(mapSource,/"text-variable-anchor": \["top","bottom","left","right"\]/);
+});
+
 test("POI settings expose a generic distance sort priority control", async () => {
   const appSource = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
   assert.match(appSource,/data-poi-sort-priority/);
