@@ -12,7 +12,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults, canonicalAddress } from "./integrations/providers.js?v=image-enrichment-v4";
-import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty } from "./integrations/maps.js?v=price-ping-v1";
+import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting } from "./integrations/maps.js?v=pan-smooth-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState } from "./integrations/sync.js?v=shared-state-v1";
@@ -616,7 +616,7 @@ async function resolveUnavailableListings() {
         const aMissing=Number(!(Number(a.price)>0)), bMissing=Number(!(Number(b.price)>0));
         return (bMissing-aMissing) || (Number(Boolean(b.sourceUrl))-Number(Boolean(a.sourceUrl)));
       })[0];
-      if(!snapshot)break;attempted.add(snapshot.id);await check(snapshot);renderList();
+      if(!snapshot)break;attempted.add(snapshot.id);await check(snapshot);scheduleRenderList();
     }};
     await Promise.all(Array.from({length:8},worker));
   })();
@@ -694,14 +694,14 @@ async function refreshListings(trigger = "manual") {
       if(meta)Object.assign(discoveryTelemetry,Object.fromEntries(Object.entries(meta).filter(([key])=>key!=="adapter")));
       const indicator=document.querySelector("#pull-indicator");
       if(indicator)indicator.textContent=`Found ${discoveryTelemetry.count} candidates · ${discoveryTelemetry.adapters.length}/8 sources checked`;
-      renderList();
-      void resolveUnavailableListings().then(()=>renderList());
+      scheduleRenderList();
+      void resolveUnavailableListings().then(()=>scheduleRenderList());
     }});
     discoveryTelemetry.newCount=found.filter(p=>!before.has(canonicalAddress(p.address)||p.sourceUrl)).length;
     store.upsertMany(found);
     await syncSharedRookState();
-    void resolveUnavailableListings().then(() => renderList());
-    void enrichMissingImages().then(() => renderList());
+    void resolveUnavailableListings().then(() => scheduleRenderList());
+    void enrichMissingImages().then(() => scheduleRenderList());
     recordActivity("provider-refresh", null, { count: found.length, trigger,discovery:discoveryTelemetry });
     const summary=document.querySelector("#discovery-summary");
     if(summary){summary.textContent=discoveryTelemetry.adapters.map(a=>`${a.id}: ${a.count}${a.discovery?.degraded||!a.ok?" (limited)":""}`).join(" · ")+` · ${discoveryTelemetry.newCount} new · ${discoveryTelemetry.duplicates||0} duplicates · ${discoveryTelemetry.filtered||0} filtered`;summary.title=`${Math.round((discoveryTelemetry.elapsedMs||0)/1000)} seconds`; }
@@ -805,6 +805,10 @@ function scheduleRenderList() {
   if (renderQueued) return;
   renderQueued = true;
   const run = () => {
+    if (isPropertyMapInteracting()) {
+      window.setTimeout(run, 80);
+      return;
+    }
     renderQueued = false;
     renderList();
   };
