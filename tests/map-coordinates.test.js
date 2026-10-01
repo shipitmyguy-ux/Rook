@@ -140,6 +140,44 @@ test("co-located visible listings keep one distinct map feature per card", async
   assert.ok(data.features.every(feature => feature.properties.coincidentCount === 2));
 });
 
+test("scheduled viewings are exposed on map features with date and time", async () => {
+  let data;
+  let onStyle;
+  globalThis.localStorage = { getItem:() => null, setItem(){} };
+  globalThis.fetch = async () => ({ ok:false });
+  const source = { setData(value) { data = value; } };
+  const map = {
+    addControl() {},
+    on(event, handler) { if (event === "style.load") onStyle = handler; },
+    getSource() { return source; },
+    getLayer() { return true; },
+    setFilter() {},
+    fitBounds() {},
+    jumpTo() {},
+    getStyle() { return { layers:[], sources:{} }; }
+  };
+  globalThis.window = { maplibregl:{ Map:function(){ return map; }, AttributionControl:function(){} } };
+  const container = { replaceChildren(){}, dataset:{} };
+  renderPropertyMap(container, [
+    {
+      id:"tour-property",
+      label:"Tour Property",
+      address:"100 Tour Way, Fort Collins, CO",
+      type:"Townhome",
+      listingType:"rent",
+      lat:40.58,
+      lng:-105.08,
+      metadata:{tour:{startsAt:"2099-10-02T11:00:00-06:00",status:"confirmed"}}
+    }
+  ], { dataAlreadyFiltered:true, location:"Fort Collins, CO" });
+  await new Promise(resolve => setImmediate(resolve));
+  onStyle();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(data.features[0].properties.hasTour,true);
+  assert.match(data.features[0].properties.tourLabel,/TOUR/);
+  assert.match(data.features[0].properties.tourLabel,/11:00 AM/);
+});
+
 test("property distances are calculated once and reused from persistent cache", async () => {
   const memory = {};
   globalThis.localStorage = {
