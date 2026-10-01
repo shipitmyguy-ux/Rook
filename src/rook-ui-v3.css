@@ -204,7 +204,7 @@ html.settings-modal-open,body.settings-modal-open{overflow:hidden;overscroll-beh
 .desktop-refresh-button{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 14px;border:1px solid #34495b;border-radius:14px;background:#0a121d;color:#eef4fa;font-weight:700}
 .desktop-refresh-button:hover{background:#101b26;border-color:#49657a}
 .desktop-refresh-button:disabled{opacity:.6}
-@media(max-width:699px){.desktop-refresh-button{display:none}}
+@media(max-width:699px){.topbar-actions{gap:6px}.desktop-refresh-button{display:inline-flex;min-width:42px;width:42px;min-height:42px;height:42px;padding:0;justify-content:center;border-radius:11px;font-size:20px}.desktop-refresh-button span{display:none}}
 
 /* Scheduled tours must be visible at a glance in the property list; rendered QA guards the flag and highlighted state. */
 .property-card.visual-card.has-scheduled-tour{
