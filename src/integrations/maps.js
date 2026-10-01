@@ -24,7 +24,9 @@ const overviewState = {
   fittedOnce: false,
   geocodeRun: 0,
   styleFallbackTried: false,
-  baseErrorCount: 0
+  baseErrorCount: 0,
+  interacting: false,
+  pendingSourceUpdate: false
 };
 
 
@@ -309,6 +311,10 @@ function selectFeature(id) {
 function updateOverviewSource({ fit = false } = {}) {
   const map = overviewState.map;
   if (!map || !overviewState.ready) return;
+  if (overviewState.interacting) {
+    overviewState.pendingSourceUpdate = true;
+    return;
+  }
   const fallbackLocation = overviewState.latestOptions.location || "Fort Collins, CO";
   const data = listingGeoJson(overviewState.latestProperties, fallbackLocation);
   const source = map.getSource(ROOK_SOURCE_ID);
@@ -649,6 +655,16 @@ async function ensureOverviewMap(container) {
     container.dataset.baseSourceCount = String(Object.keys(style?.sources || {}).filter(id => id !== ROOK_SOURCE_ID).length);
   };
 
+  map.on("movestart", () => { overviewState.interacting = true; });
+  map.on("moveend", () => {
+    overviewState.interacting = false;
+    if (overviewState.pendingSourceUpdate) {
+      overviewState.pendingSourceUpdate = false;
+      updateOverviewSource();
+    }
+    overviewState.container?.dispatchEvent(new CustomEvent("rook:map-idle", { bubbles:true }));
+  });
+
   map.on("style.load", hydrateStyle);
   map.on("error", event => {
     const message = String(event?.error?.message || event?.error || "");
@@ -665,6 +681,8 @@ async function ensureOverviewMap(container) {
   return map;
 }
 
+
+export function isPropertyMapInteracting() { return Boolean(overviewState.interacting); }
 
 export function pingMapProperty(id, { label="", duration=500 } = {}) {
   const map = overviewState.map;
