@@ -15,6 +15,7 @@ import { normalizePreferences } from "../src/core/preferences.js";
 import { config } from "../src/config.js";
 import { poiLocationQuery, normalizePoiSearchCandidate, poiSearchQueries, mapLandLayerKind } from "../src/integrations/maps.js";
 import { normalizeTour, tourState, tourLabel, applyTour } from "../src/core/tours.js";
+import { applySharedRookStateRow } from "../src/integrations/sync.js";
 import { normalizePointStyles, resolvePoiStyle, poiGlyph, poiColorHex } from "../src/core/poi-style.js";
 import { normalizeProviderResult, matchesSearchDefaults, createJsonProvider, dedupeProviderResults, isUsableListing, resolveMissingListing, resolveMissingImage, canonicalAddress, isIncomeRestrictedListing } from "../src/integrations/providers.js";
 
@@ -29,19 +30,27 @@ test("upcoming tour jump explicitly promotes the card and requests map focus wit
   assert.match(mapSource, /focusRequestedPropertyId/);
 });
 
-test("shared bookmarks materialize and persist as saved cards", async () => {
-  const appSource = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
-  const backendSource = await fs.readFile(new URL("../supabase/functions/rook-listings/index.ts", import.meta.url), "utf8");
-  assert.match(appSource, /saved:Boolean\(row\.saved\)/);
-  assert.match(appSource, /row\.saved \|\| row\.status === "showing-scheduled"/);
-  assert.match(backendSource, /saved:Boolean\(row\.saved\)/);
+test("shared bookmarks and tours normalize through one state path", () => {
+  const base = normalizeProperty({ id:"shared", label:"Shared home", address:"123 Main St", saved:false });
+  const next = applySharedRookStateRow(base, {
+    saved:true,
+    status:"showing-scheduled",
+    showing_at:"2026-10-02T17:00:00Z",
+    tour:{ startsAt:"2026-10-02T11:00:00-06:00", status:"confirmed", durationMinutes:60 },
+    updated_at:"2026-10-01T20:00:00Z"
+  }, { defaultTourDurationMinutes:60, defaultTourReminderMinutes:120 });
+  assert.equal(next.saved,true);
+  assert.equal(next.status,PROPERTY_STATUS.SHOWING_SCHEDULED);
+  assert.equal(next.showingAt,"2026-10-02T17:00:00.000Z");
+  assert.equal(next.metadata.tour.startsAt,"2026-10-02T17:00:00.000Z");
+  assert.equal(next.metadata.sharedSyncUpdatedAt,"2026-10-01T20:00:00Z");
 });
 
 test("shared showing sync can materialize a missing property card", async () => {
   const appSource = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
   assert.match(appSource, /if \(!property && \(row\.address \|\| row\.label\)\)/);
   assert.match(appSource, /source:"Shared sync"/);
-  assert.match(appSource, /Boolean\(row\.saved\) \|\| row\.status === "showing-scheduled"/);
+  assert.match(appSource, /applySharedRookStateRow\(property, row, preferences\)/);
 });
 
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
