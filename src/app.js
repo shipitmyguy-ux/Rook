@@ -606,6 +606,13 @@ async function resolveUnavailableListings() {
         if (result.state === 'active' && result.listing) {
           const hadPrice = Number(property.price) > 0;
           const details = Object.fromEntries(Object.entries(result.listing).filter(([,value]) => value !== null && value !== undefined && value !== ''));
+          // A verified portal summary may describe the cheapest one-bedroom
+          // rather than the configured available units selected for this community.
+          if (property.metadata?.configuredSourceId && property.metadata?.unitCount > 0) {
+            for (const field of ["price","beds","baths","type"]) {
+              if (property[field] != null) details[field] = property[field];
+            }
+          }
           const discoveredPrice = !hadPrice && Number(details.price) > 0 ? Number(details.price) : 0;
           store.update(property.id, {
             ...details,
