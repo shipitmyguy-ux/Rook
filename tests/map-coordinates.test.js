@@ -56,6 +56,13 @@ test("map location queries fall back from unit addresses to building addresses a
     "Fort Collins, CO"
   );
   assert.deepEqual(namedQueries, ["Country Ranch Apartments, Fort Collins, CO"]);
+
+  const communityQueries = mapLocationQueries(
+    { address:"180 N Aria Way Unit 1-205, Fort Collins, CO 80524", label:"Bloom Rental Living · Cache #1-205" },
+    "Fort Collins, CO"
+  );
+  assert.ok(communityQueries.includes("180 N Aria Way, Fort Collins, CO 80524"));
+  assert.ok(communityQueries.includes("Bloom Rental Living, Fort Collins, CO"));
 });
 
 test("every already-visible property with a resolvable location reaches the map source", async () => {
