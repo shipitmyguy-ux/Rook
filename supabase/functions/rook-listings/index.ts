@@ -2354,17 +2354,31 @@ Deno.serve(async (req: Request) => {
     ];
   });
 
-  // HotPads splits inventory by property category. The apartments feed alone
-  // misses many houses/townhomes/condos that still satisfy Rook's criteria.
-  // Query the primary city's additional category feeds; the browser worker
-  // handles scrolling/pagination and the normal merge path dedupes overlaps.
+  // Some portals partition houses/townhomes/condos onto separate city feeds.
+  // The broad Zillow/Trulia pages already mix home types, while Apartment List is
+  // apartment-only by design. Expand the primary-city feeds for the partitioned
+  // portals so Rook does not silently miss non-apartment inventory.
   const primarySlug = primaryCity.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  adapterTasks.push(
-    sourceAdapter(`hotpads-houses-${primarySlug}`, `HotPads houses · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/houses-for-rent`, true),
-    sourceAdapter(`hotpads-townhomes-${primarySlug}`, `HotPads townhomes · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/townhomes-for-rent`, true),
-    sourceAdapter(`hotpads-condos-${primarySlug}`, `HotPads condos · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/condos-for-rent`, true),
-    sourceAdapter(`hotpads-duplexes-${primarySlug}`, `HotPads duplexes · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/duplexes-for-rent`, true)
-  );
+  const partitionedPrimaryFeeds = [
+    // HotPads
+    [`hotpads-houses-${primarySlug}`, `HotPads houses · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/houses-for-rent`],
+    [`hotpads-townhomes-${primarySlug}`, `HotPads townhomes · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/townhomes-for-rent`],
+    [`hotpads-condos-${primarySlug}`, `HotPads condos · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/condos-for-rent`],
+    [`hotpads-duplexes-${primarySlug}`, `HotPads duplexes · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/duplexes-for-rent`],
+    // Rent.com
+    [`rent-houses-${primarySlug}`, `Rent.com houses · ${primaryCity}`, `https://www.rent.com/colorado/${primarySlug}-houses`],
+    [`rent-townhomes-${primarySlug}`, `Rent.com townhomes · ${primaryCity}`, `https://www.rent.com/colorado/${primarySlug}-townhouses`],
+    [`rent-condos-${primarySlug}`, `Rent.com condos · ${primaryCity}`, `https://www.rent.com/colorado/${primarySlug}-condos`],
+    // Apartments.com
+    [`apartments-houses-${primarySlug}`, `Apartments.com houses · ${primaryCity}`, `https://www.apartments.com/houses/${primarySlug}-co/`],
+    [`apartments-townhomes-${primarySlug}`, `Apartments.com townhomes · ${primaryCity}`, `https://www.apartments.com/townhomes/${primarySlug}-co/`],
+    [`apartments-condos-${primarySlug}`, `Apartments.com condos · ${primaryCity}`, `https://www.apartments.com/condos/${primarySlug}-co/`],
+    // Realtor.com
+    [`realtor-houses-${primarySlug}`, `Realtor.com houses · ${primaryCity}`, `https://www.realtor.com/apartments/${primarySlug}_CO/type-single-family-home`],
+    [`realtor-townhomes-${primarySlug}`, `Realtor.com townhomes · ${primaryCity}`, `https://www.realtor.com/apartments/${primarySlug}_CO/type-townhome`],
+    [`realtor-condos-${primarySlug}`, `Realtor.com condos · ${primaryCity}`, `https://www.realtor.com/apartments/${primarySlug}_CO/type-condo`]
+  ];
+  adapterTasks.push(...partitionedPrimaryFeeds.map(([id,label,pageUrl]) => sourceAdapter(id,label,pageUrl,true)));
   adapterTasks.push(wellingtonDirectDiscovery());
   adapterTasks.push(bloomOfficialDiscovery());
 
