@@ -315,7 +315,7 @@ test("address marker styles normalize to predefined icons and colors", () => {
     "address-2": { icon:"diamond", color:"blue" },
     "address-3": { icon:"not-real", color:"not-real" }
   });
-  assert.deepEqual(styles["address-2"], { icon:"diamond", color:"blue" });
+  assert.deepEqual(styles["address-2"], { icon:"diamond", color:"blue", sortPriority:0 });
   assert.equal(styles["address-3"].color, "slate");
   assert.ok(poiGlyph(styles["address-2"].icon));
   assert.match(poiColorHex(styles["address-2"].color), /^#/);
