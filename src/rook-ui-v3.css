@@ -298,3 +298,6 @@ html.settings-modal-open,body.settings-modal-open{overflow:hidden;overscroll-beh
 #pref-showing-availability { width:100%; box-sizing:border-box; font:inherit; padding:.75rem; border:1px solid var(--border,#526078); border-radius:10px; background:var(--surface,#111b29); color:inherit; }
 #contact-workflow-actions textarea { resize:vertical; }
 #contact-workflow-actions [role="status"] { line-height:1.5; }
+
+.showing-card-actions{margin-top:8px}
+.request-showing-button{min-height:40px;padding:8px 12px;border:1px solid #e0aa16;border-radius:10px;background:#30250f;color:#ffd03d;font:600 12px/1.25 system-ui;cursor:pointer}

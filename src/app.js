@@ -516,6 +516,7 @@ function propertyCard(property) {
       ${tourChip(property)}
       ${isShowingPending(property) ? '<p class="status-chip">Showing requested · awaiting reply</p>' : ""}
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
+      <div class="showing-card-actions"><button type="button" class="request-showing-button" data-action="request-showing">${isShowingPending(property) ? "View showing request" : "Request showing"}</button></div>
       <div class="property-card__actions compact-actions">
         ${listing.url
           ? `<a class="status-action listing-action source-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer" aria-label="View source listing for ${esc(property.label)}" title="View source listing"><span aria-hidden="true">↗</span><b>View listing</b></a>`
@@ -1095,7 +1096,11 @@ function openPropertySummary(id) {
     ${property.metadata?.description ? `<p>${esc(property.metadata.description)}</p>` : ""}
     <h3>Notes</h3><p>${esc(property.note || "No notes yet.")}</p>
     ${url ? "" : "<p class='listing-unavailable'>No current listing has been verified for this property.</p>"}
-    <div class="map-detail-actions"><a href="${esc(url || searchUrl)}" target="_blank" rel="noopener noreferrer">${url ? "Open listing" : listing.closed ? "Closed · search again" : "Find listing"}</a><button type="button" id="summary-directions">Directions</button></div>`;
+    <div class="map-detail-actions"><button type="button" id="summary-request-showing">${isShowingPending(property) ? "View showing request" : "Request showing"}</button><a href="${esc(url || searchUrl)}" target="_blank" rel="noopener noreferrer">${url ? "Open listing" : listing.closed ? "Closed · search again" : "Find listing"}</a><button type="button" id="summary-directions">Directions</button></div>`;
+  document.querySelector("#summary-request-showing").addEventListener("click", () => {
+    document.querySelector("#property-summary-dialog").close();
+    openContactWorkflow(property, "showing");
+  });
   document.querySelector("#summary-directions").addEventListener("click", () => openDirections(property));
   document.querySelector("#property-summary-dialog").showModal();
 }
@@ -1186,6 +1191,10 @@ function handlePropertyCardClick(e) {
   }
   if (action === "contact") {
     openContactWorkflow(p, "contact");
+    return;
+  }
+  if (action === "request-showing") {
+    openContactWorkflow(p, "showing");
     return;
   }
   if (action === "showing") {
