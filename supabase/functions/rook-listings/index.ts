@@ -485,16 +485,13 @@ async function listingFromImageSearchSource(address:string,label:string,location
   return null;
 }
 
-function providerCityIndexUrls(location:string) {
-  const city = String(location || "Fort Collins, CO").split(",")[0].trim();
-  const slug = city.toLowerCase().replace(/[^a-z0-9]+/g,"-");
-  const title = city.replace(/\s+/g,"_");
-  return [
-    "https://hotpads.com/" + slug + "-co/apartments-for-rent",
-    "https://www.trulia.com/for_rent/" + title + ",CO/",
-    "https://www.apartments.com/" + slug + "-co/",
-    "https://www.zillow.com/" + slug + "-co/rentals/"
-  ];
+async function providerCityIndexUrls(location:string) {
+  const runtime = await loadDiscoveryRuntimeConfig();
+  const city = String(location || runtime.searchAreas?.defaultLocation || "Fort Collins, CO").split(",")[0].trim();
+  const state = String(location || "").split(",")[1]?.trim() || "CO";
+  return (Array.isArray(runtime.providers?.providers) ? runtime.providers.providers : [])
+    .map((provider:any)=>provider?.recoveryCityFeed ? renderFeedTemplate(provider.recoveryCityFeed,city,state) : "")
+    .filter(Boolean);
 }
 
 function listingFromIndexSnapshot(snapshot:any,address="",label="") {
@@ -521,7 +518,7 @@ function listingFromIndexSnapshot(snapshot:any,address="",label="") {
 }
 
 async function providerCityIndexRecovery(address:string,label:string,location:string) {
-  const urls = providerCityIndexUrls(location);
+  const urls = await providerCityIndexUrls(location);
   const inspect = async (indexUrl:string) => {
     try {
       const snapshot = await browserSnapshot(indexUrl);
@@ -585,12 +582,12 @@ function imageFromProviderIndexSnapshotCluster(snapshot:any,address="",label="")
 async function providerZipClusterRecovery(address:string,label:string,location:string) {
   const zip = String(address||"").match(/\b(\d{5})(?:-\d{4})?\b/)?.[1] || "";
   if (!zip) return null;
-  const city = String(location || "Fort Collins, CO").split(",")[0].trim();
-  const slug = city.toLowerCase().replace(/[^a-z0-9]+/g,"-");
-  const urls = [
-    "https://www.zillow.com/" + slug + "-co-" + zip + "/rentals/",
-    "https://www.apartments.com/" + slug + "-co-" + zip + "/"
-  ];
+  const runtime = await loadDiscoveryRuntimeConfig();
+  const city = String(location || runtime.searchAreas?.defaultLocation || "Fort Collins, CO").split(",")[0].trim();
+  const state = String(location || "").split(",")[1]?.trim() || "CO";
+  const urls = (Array.isArray(runtime.providers?.providers) ? runtime.providers.providers : [])
+    .filter((provider:any)=>provider?.zipFeed)
+    .map((provider:any)=>renderFeedTemplate(provider.zipFeed,city,state).replaceAll("{zip}",zip));
   for (const indexUrl of urls) {
     try {
       const snapshot = await browserSnapshot(indexUrl);
@@ -1121,7 +1118,10 @@ async function searchEngineDiscoveryAdapter(location:string):Promise<AdapterResu
 async function uncachedSearchDiscovery(location: string): Promise<AdapterResult> {
   const id = "search-discovery";
   const source = "Web listing search";
-  const domains = ["zillow.com","realtor.com","hotpads.com","trulia.com","apartments.com","rent.com","redfin.com","homes.com","zumper.com","forrent.com"];
+  const runtime = await loadDiscoveryRuntimeConfig();
+  const domains = Array.isArray(runtime.providers?.searchDomains) && runtime.providers.searchDomains.length
+    ? runtime.providers.searchDomains
+    : ["zillow.com","realtor.com","hotpads.com","trulia.com","apartments.com","rent.com","redfin.com","homes.com","zumper.com","forrent.com"];
   const city = String(location || "Fort Collins, CO").split(",")[0].trim();
   const rows: Listing[] = [];
   const seen = new Set<string>();
