@@ -71,7 +71,8 @@ export function filterProperties(properties, filter) {
     && !confirmedClosed(p)
     && p?.metadata?.providerId === "rook-live"
     && Boolean(directListingUrl(p.sourceUrl));
-  const visibleListing = p => hasVerifiedListing(p) || pendingLiveDiscovery(p);
+  const upcomingShowing = p => p.status === PROPERTY_STATUS.SHOWING_SCHEDULED && Number.isFinite(Date.parse(p.showingAt || p.metadata?.tour?.startsAt)) && Date.parse(p.showingAt || p.metadata?.tour?.startsAt) > Date.now();
+  const visibleListing = p => hasVerifiedListing(p) || pendingLiveDiscovery(p) || upcomingShowing(p);
   if (filter === "pending") return properties.filter(p => active(p) && p.status === PROPERTY_STATUS.SHOWING_REQUESTED && !p.showingAt);
   if (filter === "review") return properties.filter(p => active(p) && !hasVerifiedListing(p));
   if (filter === "all") return properties.filter(p => active(p) && visibleListing(p));

@@ -28,7 +28,7 @@ await loadRuntimeConfig();
 const app = document.querySelector("#app");
 const runtimeSeeds = runtimeSeedProperties();
 const store = createPropertyStore(runtimeSeeds.length ? runtimeSeeds : fallbackSeedProperties);
-store.replaceAll(store.getAll().map(normalizeRuntimeCommunityProperty));
+store.replaceAll(store.getAll().map(property => normalizeRuntimeCommunityProperty(property)));
 const housingEvidence = runtimeHousingEvidence().length ? runtimeHousingEvidence() : fallbackHousingEvidence;
 let activeFilter = "all";
 let query = "";
@@ -188,7 +188,7 @@ async function syncSharedRookState() {
       // Shared ChatGPT-managed state is versioned by updated_at. Skip unchanged
       // rows so lightweight background sync does not rebuild the map/list.
       if (row.updated_at && property.metadata?.sharedSyncUpdatedAt === row.updated_at) continue;
-      store.upsert(applySharedRookStateRow(property, row, preferences));
+      store.upsert(normalizeRuntimeCommunityProperty(applySharedRookStateRow(property, row, preferences)));
       applied += 1;
     }
     if (applied) renderList();
@@ -588,7 +588,7 @@ function prioritizedPoiDistance(property, point) {
 function visibleProperties() {
   const allProperties = store.getAll();
   const restricted = filterProperties(allProperties, activeFilter)
-    .filter(property => ["review","pending"].includes(activeFilter) || matchesSearchDefaults(property, preferences));
+    .filter(property => ["review","pending"].includes(activeFilter) || (activeFilter === "all" && ["soon","upcoming"].includes(tourState(tourForProperty(property, preferences)))) || matchesSearchDefaults(property, preferences));
   let filtered = searchProperties(restricted, query);
   if (promotedTourPropertyId && !filtered.some(property => String(property.id) === promotedTourPropertyId)) {
     const promoted = allProperties.find(property => String(property.id) === promotedTourPropertyId);

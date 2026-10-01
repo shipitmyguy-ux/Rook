@@ -242,6 +242,8 @@ function validCoordinates(point, fallbackLocation = "") {
 function cachedCoordinates(property, fallbackLocation = config.search.location) {
   const direct = validCoordinates(property, fallbackLocation);
   if (direct) return direct;
+  const configured = validCoordinates(property?.metadata?.mapPoint, fallbackLocation);
+  if (configured) return configured;
   const cache = readGeocodeCache();
   for (const q of mapLocationQueries(property, fallbackLocation)) {
     const cached = validCoordinates(cache[q], fallbackLocation);
@@ -251,7 +253,7 @@ function cachedCoordinates(property, fallbackLocation = config.search.location) 
 }
 
 async function geocodeProperty(property, fallbackLocation = config.search.location) {
-  const direct = validCoordinates(property, fallbackLocation);
+  const direct = validCoordinates(property, fallbackLocation) || validCoordinates(property?.metadata?.mapPoint, fallbackLocation);
   if (direct) return direct;
   for (const q of mapLocationQueries(property, fallbackLocation)) {
     const point = await geocode(q, fallbackLocation);
