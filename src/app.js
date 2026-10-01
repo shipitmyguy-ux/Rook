@@ -34,6 +34,7 @@ let preferences = loadPreferences(preferenceDefaults);
 document.documentElement.dataset.theme = preferences.visualTheme || "default";
 let refreshInFlight = false;
 let discoveryTelemetry=null;
+let discoveryStatusTimer=null;
 const pricePingUntil = new Map();
 let selectedMapPropertyId = null;
 let selectedMapCard = null;
@@ -706,6 +707,28 @@ async function enrichMissingImages() {
   }
 }
 
+function showDiscoveryStatus(message = "", detail = "", duration = 4500) {
+  const target = document.querySelector("#discovery-summary");
+  if (!target) return;
+  if (discoveryStatusTimer) {
+    clearTimeout(discoveryStatusTimer);
+    discoveryStatusTimer = null;
+  }
+  target.textContent = message;
+  target.title = detail || "";
+  target.classList.remove("is-fading");
+  target.classList.toggle("is-visible", Boolean(message));
+  if (!message) return;
+  discoveryStatusTimer = window.setTimeout(() => {
+    target.classList.add("is-fading");
+    window.setTimeout(() => {
+      target.classList.remove("is-visible", "is-fading");
+      target.textContent = "";
+      target.title = "";
+    }, 450);
+  }, Math.max(1200, Number(duration) || 4500));
+}
+
 async function refreshListings(trigger = "manual") {
   if (refreshInFlight) return;
   refreshInFlight = true;
@@ -721,7 +744,7 @@ async function refreshListings(trigger = "manual") {
       if(meta?.adapter)discoveryTelemetry.adapters.push(meta.adapter);
       if(meta)Object.assign(discoveryTelemetry,Object.fromEntries(Object.entries(meta).filter(([key])=>key!=="adapter")));
       const indicator=document.querySelector("#pull-indicator");
-      if(indicator)indicator.textContent=`Found ${discoveryTelemetry.count} candidates · ${discoveryTelemetry.adapters.length} source feeds checked`;
+      if(indicator)indicator.textContent="Refreshing listings…";
       scheduleRenderList();
       void resolveUnavailableListings().then(()=>scheduleRenderList());
     }});
@@ -731,15 +754,16 @@ async function refreshListings(trigger = "manual") {
     void resolveUnavailableListings().then(() => scheduleRenderList());
     void enrichMissingImages().then(() => scheduleRenderList());
     recordActivity("provider-refresh", null, { count: found.length, trigger,discovery:discoveryTelemetry });
-    const summary=document.querySelector("#discovery-summary");
-    if(summary){summary.textContent=discoveryTelemetry.adapters.map(a=>`${a.id}: ${a.count}${a.discovery?.degraded||!a.ok?" (limited)":""}`).join(" · ")+` · ${discoveryTelemetry.newCount} new · ${discoveryTelemetry.duplicates||0} duplicates · ${discoveryTelemetry.filtered||0} filtered`;summary.title=`${Math.round((discoveryTelemetry.elapsedMs||0)/1000)} seconds`; }
+    const detail=discoveryTelemetry.adapters.map(a=>`${a.id}: ${a.count}${a.discovery?.degraded||!a.ok?" (limited)":""}`).join(" · ")+` · ${discoveryTelemetry.duplicates||0} duplicates · ${discoveryTelemetry.filtered||0} filtered · ${Math.round((discoveryTelemetry.elapsedMs||0)/1000)}s`;
+    showDiscoveryStatus(`${found.length} listings · ${discoveryTelemetry.newCount||0} new`, detail);
     const indicator = document.querySelector("#pull-indicator");
-    if (indicator) indicator.textContent = found.length ? `Found ${found.length} listings · checking missing details` : "Listings checked · checking missing details";
+    if (indicator) indicator.textContent = found.length ? "Listings refreshed" : "Listings checked";
   } catch (error) {
     recordActivity("provider-refresh-error", null, { trigger, message: String(error?.message || error) });
     void reportRuntimeError(error, { source:"listing-refresh", kind:"refresh", detail:trigger, recovery:"Kept saved/current listings and left refresh available for retry." });
     const indicator = document.querySelector("#pull-indicator");
-    if (indicator) indicator.textContent = "Refresh failed · saved listings kept";
+    if (indicator) indicator.textContent = "Refresh failed";
+    showDiscoveryStatus("Refresh failed", "Saved/current listings were kept. Runtime error reporting captured the failure.", 6500);
   } finally {
     refreshInFlight = false;
     buttons.forEach(button => { button.disabled = false; button.classList.remove("is-refreshing"); button.setAttribute("aria-label","Refresh listings"); button.title="Refresh listings"; });
