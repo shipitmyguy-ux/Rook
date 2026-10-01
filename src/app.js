@@ -682,7 +682,7 @@ async function refreshListings(trigger = "manual") {
   if (refreshInFlight) return;
   refreshInFlight = true;
   const buttons = document.querySelectorAll("[data-refresh-listings]");
-  buttons.forEach(button => { button.disabled = true; button.textContent = "Refreshing…"; });
+  buttons.forEach(button => { button.disabled = true; button.classList.add("is-refreshing"); button.setAttribute("aria-label","Refreshing listings"); button.title="Refreshing listings"; });
   document.querySelector("#pull-indicator")?.classList.add("refreshing");
   try {
     const { address1, ...searchPreferences } = preferences;
@@ -713,7 +713,7 @@ async function refreshListings(trigger = "manual") {
     if (indicator) indicator.textContent = "Refresh failed · saved listings kept";
   } finally {
     refreshInFlight = false;
-    buttons.forEach(button => { button.disabled = false; button.textContent = "Refresh listings"; });
+    buttons.forEach(button => { button.disabled = false; button.classList.remove("is-refreshing"); button.setAttribute("aria-label","Refresh listings"); button.title="Refresh listings"; });
     const indicator = document.querySelector("#pull-indicator");
     if (indicator) {
       indicator.classList.remove("refreshing", "ready");
@@ -846,7 +846,7 @@ function renderList() {
 }
 
 app.innerHTML = `<main class="shell">
-<header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><div class="topbar-actions"><button type="button" class="desktop-refresh-button" data-refresh-listings aria-label="Refresh listings" title="Refresh listings">↻ <span>Refresh listings</span></button><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></div></header>
+<header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><div class="topbar-actions"><button type="button" class="desktop-refresh-button" data-refresh-listings aria-label="Refresh listings" title="Refresh listings"><span aria-hidden="true">↻</span></button><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></div></header>
 <div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div><p id="discovery-summary" class="muted" aria-live="polite"></p>
 <section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><div id="property-map" class="property-map" role="region" aria-label="Interactive property map"></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
 <section id="map-details" class="map-details" aria-label="Property details" aria-live="polite" hidden></section>
