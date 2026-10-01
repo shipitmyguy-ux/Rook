@@ -153,8 +153,8 @@ function comparableAddressCore(value = "") {
     .replace(/[^a-z0-9]/g,"");
 }
 
-export function normalizeRuntimeCommunityProperty(property = {}) {
-  const communities = Array.isArray(state.communitySources?.sources) ? state.communitySources.sources : [];
+export function normalizeRuntimeCommunityProperty(property = {}, communitySources = state.communitySources?.sources) {
+  const communities = Array.isArray(communitySources) ? communitySources : [];
   for (const source of communities) {
     if (String(source?.aggregate || "").toLowerCase() !== "community") continue;
     const communityId = String(source.communityId || source.id || "").trim();
