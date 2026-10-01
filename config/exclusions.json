@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "listingRules": [
+    {
+      "id": "buffalo-run-income-restricted",
+      "kind": "income-restricted",
+      "labelRegex": "\\\\bbuffalo\\\\s+run(?:\\\\s+apartments)?\\\\b",
+      "addressRegex": "\\\\b1245\\\\s+e\\\\s+lincoln\\\\s+ave\\\\b"
+    }
+  ]
+}
