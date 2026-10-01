@@ -241,15 +241,35 @@ async function geocodeProperty(property, fallbackLocation = "Fort Collins, CO") 
   return null;
 }
 
+function mapTourLabel(property) {
+  const tour = property?.metadata?.tour || null;
+  const rawStart = tour?.startsAt || property?.showingAt || null;
+  if (!rawStart) return "";
+  const status = String(tour?.status || property?.status || "").toLowerCase();
+  if (["cancelled","canceled"].includes(status)) return "";
+  const start = new Date(rawStart);
+  if (Number.isNaN(start.getTime()) || start.getTime() < Date.now() - 60 * 60 * 1000) return "";
+  const day = start.toLocaleDateString("en-US", {
+    weekday:"short", month:"short", day:"numeric", timeZone:"America/Denver"
+  });
+  const time = start.toLocaleTimeString("en-US", {
+    hour:"numeric", minute:"2-digit", timeZone:"America/Denver"
+  });
+  return `TOUR · ${day} · ${time}`;
+}
+
 function propertyFeature(property, fallbackLocation = "Fort Collins, CO") {
   const point = cachedCoordinates(property, fallbackLocation);
   if (!point) return null;
+  const tourLabel = mapTourLabel(property);
   const props = {
     id: String(property.id),
     propertyType: classifyPropertyKind(property),
     listingType: property.listingType === "buy" ? "buy" : "rent",
     status: property.status || "new",
-    saved: Boolean(property.saved)
+    saved: Boolean(property.saved),
+    hasTour: Boolean(tourLabel),
+    tourLabel
   };
   if (Number.isFinite(Number(property.price))) props.price = Number(property.price);
   if (Number.isFinite(Number(property.beds))) props.beds = Number(property.beds);
@@ -500,6 +520,7 @@ function installOverviewLayers(map) {
         "circle-radius": [
           "case",
           ["boolean", ["feature-state", "pricePing"], false], 22,
+          ["boolean", ["get", "hasTour"], false], 18,
           ["boolean", ["feature-state", "selected"], false], 15,
           ["boolean", ["feature-state", "hovered"], false], 12,
           0
@@ -508,12 +529,14 @@ function installOverviewLayers(map) {
         "circle-opacity": [
           "case",
           ["boolean", ["feature-state", "pricePing"], false], 0.5,
+          ["boolean", ["get", "hasTour"], false], 0.24,
           ["boolean", ["feature-state", "selected"], false], 0.3,
           ["boolean", ["feature-state", "hovered"], false], 0.2,
           0
         ],
         "circle-stroke-width": [
           "case",
+          ["boolean", ["get", "hasTour"], false], 3,
           ["boolean", ["feature-state", "selected"], false], 2,
           ["boolean", ["feature-state", "hovered"], false], 1,
           0
@@ -547,6 +570,28 @@ function installOverviewLayers(map) {
           ["boolean", ["feature-state", "dimmed"], false], 0.3,
           0.96
         ]
+      }
+    });
+  }
+
+  if (!map.getLayer(ROOK_TOUR_LABEL_LAYER_ID)) {
+    map.addLayer({
+      id: ROOK_TOUR_LABEL_LAYER_ID,
+      type: "symbol",
+      source: ROOK_SOURCE_ID,
+      filter: ["==", ["get", "hasTour"], true],
+      layout: {
+        "text-field": ["get", "tourLabel"],
+        "text-size": 11,
+        "text-offset": [0, 2.0],
+        "text-anchor": "top",
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      paint: {
+        "text-color": "#ffe18a",
+        "text-halo-color": "#07111b",
+        "text-halo-width": 2
       }
     });
   }
