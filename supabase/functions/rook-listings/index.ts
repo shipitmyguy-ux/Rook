@@ -1080,7 +1080,7 @@ function fallbackListingFromHtml(html: string, pageUrl: string, known: { address
 
 function addressFromDiscoveryContext(text: string) {
   const normalized = String(text || "").replace(/\s+/g, " ");
-  const match = [...normalized.matchAll(/(?<![\d$,])(\d{1,6}\s+[A-Za-z0-9.'#-]+(?:\s+[A-Za-z0-9.'#-]+){0,7}\s+(?:St|Street|Ave|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Way|Blvd|Boulevard|Pl|Place|Cir|Circle)\b)(?:\s*,?\s*(?:Fort\s+Collins))?(?:\s*,?\s*CO)?(?:\s+\d{5})?/gi)].find(m=>!/(?:beds?|baths?|sqft|sq\s*ft|price|bicycle|storage)/i.test(m[1]));
+  const match = [...normalized.matchAll(/(?<![\d$,])(\d{1,6}\s+[A-Za-z0-9.'#-]+(?:\s+[A-Za-z0-9.'#-]+){0,7}\s+(?:St|Street|Ave|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Way|Blvd|Boulevard|Pl|Place|Cir|Circle)\b)(?:\s*,?\s*(?:Fort\s+Collins|Wellington|Laporte|Timnath|Windsor|Bellvue|Loveland))?(?:\s*,?\s*CO)?(?:\s+\d{5})?/gi)].find(m=>!/(?:beds?|baths?|sqft|sq\s*ft|price|bicycle|storage)/i.test(m[1]));
   const unit=normalized.slice((match?.index||0)+(match?.[0]?.length||0)).match(/^\s*(?:,?\s*(?:apt|unit|suite|#)\s*#?\s*)([a-z0-9-]+)/i);
   return match ? (match[0].trim()+(unit?" Unit "+unit[1]:"")) : "";
 }
@@ -1146,7 +1146,9 @@ async function uncachedSearchDiscovery(location: string): Promise<AdapterResult>
       const description = String(item.match(/<description>([\s\S]*?)<\/description>/i)?.[1] || "").replace(/<!\[CDATA\[|\]\]>/g," ").replace(/<[^>]+>/g," ");
       const context = (title + " " + description).replace(/&amp;/g,"&").replace(/\s+/g," ").trim();
       const address = addressFromDiscoveryContext(context);
-      if (!address || !/fort\s+collins/i.test(context + " " + address)) continue;
+      const cityPattern = new RegExp("\\b" + city.replace(/[.*+?^$\{\}()|[\\]\\]/g,"\\      const address = addressFromDiscoveryContext(context);
+      if (!address || !/fort\s+collins/i.test(context + " " + address)) continue;").replace(/\\s+/g,"\\s+") + "\\b","i");
+      if (!address || !cityPattern.test(context + " " + address)) continue;
       const listing = fallbackListingFromText(context, direct, { address, label:title || address, source:host });
       if (!(Number(listing.price)>0 || Number(listing.beds)>0 || /for rent|rental/i.test(context))) continue;
       found.push({ ...listing, metadata:{ ...(listing.metadata||{}), discoveryMethod:"search-index" } });
@@ -2284,8 +2286,6 @@ Deno.serve(async (req: Request) => {
       try{
         const snapshot=await browserDiscoverySnapshot(pageUrl);
         for(const row of browserDiscoveryListings(snapshot,source)){
-          const text=[row.address,row.label,row.metadata?.description].filter(Boolean).join(" ");
-          if(!/wellington/i.test(text))continue;
           const key=keyOf(row);if(!key||seen.has(key))continue;seen.add(key);
           found.push({...row,metadata:{...(row.metadata||{}),discoveryMethod:"wellington-direct"}});
         }
