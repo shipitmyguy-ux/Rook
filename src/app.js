@@ -15,7 +15,7 @@ import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMis
 import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting } from "./integrations/maps.js?v=pan-smooth-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
-import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState } from "./integrations/sync.js?v=shared-state-v1";
+import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState, applySharedRookStateRow } from "./integrations/sync.js?v=shared-state-v2";
 import { config } from "./config.js";
 import { loadRuntimeConfig, runtimePointsOfInterest, runtimeSeedProperties } from "./runtime-config.js";
 
@@ -179,21 +179,7 @@ async function syncSharedRookState() {
       // Shared ChatGPT-managed state is versioned by updated_at. Skip unchanged
       // rows so lightweight background sync does not rebuild the map/list.
       if (row.updated_at && property.metadata?.sharedSyncUpdatedAt === row.updated_at) continue;
-      const metadata = {
-        ...(property.metadata || {}),
-        sharedSyncUpdatedAt: row.updated_at || null,
-        sharedSyncLastEmailAt: row.last_email_at || null,
-        sharedSyncSourceMessageIds: Array.isArray(row.source_message_ids) ? row.source_message_ids : [],
-        evidence: Array.isArray(row.evidence) ? row.evidence : (property.metadata?.evidence || [])
-      };
-      if (row.tour && typeof row.tour === "object" && Object.keys(row.tour).length) metadata.tour = row.tour;
-      store.update(property.id, {
-        ...(row.status ? { status:row.status } : {}),
-        ...((row.saved || row.status === "showing-scheduled") ? { saved:true } : {}),
-        ...(row.contact_outcome ? { contactOutcome:row.contact_outcome } : {}),
-        ...(row.showing_at ? { showingAt:row.showing_at } : {}),
-        metadata
-      });
+      store.upsert(applySharedRookStateRow(property, row, preferences));
       applied += 1;
     }
     if (applied) renderList();
