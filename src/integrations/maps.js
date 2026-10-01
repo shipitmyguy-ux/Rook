@@ -187,7 +187,17 @@ export function mapLocationQueries(property, fallbackLocation = "Fort Collins, C
       .trim());
   }
   push(metadataAddress);
-  if (label) push([label, fallbackLocation].filter(Boolean).join(", "));
+  if (label) {
+    push([label, fallbackLocation].filter(Boolean).join(", "));
+    // Community/floor-plan cards often append unit or plan details to a valid
+    // place name. Preserve the full label first, then try a generic base-name
+    // variant so any community-style property can resolve without bespoke coords.
+    const baseLabel = label
+      .split(/\s+[·|]\s+|\s+-\s+/)[0]
+      .replace(/\s+(?:unit|apt|apartment|suite|#)\s*#?\s*[A-Za-z0-9-]+.*$/i, "")
+      .trim();
+    if (baseLabel && baseLabel !== label) push([baseLabel, fallbackLocation].filter(Boolean).join(", "));
+  }
   return values;
 }
 
@@ -947,11 +957,35 @@ async function geocode(query, fallbackLocation = config.search.location) {
         return null;
       }
       const value = { lat: Number(row.lat), lng: Number(row.lon) };
-      if (!Number.isFinite(value.lat) || !Number.isFinite(value.lng)) return null;
+      const valid = validCoordinates(value, fallbackLocation);
+      if (!valid) {
+        try {
+          if (config.listings?.endpoint) {
+            const endpoint = new URL(config.listings.endpoint, typeof window !== "undefined" ? window.location.href : "http://localhost/");
+            endpoint.searchParams.set("poi", "1");
+            endpoint.searchParams.set("query", q);
+            endpoint.searchParams.set("location", fallbackLocation || config.search.location);
+            endpoint.searchParams.set("limit", "1");
+            const fallbackResponse = await fetch(endpoint, { headers:{ "Accept":"application/json" } });
+            if (fallbackResponse.ok) {
+              const payload = await fallbackResponse.json();
+              const candidate = Array.isArray(payload?.candidates) ? payload.candidates[0] : null;
+              const fallbackValue = candidate && validCoordinates({ lat:Number(candidate.lat), lng:Number(candidate.lng) }, fallbackLocation);
+              if (fallbackValue) {
+                const next = readGeocodeCache();
+                next[q] = fallbackValue;
+                writeGeocodeCache(next);
+                return fallbackValue;
+              }
+            }
+          }
+        } catch {}
+        return null;
+      }
       const next = readGeocodeCache();
-      next[q] = value;
+      next[q] = valid;
       writeGeocodeCache(next);
-      return value;
+      return valid;
     } catch {
       return null;
     } finally {
