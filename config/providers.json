@@ -78,7 +78,9 @@
           "label": "condos",
           "url": "https://www.apartments.com/condos/{slug}-co/"
         }
-      ]
+      ],
+      "recoveryCityFeed": "https://www.apartments.com/{slug}-co/",
+      "zipFeed": "https://www.apartments.com/{slug}-co-{zip}/"
     },
     {
       "id": "hotpads",
@@ -107,21 +109,25 @@
           "label": "duplexes",
           "url": "https://hotpads.com/{slug}-co/duplexes-for-rent"
         }
-      ]
+      ],
+      "recoveryCityFeed": "https://hotpads.com/{slug}-co/apartments-for-rent"
     },
     {
       "id": "trulia",
       "label": "Trulia",
       "host": "trulia.com",
       "browserDiscovery": true,
-      "cityFeed": "https://www.trulia.com/for_rent/{underscore},CO/"
+      "cityFeed": "https://www.trulia.com/for_rent/{underscore},CO/",
+      "recoveryCityFeed": "https://www.trulia.com/for_rent/{underscore},CO/"
     },
     {
       "id": "zillow",
       "label": "Zillow",
       "host": "zillow.com",
       "browserDiscovery": true,
-      "cityFeed": "https://www.zillow.com/{slug}-co/rentals/"
+      "cityFeed": "https://www.zillow.com/{slug}-co/rentals/",
+      "recoveryCityFeed": "https://www.zillow.com/{slug}-co/rentals/",
+      "zipFeed": "https://www.zillow.com/{slug}-co-{zip}/rentals/"
     }
   ],
   "searchDomains": [
