@@ -881,7 +881,7 @@ app.innerHTML = `<main class="shell">
   <small>Enter a partial or full place/road name, choose a suggestion, then approve it to add it to the map.</small>
 </fieldset>
 <fieldset class="poi-style-options"><legend>Saved map markers</legend><div id="pref-poi-styles"></div><small>Choose a symbol/color or remove a saved POI.</small></fieldset>
-<label>Search location<input id="pref-location" type="text" autocomplete="address-level2" placeholder="Fort Collins, CO"></label>
+<label>Search location<input id="pref-location" type="text" autocomplete="address-level2" placeholder="${esc(config.search.location)}"></label>
 <label>Search radius (miles)<input id="pref-radius" type="number" min="1" max="100" step="1"></label>
 <label>Minimum bedrooms<input id="pref-min-beds" type="number" min="0" step="1"></label>
 <label>Maximum monthly rent<input id="pref-max-price" type="number" min="0" step="50"></label>
