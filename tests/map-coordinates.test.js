@@ -114,6 +114,18 @@ test("every already-visible property with a resolvable location reaches the map 
 });
 
 
+test("community map address is preferred for geocoding without changing display address", () => {
+  const queries = mapLocationQueries({
+    id:"community",
+    label:"Example Community",
+    address:"100 Main St, Fort Collins, CO",
+    metadata:{ mapAddress:"100 Main St Unit 101, Fort Collins, CO" }
+  }, "Fort Collins, CO");
+  assert.ok(queries.includes("100 Main St Unit 101, Fort Collins, CO"));
+  assert.ok(queries.includes("100 Main St, Fort Collins, CO"));
+  assert.ok(queries.indexOf("100 Main St Unit 101, Fort Collins, CO") < queries.indexOf("Example Community, Fort Collins, CO"));
+});
+
 test("co-located visible listings keep one distinct map feature per card", async () => {
   let data;
   let onStyle;
