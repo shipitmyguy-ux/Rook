@@ -13,6 +13,28 @@ function backend(){
   const context=vm.createContext({URL,Deno:{env:{get:()=>''},serve:()=>{}},directListingUrl,console,AbortSignal,Map,Set,Date,setTimeout,clearTimeout});
   vm.runInContext(source,context);return context;
 }
+test('runtime config owns mutable discovery data instead of named code paths',()=>{
+  const root=new URL('../config/',import.meta.url);
+  const providers=JSON.parse(fs.readFileSync(new URL('providers.json',root),'utf8'));
+  const areas=JSON.parse(fs.readFileSync(new URL('search-areas.json',root),'utf8'));
+  const communities=JSON.parse(fs.readFileSync(new URL('community-sources.json',root),'utf8'));
+  const exclusions=JSON.parse(fs.readFileSync(new URL('exclusions.json',root),'utf8'));
+  const properties=JSON.parse(fs.readFileSync(new URL('properties.json',root),'utf8'));
+  const evidence=JSON.parse(fs.readFileSync(new URL('evidence.json',root),'utf8'));
+  assert.ok(providers.providers.length>=7);
+  assert.ok(providers.providers.some(p=>p.id==='hotpads'&&p.primaryCategoryFeeds?.some(feed=>feed.id==='houses')));
+  assert.ok(areas.areas.some(area=>area.discoveryPlaces?.some(place=>place.city==='Wellington')));
+  assert.ok(communities.sources.some(source=>source.id==='bloom'));
+  assert.ok(exclusions.listingRules.some(rule=>rule.kind==='income-restricted'));
+  assert.ok(Array.isArray(properties.properties));
+  assert.ok(Array.isArray(evidence.housingEvidence));
+  const backend=fs.readFileSync(new URL('../supabase/functions/rook-listings/index.ts',import.meta.url),'utf8');
+  assert.doesNotMatch(backend,/function\s+(?:wellingtonDirectDiscovery|bloomOfficialDiscovery)\b/);
+  assert.doesNotMatch(backend,/partitionedPrimaryFeeds|nearbyCities/);
+  assert.match(backend,/providerAdapterTasksFromConfig/);
+  assert.match(backend,/configuredCommunityDiscovery/);
+});
+
 test('card parsing rejects price-drop and bicycle-storage false addresses while preserving units',()=>{
   const c=backend();
   assert.equal(c.addressFromDiscoveryContext('$2,100 Price Drop 2 Beds 1 Bath 820 Sqft Bicycle storage'),'');
@@ -53,20 +75,14 @@ test('structured pagination merges observed linked pages and preserves partial r
   assert.equal(result.listings.length,2);assert.equal(result.pages,2);assert.equal(result.failedPages,1);
 });
 test('partitioned rental portals include non-apartment category feeds',()=>{
-  const source=fs.readFileSync(new URL('../supabase/functions/rook-listings/index.ts',import.meta.url),'utf8');
+  const config=JSON.parse(fs.readFileSync(new URL('../config/providers.json',import.meta.url),'utf8'));
+  const ids=new Set(config.providers.flatMap(provider=>(provider.primaryCategoryFeeds||[]).map(feed=>provider.id+'-'+feed.id)));
   for (const token of [
-    'hotpads-houses-',
-    'hotpads-townhomes-',
-    'rent-houses-',
-    'rent-townhomes-',
-    'rent-condos-',
-    'apartments-houses-',
-    'apartments-townhomes-',
-    'apartments-condos-',
-    'realtor-houses-',
-    'realtor-townhomes-',
-    'realtor-condos-'
-  ]) assert.match(source,new RegExp(token));
+    'hotpads-houses','hotpads-townhomes',
+    'rent-houses','rent-townhomes','rent-condos',
+    'apartments-houses','apartments-townhomes','apartments-condos',
+    'realtor-houses','realtor-townhomes','realtor-condos'
+  ]) assert.ok(ids.has(token),token);
 });
 
 test('streamed provider batches arrive before completion even when records cross byte chunks',async()=>{
