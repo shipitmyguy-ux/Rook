@@ -1263,10 +1263,13 @@ function mergeAdapterListings(adapters:AdapterResult[]){
 }
 
 function keyOf(row: Listing) {
-  const address = String(row.address || "").toLowerCase().replace(/\b(street)\b/g,"st").replace(/\b(avenue)\b/g,"ave")
-    .replace(/\b(road)\b/g,"rd").replace(/\b(drive)\b/g,"dr").replace(/[^a-z0-9]/g,"");
-  const street=String(row.address||"").split(",")[0].replace(/\s+Fort\s+Collins\b.*$/i,"");
-  return canonicalAddress(street) || directListingUrl(row.sourceUrl) || row.id;
+  const raw=String(row.address || row.label || "");
+  // Keep the unit in the identity, but normalize common variants (#A, Unit A,
+  // Apt A) so the same rental from different portals collapses to one record.
+  const firstLine=(raw.split(/[\n|]/)[0] || "").split(",")[0]
+    .replace(/\s+(?:Fort\s+Collins|Wellington|Laporte|Timnath|Windsor|Bellvue|Loveland)\b.*$/i,"")
+    .trim();
+  return canonicalAddress(firstLine) || directListingUrl(row.sourceUrl) || row.id;
 }
 
 
