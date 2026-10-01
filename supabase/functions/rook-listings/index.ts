@@ -2258,7 +2258,7 @@ Deno.serve(async (req: Request) => {
         { city:"Fort Collins", minRadius:0 },
         { city:"Laporte", minRadius:5 },
         { city:"Timnath", minRadius:6 },
-        { city:"Wellington", minRadius:8 },
+        { city:"Wellington", minRadius:0 },
         { city:"Bellvue", minRadius:8 },
         { city:"Windsor", minRadius:10 },
         { city:"Loveland", minRadius:12 }
