@@ -13,6 +13,7 @@ import { googleMapsMultiStopUrl } from "../src/core/route.js";
 import { parseRookBackup } from "../src/core/export.js";
 import { normalizePreferences } from "../src/core/preferences.js";
 import { config } from "../src/config.js";
+import { normalizeRuntimeCommunityProperty } from "../src/runtime-config.js";
 import { poiLocationQuery, normalizePoiSearchCandidate, poiSearchQueries, mapLandLayerKind } from "../src/integrations/maps.js";
 import { normalizeTour, tourState, tourLabel, applyTour, upcomingTours } from "../src/core/tours.js";
 import { applySharedRookStateRow } from "../src/integrations/sync.js";
@@ -51,6 +52,29 @@ test("shared showing sync can materialize a missing property card", async () => 
   assert.match(appSource, /if \(!property && \(row\.address \|\| row\.label\)\)/);
   assert.match(appSource, /source:"Shared sync"/);
   assert.match(appSource, /applySharedRookStateRow\(property, row, preferences\)/);
+});
+
+test("legacy cached community units migrate to configured canonical identity", () => {
+  const source={
+    id:"community-x",
+    aggregate:"community",
+    displayName:"Example Living",
+    source:"Example Living",
+    communityAddress:"100 Main St, Fort Collins, CO",
+    mapAddress:"100 Main St Unit 101, Fort Collins, CO"
+  };
+  const migrated=normalizeRuntimeCommunityProperty({
+    id:"old-unit",
+    label:"Example Living · Plan A #2",
+    address:"100 Main St Unit 2, Fort Collins, CO",
+    source:"Example Living",
+    metadata:{floorPlan:"Plan A"}
+  },[source]);
+  assert.equal(migrated.id,"community-x");
+  assert.equal(migrated.label,"Example Living");
+  assert.equal(migrated.address,"100 Main St, Fort Collins, CO");
+  assert.equal(migrated.metadata.communityId,"community-x");
+  assert.equal(migrated.metadata.mapAddress,"100 Main St Unit 101, Fort Collins, CO");
 });
 
 test("community inventory collapses to one canonical property and preserves scheduled state", () => {
