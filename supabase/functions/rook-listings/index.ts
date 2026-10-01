@@ -2344,7 +2344,8 @@ async function configuredCommunityDiscovery(sourceConfig:any, activeCities:strin
   } catch {
     return {id,listings:[],error:"invalid configured parser regex"};
   }
-  const found:Listing[]=[];
+
+  const units:any[]=[];
   await Promise.all((Array.isArray(sourceConfig?.plans)?sourceConfig.plans:[]).map(async(plan:any)=>{
     const pageUrl=String(plan?.url || "");
     if(!pageUrl)return;
@@ -2357,33 +2358,76 @@ async function configuredCommunityDiscovery(sourceConfig:any, activeCities:strin
         const price=num(part.match(priceRegex)?.[1]);
         const available=availableRegex ? (part.match(availableRegex)?.[1] || "") : "";
         if(!unit || !(Number(price)>0))continue;
-        const address=String(sourceConfig.baseAddressTemplate || "").replaceAll("{unit}",unit);
-        const source=String(sourceConfig.source || id);
-        const planName=String(plan?.name || plan?.path || "Home");
-        const staticFacts=sourceConfig.static || {};
-        found.push({
-          id:`${id}-${String(plan?.path || planName).toLowerCase().replace(/[^a-z0-9]+/g,"-")}-${unit.toLowerCase()}`,
-          label:`${source} · ${planName} #${unit}`,
-          address,
-          type:String(sourceConfig.propertyType || "Property"),
-          listingType:String(sourceConfig.listingType || "rent"),
+        units.push({
+          unit,
           price:Number(price),
-          beds:Number(staticFacts.beds ?? 0) || null,
-          baths:Number(staticFacts.baths ?? 0) || null,
-          source,
-          sourceUrl:pageUrl,
-          metadata:{
-            floorPlan:planName,
-            sqft:Number(plan?.sqft || 0) || null,
-            availableDate:available || null,
-            discoveryMethod:"configured-community",
-            configuredSourceId:id
-          }
+          availableDate:available || null,
+          floorPlan:String(plan?.name || plan?.path || "Home"),
+          sqft:Number(plan?.sqft || 0) || null,
+          sourceUrl:pageUrl
         });
       }
     }catch{}
   }));
-  return {id,listings:found,error:found.length?undefined:"no configured community rows parsed"};
+
+  if (!units.length) return {id,listings:[],error:"no configured community rows parsed"};
+  const source=String(sourceConfig.source || id);
+  const staticFacts=sourceConfig.static || {};
+
+  if (String(sourceConfig.aggregate || "").toLowerCase() === "community") {
+    const prices=units.map(unit=>Number(unit.price)).filter(value=>value>0);
+    const minPrice=prices.length ? Math.min(...prices) : null;
+    const sourceUrl=units.find(unit=>unit.sourceUrl)?.sourceUrl || String(sourceConfig?.plans?.[0]?.url || "");
+    return {
+      id,
+      listings:[{
+        id:String(sourceConfig.communityId || id),
+        label:String(sourceConfig.displayName || source),
+        address:String(sourceConfig.communityAddress || String(sourceConfig.baseAddressTemplate || "").replace(/\s+(?:unit|apt|apartment|suite|#)\s*\{unit\}(?=,|$)/i,"")),
+        type:String(sourceConfig.propertyType || "Property"),
+        listingType:String(sourceConfig.listingType || "rent"),
+        price:minPrice,
+        beds:Number(staticFacts.beds ?? 0) || null,
+        baths:Number(staticFacts.baths ?? 0) || null,
+        source,
+        sourceUrl,
+        metadata:{
+          communityId:id,
+          communityName:String(sourceConfig.displayName || source),
+          configuredSourceId:id,
+          discoveryMethod:"configured-community",
+          unitCount:units.length,
+          units,
+          priceLabel:minPrice ? "$"+minPrice.toLocaleString("en-US")+"+/mo" : null
+        }
+      }]
+    };
+  }
+
+  return {
+    id,
+    listings:units.map(unit=>({
+      id:`${id}-${unit.floorPlan.toLowerCase().replace(/[^a-z0-9]+/g,"-")}-${unit.unit.toLowerCase()}`,
+      label:`${source} · ${unit.floorPlan} #${unit.unit}`,
+      address:String(sourceConfig.baseAddressTemplate || "").replaceAll("{unit}",unit.unit),
+      type:String(sourceConfig.propertyType || "Property"),
+      listingType:String(sourceConfig.listingType || "rent"),
+      price:unit.price,
+      beds:Number(staticFacts.beds ?? 0) || null,
+      baths:Number(staticFacts.baths ?? 0) || null,
+      source,
+      sourceUrl:unit.sourceUrl,
+      metadata:{
+        communityId:id,
+        communityName:String(sourceConfig.displayName || source),
+        floorPlan:unit.floorPlan,
+        sqft:unit.sqft,
+        availableDate:unit.availableDate,
+        discoveryMethod:"configured-community",
+        configuredSourceId:id
+      }
+    }))
+  };
 }
 
 function listingMatchesConfiguredExclusion(listing:Listing, rules:any[] = []) {
