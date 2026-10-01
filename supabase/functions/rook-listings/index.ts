@@ -2293,6 +2293,51 @@ Deno.serve(async (req: Request) => {
     return {id,listings:found,error:found.length?undefined:"no Wellington rows parsed"};
   };
 
+  const bloomOfficialDiscovery = async (): Promise<AdapterResult> => {
+    const id="bloom-official";
+    if (!discoveryCities.some(city => /^fort collins$/i.test(city))) return {id,listings:[]};
+    const plans=[
+      {name:"Cache",path:"cache",sqft:1166},
+      {name:"Horsetooth",path:"horsetooth",sqft:1171},
+      {name:"Platte",path:"platte",sqft:1395}
+    ];
+    const found:Listing[]=[];
+    await Promise.all(plans.map(async plan=>{
+      const pageUrl="https://www.rentbloomhomes.com/floorplans/"+plan.path;
+      try{
+        const html=await fetchText(pageUrl);
+        const text=stripHtml(html).replace(/\s+/g," ");
+        const parts=text.split(/Apartment:\s*#\s*/i).slice(1);
+        for(const part of parts){
+          const unit=part.match(/^([A-Za-z0-9-]+)/)?.[1] || "";
+          const price=num(part.match(/Starting at:\s*\$([\d,.]+)/i)?.[1]);
+          const available=part.match(/Date Available:\s*([0-9/]+)/i)?.[1] || "";
+          if(!unit || !(Number(price)>0)) continue;
+          found.push({
+            id:"bloom-"+plan.path+"-"+unit.toLowerCase(),
+            label:`Bloom Rental Living · ${plan.name} #${unit}`,
+            address:`180 N Aria Way Unit ${unit}, Fort Collins, CO 80524`,
+            type:"Townhome",
+            listingType:"rent",
+            price:Number(price),
+            beds:2,
+            baths:2,
+            source:"Bloom Rental Living",
+            sourceUrl:pageUrl,
+            metadata:{
+              floorPlan:plan.name,
+              sqft:plan.sqft,
+              availableDate:available || null,
+              discoveryMethod:"bloom-official",
+              description:`Bloom ${plan.name} 2BR/2BA condo-style home with attached garage.`
+            }
+          });
+        }
+      }catch{}
+    }));
+    return {id,listings:found,error:found.length?undefined:"no Bloom units parsed"};
+  };
+
   const adapterTasks = discoveryCities.flatMap(city => {
     const slug = city.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const truliaCity = city.replace(/\s+/g,"_");
@@ -2309,6 +2354,7 @@ Deno.serve(async (req: Request) => {
     ];
   });
   adapterTasks.push(wellingtonDirectDiscovery());
+  adapterTasks.push(bloomOfficialDiscovery());
 
   const selectListings=(rows:Listing[])=>rows.filter(listing=>{
     if(!directListingUrl(listing.sourceUrl))return false;
