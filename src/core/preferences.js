@@ -53,7 +53,7 @@ export function normalizePreferences(value = {}, overrides = {}) {
     defaultTourReminderMinutes: Math.max(0, Number(value.defaultTourReminderMinutes) || 120),
     emailScanCursor: value.emailScanCursor || null,
     emailLastScanAt: value.emailLastScanAt || null,
-    googleOAuthClientId: String(value.googleOAuthClientId || "").trim(),
+    googleOAuthClientId: String(value.googleOAuthClientId || defaults.googleOAuthClientId || "").trim(),
     removedPointIds
   };
 }

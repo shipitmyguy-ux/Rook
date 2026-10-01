@@ -33,6 +33,7 @@
     "schoolPriority": true,
     "visualTheme": "default",
     "defaultTourDurationMinutes": 60,
-    "defaultTourReminderMinutes": 120
+    "defaultTourReminderMinutes": 120,
+    "googleOAuthClientId": "189185606613-v3s9oq2k8qpfnhh5o8gsji5hlgh2lqnp.apps.googleusercontent.com"
   }
 }
