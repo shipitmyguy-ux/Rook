@@ -53,10 +53,12 @@ export function normalizePreferences(value = {}, overrides = {}) {
     removedPointIds
   };
 }
-export function loadPreferences() {
-  try { return normalizePreferences(JSON.parse(localStorage.getItem(KEY) || "{}")); }
-  catch { return { ...defaultPreferences, propertyTypes:[...defaults.propertyTypes] }; }
+export function loadPreferences(overrides = {}) {
+  const defaults = { ...defaultPreferences, ...(overrides || {}) };
+  try { return normalizePreferences(JSON.parse(localStorage.getItem(KEY) || "{}"), defaults); }
+  catch { return { ...defaults, propertyTypes:[...(defaults.propertyTypes || defaultPreferences.propertyTypes)] }; }
 }
-export function savePreferences(value) {
-  localStorage.setItem(KEY, JSON.stringify(normalizePreferences(value)));
+
+export function savePreferences(value, overrides = {}) {
+  localStorage.setItem(KEY, JSON.stringify(normalizePreferences(value, overrides)));
 }
