@@ -1116,6 +1116,43 @@ function browserDiscoveryListings(snapshot: any, source: string): Listing[] {
   return rows;
 }
 
+async function searchEngineDiscoveryAdapter(location: string): Promise<AdapterResult> {
+  const id = "search-discovery";
+  const source = "Web listing search";
+  const domains = ["zillow.com","realtor.com","hotpads.com","trulia.com","apartments.com","rent.com","redfin.com","homes.com","zumper.com","forrent.com"];
+  const city = String(location || "Fort Collins, CO").split(",")[0].trim();
+  const rows: Listing[] = [];
+  const seen = new Set<string>();
+  for (const domain of domains) {
+    const query = `site:${domain} "${city}" CO ("for rent" OR rental) (house OR townhome OR apartment)`;
+    const searchUrl = "https://www.bing.com/search?format=rss&count=50&q=" + encodeURIComponent(query);
+    try {
+      const rss = await fetchText(searchUrl);
+      const items = [...rss.matchAll(/<item>([\s\S]*?)<\/item>/gi)].map(m => m[1]);
+      for (const item of items) {
+        const href = item.match(/<link>\s*(https?:\/\/[^<\s]+)\s*<\/link>/i)?.[1]?.replace(/&amp;/g,"&") || "";
+        const direct = directListingUrl(normalizeSearchResultUrl(href));
+        if (!direct || seen.has(direct)) continue;
+        let host = "";
+        try { host = new URL(direct).hostname; } catch { continue; }
+        if (!isAllowedListingHost(host)) continue;
+        const title = String(item.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || "").replace(/<!\[CDATA\[|\]\]>/g," ").replace(/<[^>]+>/g," ");
+        const description = String(item.match(/<description>([\s\S]*?)<\/description>/i)?.[1] || "").replace(/<!\[CDATA\[|\]\]>/g," ").replace(/<[^>]+>/g," ");
+        const context = (title + " " + description).replace(/&amp;/g,"&").replace(/\s+/g," ").trim();
+        const address = addressFromDiscoveryContext(context);
+        if (!address || !/fort\s+collins/i.test(context + " " + address)) continue;
+        const listing = fallbackListingFromText(context, direct, { address, label:title || address, source:host });
+        if (!(Number(listing.price)>0 || Number(listing.beds)>0 || /for rent|rental/i.test(context))) continue;
+        seen.add(direct);
+        rows.push({ ...listing, metadata:{ ...(listing.metadata||{}), discoveryMethod:"search-index" } });
+        if (rows.length >= 80) break;
+      }
+    } catch {}
+    if (rows.length >= 80) break;
+  }
+  return { id, listings:rows };
+}
+
 async function sourceAdapter(id: string, source: string, url: string): Promise<AdapterResult> {
   try {
     const html = await fetchText(url);
@@ -2144,7 +2181,8 @@ Deno.serve(async (req: Request) => {
     sourceAdapter("apartments", "Apartments.com", `https://www.apartments.com/${slug}-co/`),
     sourceAdapter("hotpads", "HotPads", `https://hotpads.com/${slug}-co/apartments-for-rent`),
     sourceAdapter("trulia", "Trulia", `https://www.trulia.com/for_rent/${location.split(",")[0].trim().replace(/\\s+/g,"_")},CO/`),
-    sourceAdapter("zillow", "Zillow", `https://www.zillow.com/${slug}-co/rentals/`)
+    sourceAdapter("zillow", "Zillow", `https://www.zillow.com/${slug}-co/rentals/`),
+    searchEngineDiscoveryAdapter(location)
   ]);
 
   const merged = new Map<string, Listing>();
