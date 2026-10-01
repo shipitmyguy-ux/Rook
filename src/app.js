@@ -172,6 +172,9 @@ async function syncSharedRookState() {
         property = store.getAll().find(item => String(item.id) === String(id));
       }
       if (!property) continue;
+      // Shared ChatGPT-managed state is versioned by updated_at. Skip unchanged
+      // rows so lightweight background sync does not rebuild the map/list.
+      if (row.updated_at && property.metadata?.sharedSyncUpdatedAt === row.updated_at) continue;
       const metadata = {
         ...(property.metadata || {}),
         sharedSyncUpdatedAt: row.updated_at || null,
@@ -1444,5 +1447,15 @@ document.addEventListener("touchend", () => {
 
 store.subscribe(scheduleRenderList);
 void syncSharedRookState();
+
+// Keep ChatGPT/Calendar-added tours current while Rook is already open. Shared
+// state is tiny; only changed rows are applied, so this does not trigger map churn.
+window.setInterval(() => {
+  if (document.visibilityState === "visible") void syncSharedRookState();
+}, 30000);
+window.addEventListener("focus", () => void syncSharedRookState());
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") void syncSharedRookState();
+});
 renderList();
 if (!BROWSER_QA_MODE) queueMicrotask(() => refreshListings("startup"));
