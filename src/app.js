@@ -252,6 +252,12 @@ function renderPoiStyleSettings() {
       <span class="poi-style-address" title="${esc(poiDisplayName(point))}">${esc(poiDisplayName(point))}</span>
       <label>Icon<select data-poi-icon>${poiStyleOptions(POI_ICON_OPTIONS, style.icon, true)}</select></label>
       <label>Color<select data-poi-color>${poiStyleOptions(POI_COLOR_OPTIONS, style.color)}</select></label>
+      <label>Sort<select data-poi-sort-priority>
+        <option value="0"${style.sortPriority===0?" selected":""}>Off</option>
+        <option value="1"${style.sortPriority===1?" selected":""}>Priority 1</option>
+        <option value="2"${style.sortPriority===2?" selected":""}>Priority 2</option>
+        <option value="3"${style.sortPriority===3?" selected":""}>Priority 3</option>
+      </select></label>
       <button type="button" class="poi-remove" data-remove-poi="${esc(point.id || "poi-" + index)}">Remove</button>
     </div>`;
   }).join("") : '<p class="poi-style-empty">No secondary addresses configured.</p>';
@@ -523,6 +529,18 @@ function promoteTourProperty(id) {
   }, 20000);
 }
 
+function prioritizedPoiPoints() {
+  return cardPointsOfInterest()
+    .filter(point => Number(point.sortPriority) > 0)
+    .sort((a,b) => Number(a.sortPriority) - Number(b.sortPriority));
+}
+
+function prioritizedPoiDistance(property, point) {
+  const rows=getCachedPropertyDistances(property,[point],preferences.location || config.search.location);
+  const item=rows[0];
+  return item?.resolved && Number.isFinite(item.distance) ? Number(item.distance) : null;
+}
+
 function visibleProperties() {
   const allProperties = store.getAll();
   const restricted = filterProperties(allProperties, activeFilter)
@@ -535,6 +553,7 @@ function visibleProperties() {
     }
   }
   const ranked = rankProperties(filtered, preferences);
+  const poiPriorities = prioritizedPoiPoints();
   return ranked.sort((a,b) => {
     if (promotedTourPropertyId) {
       const aPromoted = String(a.id) === promotedTourPropertyId;
@@ -544,8 +563,19 @@ function visibleProperties() {
     const at = tourForProperty(a, preferences), bt = tourForProperty(b, preferences);
     const as = at ? tourState(at) : "none", bs = bt ? tourState(bt) : "none";
     const priority = state => state === "soon" ? 0 : state === "upcoming" ? 1 : 2;
-    const delta = priority(as) - priority(bs);
-    return delta || ((at?.startsAt && bt?.startsAt) ? new Date(at.startsAt) - new Date(bt.startsAt) : 0);
+    const tourDelta = priority(as) - priority(bs);
+    if (tourDelta) return tourDelta;
+    if (at?.startsAt && bt?.startsAt) {
+      const timeDelta = new Date(at.startsAt) - new Date(bt.startsAt);
+      if (timeDelta) return timeDelta;
+    }
+    for (const point of poiPriorities) {
+      const ad=prioritizedPoiDistance(a,point), bd=prioritizedPoiDistance(b,point);
+      if (ad == null && bd != null) return 1;
+      if (ad != null && bd == null) return -1;
+      if (ad != null && bd != null && ad !== bd) return ad - bd;
+    }
+    return 0;
   });
 }
 
@@ -949,7 +979,10 @@ function ignoreProperty(property, status) {
 
 document.addEventListener("rook:distances-resolved", event => {
   const target = event.target.closest?.("[data-poi-distances]") || event.target;
-  if (target?.matches?.("[data-poi-distances]")) renderResolvedDistances(target, event.detail?.distances || []);
+  const distances=event.detail?.distances || [];
+  if (target?.matches?.("[data-poi-distances]")) renderResolvedDistances(target, distances);
+  const priorityIds=new Set(prioritizedPoiPoints().map(point=>String(point.id)));
+  if (distances.some(item=>priorityIds.has(String(item.id)))) scheduleRenderList();
 });
 
 document.querySelector("#property-map").addEventListener("rook:map-select", event => {
@@ -1354,7 +1387,8 @@ document.querySelector("#save-settings").addEventListener("click", e => {
     if (!id) return;
     pointStyles[id] = {
       icon: row.querySelector("[data-poi-icon]")?.value || "circle",
-      color: row.querySelector("[data-poi-color]")?.value || "slate"
+      color: row.querySelector("[data-poi-color]")?.value || "slate",
+      sortPriority: Math.max(0, Math.min(3, Number(row.querySelector("[data-poi-sort-priority]")?.value) || 0))
     };
   });
   preferences = {
