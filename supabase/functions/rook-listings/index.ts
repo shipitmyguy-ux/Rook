@@ -2394,6 +2394,7 @@ async function configuredCommunityDiscovery(sourceConfig:any, activeCities:strin
         metadata:{
           communityId:id,
           communityName:String(sourceConfig.displayName || source),
+          mapAddress:String(sourceConfig.mapAddress || ""),
           configuredSourceId:id,
           discoveryMethod:"configured-community",
           unitCount:units.length,
