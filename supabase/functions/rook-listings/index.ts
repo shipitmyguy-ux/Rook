@@ -12,6 +12,7 @@ const corsHeaders = {
 
 type Listing = Record<string, any>;
 type AdapterResult = { id: string; listings: Listing[]; error?: string; discovery?: any };
+const FALLBACK_LOCATION = "Fort Collins, CO";
 
 const num = (value: unknown) => {
   const match = String(value ?? "").replace(/,/g, "").match(/\d+(?:\.\d+)?/);
@@ -490,7 +491,7 @@ async function listingFromImageSearchSource(address:string,label:string,location
 
 async function providerCityIndexUrls(location:string) {
   const runtime = await loadDiscoveryRuntimeConfig();
-  const city = String(location || runtime.searchAreas?.defaultLocation || "Fort Collins, CO").split(",")[0].trim();
+  const city = String(location || runtime.searchAreas?.defaultLocation || FALLBACK_LOCATION).split(",")[0].trim();
   const state = String(location || "").split(",")[1]?.trim() || "CO";
   return (Array.isArray(runtime.providers?.providers) ? runtime.providers.providers : [])
     .map((provider:any)=>provider?.recoveryCityFeed ? renderFeedTemplate(provider.recoveryCityFeed,city,state) : "")
@@ -586,7 +587,7 @@ async function providerZipClusterRecovery(address:string,label:string,location:s
   const zip = String(address||"").match(/\b(\d{5})(?:-\d{4})?\b/)?.[1] || "";
   if (!zip) return null;
   const runtime = await loadDiscoveryRuntimeConfig();
-  const city = String(location || runtime.searchAreas?.defaultLocation || "Fort Collins, CO").split(",")[0].trim();
+  const city = String(location || runtime.searchAreas?.defaultLocation || FALLBACK_LOCATION).split(",")[0].trim();
   const state = String(location || "").split(",")[1]?.trim() || "CO";
   const urls = (Array.isArray(runtime.providers?.providers) ? runtime.providers.providers : [])
     .filter((provider:any)=>provider?.zipFeed)
@@ -1125,8 +1126,8 @@ async function uncachedSearchDiscovery(location: string): Promise<AdapterResult>
   const domains = Array.isArray(runtime.providers?.searchDomains) && runtime.providers.searchDomains.length
     ? runtime.providers.searchDomains
     : ["zillow.com","realtor.com","hotpads.com","trulia.com","apartments.com","rent.com","redfin.com","homes.com","zumper.com","forrent.com"];
-  const locationParts = String(location || runtime.searchAreas?.defaultLocation || "Fort Collins, CO").split(",");
-  const city = locationParts[0]?.trim() || "Fort Collins";
+  const locationParts = String(location || runtime.searchAreas?.defaultLocation || FALLBACK_LOCATION).split(",");
+  const city = locationParts[0]?.trim() || FALLBACK_LOCATION.split(",")[0];
   const state = locationParts[1]?.trim() || "CO";
   const rows: Listing[] = [];
   const seen = new Set<string>();
@@ -1690,7 +1691,7 @@ async function resolveListing(address: string, label: string, location: string, 
 async function discoverListing(address: string, label: string, location: string, sourceUrl = "") {
   const checkedAt = new Date().toISOString();
   const runtime = await loadDiscoveryRuntimeConfig();
-  const locationParts = String(location || runtime.searchAreas?.defaultLocation || "Fort Collins, CO").split(",");
+  const locationParts = String(location || runtime.searchAreas?.defaultLocation || FALLBACK_LOCATION).split(",");
   const city = locationParts[0]?.trim() || "Fort Collins";
   const state = locationParts[1]?.trim() || "CO";
   const citySlug = city.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -2103,7 +2104,11 @@ async function searchPoiSuggestions(query:string, location:string, limit=5) {
   for (const variant of variants.slice(0, 4)) {
     if (found.length >= safeLimit) break;
     const photon = new URL("https://photon.komoot.io/api");
-    photon.searchParams.set("q", variant.replace(/,\s*Fort Collins,?\s*CO$/i,""));
+    const locationSuffix=String(location||"").trim();
+    const scopedQuery=locationSuffix && variant.toLowerCase().endsWith(locationSuffix.toLowerCase())
+      ? variant.slice(0,Math.max(0,variant.length-locationSuffix.length)).replace(/,\s*$/,"").trim()
+      : variant;
+    photon.searchParams.set("q", scopedQuery);
     photon.searchParams.set("limit", String(safeLimit));
     photon.searchParams.set("lang", "en");
     if (area?.center && Number.isFinite(Number(area.center.lat)) && Number.isFinite(Number(area.center.lng))) {
@@ -2393,7 +2398,7 @@ Deno.serve(async (req: Request) => {
 
   const url = new URL(req.url);
   const runtimeDefaults = await loadDiscoveryRuntimeConfig();
-  const location = url.searchParams.get("location") || runtimeDefaults.searchAreas?.defaultLocation || "Fort Collins, CO";
+  const location = url.searchParams.get("location") || runtimeDefaults.searchAreas?.defaultLocation || FALLBACK_LOCATION;
   if (url.searchParams.get("state") === "1") {
     const state = await readSharedRookState();
     return new Response(JSON.stringify({ state }), { headers:corsHeaders });
@@ -2456,7 +2461,7 @@ Deno.serve(async (req: Request) => {
   const query = (url.searchParams.get("query") || "").trim().toLowerCase();
 
   const runtimeDiscovery = await loadDiscoveryRuntimeConfig();
-  const primaryCity = location.split(",")[0].trim() || runtimeDiscovery.searchAreas?.defaultLocation?.split(",")[0]?.trim() || "Fort Collins";
+  const primaryCity = location.split(",")[0].trim() || runtimeDiscovery.searchAreas?.defaultLocation?.split(",")[0]?.trim() || FALLBACK_LOCATION.split(",")[0];
   const searchArea = runtimeSearchArea(runtimeDiscovery.searchAreas, location);
   const discoveryPlaces = runtimeDiscoveryPlaces(searchArea, primaryCity, radiusMiles);
   const discoveryCities = discoveryPlaces.map((place:any)=>place.city);
