@@ -75,6 +75,8 @@ jobs:
           for file in $(find src tests -name '*.js'); do node --check "$file"; done
           node --check scripts/prepare-site.mjs
           node --check scripts/smoke-listings.mjs
+          node --check scripts/validate-runtime-config.mjs
+          node scripts/validate-runtime-config.mjs
           node scripts/check-backend.mjs
 
       - name: Run core regression tests
@@ -123,11 +125,7 @@ jobs:
       - uses: actions/configure-pages@v5
 
       - name: Validate runtime data files
-        run: |
-          for file in config/*.json; do
-            [ -e "$file" ] || continue
-            node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$file"
-          done
+        run: node scripts/validate-runtime-config.mjs
 
       - name: Prepare minimal cache-busted site
         run: |
