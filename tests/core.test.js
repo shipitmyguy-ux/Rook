@@ -81,6 +81,14 @@ test("address in label collapses with equivalent explicit unit address", () => {
   assert.equal(rows.length,1);
 });
 
+test("distinct units are not merged when one address exists only in the label", () => {
+  const rows=dedupeProperties([
+    normalizeProperty({id:"a",label:"123 Main St #A",address:""}),
+    normalizeProperty({id:"b",label:"123 Main St Unit B",address:"123 Main St Unit B, Fort Collins, CO"})
+  ]);
+  assert.equal(rows.length,2);
+});
+
 test("upcoming tours suppress duplicate calendar/property-time entries", () => {
   const properties=[
     normalizeProperty({id:"a",label:"Bloom Rental Living",address:"180 N Aria Way, Fort Collins, CO",showingAt:"2099-10-02T17:00:00Z",metadata:{communityId:"bloom",tour:{startsAt:"2099-10-02T17:00:00Z",calendarEventId:"event-1"}}}),
