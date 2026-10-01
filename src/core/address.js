@@ -28,8 +28,10 @@ export function sameAddress(a = "", b = "") {
 }
 
 export function compatibleAddressIdentity(a = {}, b = {}) {
-  const aUnit = addressUnit(a.address), bUnit = addressUnit(b.address);
-  const aCity = addressCity(a.address), bCity = addressCity(b.address);
+  const aValue = a.address || a.label || "";
+  const bValue = b.address || b.label || "";
+  const aUnit = addressUnit(aValue), bUnit = addressUnit(bValue);
+  const aCity = addressCity(a.address || ""), bCity = addressCity(b.address || "");
   return !(aUnit && bUnit && aUnit !== bUnit) && !(aCity && bCity && aCity !== bCity);
 }
 
