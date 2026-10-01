@@ -725,7 +725,7 @@ async function ensureOverviewMap(container) {
   container.dataset.mapStatus = "loading";
   container.dataset.mapFirstPaint = "pending";
   const area = searchAreaForLocation(overviewState.latestOptions.location || config.search.location);
-  const center = area?.center ? [Number(area.center.lng), Number(area.center.lat)] : [-105.0844, 40.5853];
+  const center = area?.center ? [Number(area.center.lng), Number(area.center.lat)] : [0, 0];
   const map = new maplibregl.Map({
     container,
     style: OPENFREEMAP_STYLE_URL,
@@ -1249,8 +1249,11 @@ export async function renderCardMap(container, property, pointsOfInterest = [], 
   prior?.map?.remove();
   const view = { map: null, observer: null };
   cardMapViews.set(container, view);
-  const fallbackPoint = { lat: 40.5853, lng: -105.0844 };
-  const point = validCoordinates(property) || await geocode(property.address || [property.label, fallbackLocation].join(", "));
+  const area = searchAreaForLocation(fallbackLocation);
+  const fallbackPoint = area?.center && Number.isFinite(Number(area.center.lat)) && Number.isFinite(Number(area.center.lng))
+    ? { lat:Number(area.center.lat), lng:Number(area.center.lng) }
+    : { lat:0, lng:0 };
+  const point = validCoordinates(property) || await geocode(property.address || [property.label, fallbackLocation].join(", "), fallbackLocation);
   const propertyPoint = point || fallbackPoint;
   const pois = [];
   for (const poi of pointsOfInterest) {
