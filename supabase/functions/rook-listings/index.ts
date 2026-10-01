@@ -2270,6 +2270,30 @@ Deno.serve(async (req: Request) => {
   // prior Fort-Collins-only discovery behavior while retaining source isolation and
   // downstream dedupe/filtering.
   const discoveryStarted=Date.now();
+  const wellingtonDirectDiscovery = async (): Promise<AdapterResult> => {
+    const id="wellington-direct";
+    const source="Wellington direct indexes";
+    const urls=[
+      "https://hotpads.com/wellington-co/houses-for-rent",
+      "https://hotpads.com/wellington-co/apartments-for-rent",
+      "https://www.zillow.com/wellington-co/rentals/"
+    ];
+    const found:Listing[]=[];
+    const seen=new Set<string>();
+    await Promise.all(urls.map(async pageUrl=>{
+      try{
+        const snapshot=await browserDiscoverySnapshot(pageUrl);
+        for(const row of browserDiscoveryListings(snapshot,source)){
+          const text=[row.address,row.label,row.metadata?.description].filter(Boolean).join(" ");
+          if(!/wellington/i.test(text))continue;
+          const key=keyOf(row);if(!key||seen.has(key))continue;seen.add(key);
+          found.push({...row,metadata:{...(row.metadata||{}),discoveryMethod:"wellington-direct"}});
+        }
+      }catch{}
+    }));
+    return {id,listings:found,error:found.length?undefined:"no Wellington rows parsed"};
+  };
+
   const adapterTasks = discoveryCities.flatMap(city => {
     const slug = city.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const truliaCity = city.replace(/\s+/g,"_");
@@ -2285,6 +2309,7 @@ Deno.serve(async (req: Request) => {
       searchEngineDiscoveryAdapter(cityLocation)
     ];
   });
+  adapterTasks.push(wellingtonDirectDiscovery());
 
   const selectListings=(rows:Listing[])=>rows.filter(listing=>{
     if(!directListingUrl(listing.sourceUrl))return false;
