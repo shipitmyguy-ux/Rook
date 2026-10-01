@@ -1,3 +1,5 @@
+import { personalCalendarAvailability } from "./integrations/showing-availability.js";
+import { showingRequestMessage, showingRequestPatch, isShowingPending } from "./core/showing-request.js";
 import { directListingUrl, listingAction, needsListingCheck, LISTING_RESOLVER_VERSION } from "./core/listing.js";
 import { properties as fallbackSeedProperties } from "./data/properties.js";
 import { createPropertyStore } from "./core/store.js";
@@ -359,73 +361,111 @@ function openContactWorkflow(property, intent = "contact") {
   workflowPropertyId = String(property.id);
   workflowIntent = intent;
   const methods = propertyContactMethods(property);
-  const title = intent === "showing" ? "Request showing" : "Contact";
-  document.querySelector("#contact-workflow-title").textContent = title;
+  document.querySelector("#contact-workflow-title").textContent = intent === "showing" ? "Request showing" : "Contact";
   document.querySelector("#contact-workflow-property").textContent = property.label || property.address || "Property";
   const actions = document.querySelector("#contact-workflow-actions");
   actions.replaceChildren();
-
+  let messageInput = null;
+  let feedback = null;
+  const currentMessage = () => messageInput?.value || "";
+  if (intent === "showing") {
+    const label = document.createElement("label");
+    label.textContent = "Your available times";
+    const availability = document.createElement("textarea");
+    availability.rows = 3;
+    availability.value = preferences.showingAvailabilityValidUntil && Date.now() > new Date(preferences.showingAvailabilityValidUntil).getTime() ? "" : preferences.showingAvailability || "";
+    availability.placeholder = "e.g. Tuesdays after 4 PM; Saturdays 10 AM–1 PM";
+    label.append(availability);
+    const zoneLabel = document.createElement("label");
+    zoneLabel.textContent = "Time zone";
+    const zone = document.createElement("input");
+    zone.value = preferences.showingTimeZone || "America/Denver";
+    zoneLabel.append(zone);
+    const save = document.createElement("button");
+    save.type = "button"; save.textContent = "Save availability and update message";
+    const messageLabel = document.createElement("label");
+    messageLabel.textContent = "Showing request message";
+    messageInput = document.createElement("textarea");
+    messageInput.rows = 6;
+    messageInput.value = showingRequestMessage(property, availability.value, zone.value);
+    messageLabel.append(messageInput);
+    feedback = document.createElement("p");
+    feedback.setAttribute("role","status");
+    feedback.textContent = "Web forms: copy this message, open the listing, and paste it into the message box. Email drafts are prefilled. Confirm below after submitting.";
+    save.addEventListener("click", () => {
+      preferences = {...preferences, showingAvailabilityCheckedAt:null,showingAvailabilityValidUntil:null, showingAvailability:availability.value.trim(), showingTimeZone:zone.value.trim() || "America/Denver"};
+      savePreferences(preferences, preferenceDefaults);
+      messageInput.value = showingRequestMessage(property, preferences.showingAvailability, preferences.showingTimeZone);
+      feedback.textContent = "Availability saved for future requests.";
+    });
+    const copy = document.createElement("button");
+    copy.type = "button"; copy.textContent = "Copy message";
+    copy.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(currentMessage()); feedback.textContent = "Message copied. Paste it into the booking page."; }
+      catch { messageInput.focus(); messageInput.select(); feedback.textContent = "Select and copy the message above; clipboard access was unavailable."; }
+    });
+    const calendar = document.createElement("button");
+    calendar.type="button"; calendar.textContent="Find times from my personal calendar";
+    calendar.addEventListener("click", async () => {
+      calendar.disabled=true; feedback.textContent="Checking your personal calendar and Rook tours; family calendar excluded…";
+      try {
+        const result=await personalCalendarAvailability({...preferences,showingTimeZone:zone.value.trim()||"America/Denver"},store.getAll());
+        availability.value=result.text;
+        preferences={...preferences,showingAvailability:result.text,showingTimeZone:zone.value.trim()||"America/Denver",showingAvailabilityCheckedAt:result.checkedAt,showingAvailabilityValidUntil:result.validUntil};
+        savePreferences(preferences,preferenceDefaults);
+        messageInput.value=showingRequestMessage(property,result.text,preferences.showingTimeZone);
+        feedback.textContent="Suggested times checked against your personal calendar and Rook tours. Review before sending. Family calendar excluded.";
+      } catch(error) { feedback.textContent=error.message; }
+      finally {calendar.disabled=false;}
+    });
+    actions.append(label,zoneLabel,save,calendar,messageLabel,copy,feedback);
+  }
   if (methods.phone) {
     const call = document.createElement("a");
     call.href = "tel:" + methods.phone.replace(/[^+\d]/g, "");
-    call.className = "workflow-action";
-    call.textContent = "Call " + methods.phone;
-    call.addEventListener("click", () => {
-      if (intent === "showing") {
-        store.upsert(markShowingRequested(property));
-        recordActivity("showing-requested", property, { via: "phone" });
-      } else markPropertyContacted(property);
-    });
+    call.className = "workflow-action"; call.textContent = "Call " + methods.phone;
+    if (intent !== "showing") call.addEventListener("click", () => markPropertyContacted(property));
     actions.append(call);
   }
-
   if (methods.email) {
     const email = document.createElement("a");
     const subject = intent === "showing" ? "Showing request — " + (property.label || property.address || "property") : "Question about " + (property.label || property.address || "property");
-    const body = intent === "showing"
-      ? "Hi, I’m interested in this property and would like to request a showing. Please let me know what times are available."
-      : "Hi, I’m interested in this property and would like more information. Please let me know when you have a chance.";
-    email.href = "mailto:" + encodeURIComponent(methods.email) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
-    email.className = "workflow-action";
-    email.textContent = "Email " + methods.email;
-    email.addEventListener("click", () => {
-      if (intent === "showing") {
-        store.upsert(markShowingRequested(property));
-        recordActivity("showing-requested", property, { via: "email" });
-      } else markPropertyContacted(property);
-    });
+    const updateEmail = () => {
+      const body = intent === "showing" ? currentMessage() : "Hi, I’m interested in this property and would like more information.";
+      email.href = "mailto:" + encodeURIComponent(methods.email) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+    };
+    updateEmail(); messageInput?.addEventListener("input",updateEmail);
+    email.className = "workflow-action"; email.textContent = "Open email draft";
+    email.addEventListener("click", () => { updateEmail(); if (intent !== "showing") markPropertyContacted(property); });
     actions.append(email);
   }
-
   if (methods.listing.url) {
     const listing = document.createElement("a");
-    listing.href = methods.listing.url;
-    listing.target = "_blank";
-    listing.rel = "noopener noreferrer";
+    listing.href = methods.listing.url; listing.target = "_blank"; listing.rel = "noopener noreferrer";
     listing.className = "workflow-action";
-    listing.textContent = intent === "showing" ? "Open source listing to request showing" : "Open source listing";
+    listing.textContent = intent === "showing" ? "Copy message and open booking / listing page" : "Open source listing";
     listing.addEventListener("click", () => {
-      if (intent === "showing") {
-        store.upsert(markShowingRequested(property));
-        recordActivity("showing-requested", property, { via: "listing" });
-      } else markPropertyContacted(property);
+      if (intent !== "showing") { markPropertyContacted(property); return; }
+      navigator.clipboard?.writeText(currentMessage()).then(() => {
+        feedback.textContent = "Message copied. Paste it into the booking form. Did you submit the request? Confirm below once sent.";
+      }).catch(() => { feedback.textContent = "Copy the message above, then paste it into the booking form. Confirm below once sent."; });
     });
     actions.append(listing);
   }
-
   const manual = document.createElement("button");
-  manual.type = "button";
-  manual.className = "workflow-action";
-  manual.textContent = intent === "showing" ? "Already requested" : "Mark as contacted";
+  manual.type = "button"; manual.className = "workflow-action";
+  manual.textContent = intent === "showing" ? "I submitted the request — mark pending" : "Mark as contacted";
   manual.addEventListener("click", () => {
+    const latest = store.getAll().find(p=>String(p.id)===String(property.id)) || property;
     if (intent === "showing") {
-      store.upsert(markShowingRequested(property));
-      recordActivity("showing-requested", property, { via: "manual" });
-    } else markPropertyContacted(property);
+      const patch = showingRequestPatch(latest,currentMessage());
+      if (!patch) { feedback.textContent = "This property already has a scheduled showing."; return; }
+      store.update(latest.id,patch);
+      recordActivity("showing-requested", latest, {via:"confirmed-submission"});
+    } else markPropertyContacted(latest);
     document.querySelector("#contact-workflow-dialog").close();
   });
   actions.append(manual);
-
   document.querySelector("#contact-workflow-dialog").showModal();
 }
 
@@ -474,6 +514,7 @@ function propertyCard(property) {
       <header class="property-card__identity"><span class="property-type-icon" role="img" aria-label="${kind}" title="${kind}">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span><div><h2>${esc(property.label)}</h2><p class="muted">${esc(displayAddress)}</p></div></header>
       <div class="property-card__facts"><strong class="${(pricePingUntil.get(String(property.id))||0)>Date.now() ? "price-discovered-ping" : ""}">${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span></div>
       ${tourChip(property)}
+      ${isShowingPending(property) ? '<p class="status-chip">Showing requested · awaiting reply</p>' : ""}
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
         ${listing.url
@@ -546,7 +587,7 @@ function prioritizedPoiDistance(property, point) {
 function visibleProperties() {
   const allProperties = store.getAll();
   const restricted = filterProperties(allProperties, activeFilter)
-    .filter(property => activeFilter === "review" || matchesSearchDefaults(property, preferences));
+    .filter(property => ["review","pending"].includes(activeFilter) || matchesSearchDefaults(property, preferences));
   let filtered = searchProperties(restricted, query);
   if (promotedTourPropertyId && !filtered.some(property => String(property.id) === promotedTourPropertyId)) {
     const promoted = allProperties.find(property => String(property.id) === promotedTourPropertyId);
@@ -922,7 +963,7 @@ app.innerHTML = `<main class="shell">
 <button id="more-button" class="more-button" aria-label="Open Rook actions" aria-haspopup="dialog">•••</button>
 <dialog id="actions-dialog" class="actions-dialog"><form method="dialog"><div class="dialog-heading"><div><p class="eyebrow">ROOK</p><h2>Actions</h2></div><button class="dialog-close" value="cancel" aria-label="Close">×</button></div>
 <label for="property-search">Search properties</label><input id="property-search" type="search" placeholder="Address, neighborhood, property…">
-<nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Favorited</button><button type="button" data-filter="review">Needs listing</button></nav>
+<nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Favorited</button><button type="button" data-filter="review">Needs listing</button><button type="button" data-filter="pending">Pending showings</button></nav>
 <div class="action-menu"><button id="open-ignored" type="button">Ignored properties</button><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route favorites</button><button type="button" data-refresh-listings>Refresh listings</button><button id="open-settings" type="button">Search preferences</button></div>
 </form></dialog>
 
@@ -964,6 +1005,7 @@ app.innerHTML = `<main class="shell">
 <label class="check-row"><input id="pref-exclude-mobile" type="checkbox"> Exclude mobile/manufactured homes</label>
 <label class="check-row"><input id="pref-kid-friendly" type="checkbox"> Prioritize kid-friendly areas</label>
 <label class="check-row"><input id="pref-school" type="checkbox"> Prioritize nearby schools</label>
+<fieldset><legend>Showing requests</legend><p>Calendar checks use your personal calendar only, plus Rook tours. Family calendar is excluded. Suggestions cover the next 7 days with a 30-minute buffer.</p><label>Earliest showing hour (0–23)<input id="pref-showing-start" type="number" min="0" max="23"></label><label>Latest showing hour (1–24)<input id="pref-showing-end" type="number" min="1" max="24"></label><label>Google connection client ID<input id="pref-google-client" type="text" placeholder="Google OAuth web client ID"></label><label>Your available times<textarea id="pref-showing-availability" rows="3" placeholder="Days, time windows, and any date limits"></textarea></label><label>Time zone<input id="pref-showing-timezone" type="text" placeholder="America/Denver"></label><small>Used to prepare messages. A request becomes pending only after you confirm submission.</small></fieldset>
 <fieldset class="tour-defaults"><legend>Tour defaults</legend><label>Duration (minutes)<input id="pref-tour-duration" type="number" min="15" step="15"></label><label>Reminder (minutes before)<input id="pref-tour-reminder" type="number" min="0" step="15"></label><small>Defaults: 60-minute tours and a reminder 2 hours before.</small></fieldset>
 <label>Visual theme<select id="pref-theme"><option value="default">Default · Twilight</option><option value="warm">Warm</option><option value="night">Night</option><option value="mono">Monochrome</option></select></label>
 <input id="restore-data" type="file" accept="application/json,.json" hidden><div class="dialog-actions"><button id="restore-button" type="button">Restore backup</button><button id="export-data" type="button">Export backup</button><button value="cancel">Cancel</button><button id="save-settings" value="default">Save</button></div></form></dialog>
@@ -1354,6 +1396,11 @@ function openSettings() {
   document.querySelector("#pref-school").checked = Boolean(preferences.schoolPriority);
   document.querySelector("#pref-tour-duration").value = preferences.defaultTourDurationMinutes ?? 60;
   document.querySelector("#pref-tour-reminder").value = preferences.defaultTourReminderMinutes ?? 120;
+  document.querySelector("#pref-showing-start").value = preferences.showingStartHour ?? 9;
+  document.querySelector("#pref-showing-end").value = preferences.showingEndHour ?? 18;
+  document.querySelector("#pref-google-client").value = preferences.googleOAuthClientId || "";
+  document.querySelector("#pref-showing-availability").value = preferences.showingAvailability || "";
+  document.querySelector("#pref-showing-timezone").value = preferences.showingTimeZone || "America/Denver";
   document.querySelector("#pref-theme").value = preferences.visualTheme || "default";
   const dialog = document.querySelector("#settings-dialog");
   lockSettingsBackground();
@@ -1406,6 +1453,12 @@ document.querySelector("#open-settings").addEventListener("click", () => {
 
 document.querySelector("#save-settings").addEventListener("click", e => {
   e.preventDefault();
+  const startHour=Number(document.querySelector("#pref-showing-start").value), endHour=Number(document.querySelector("#pref-showing-end").value);
+  if (!(startHour>=0 && startHour<endHour && endHour<=24)) {
+    document.querySelector("#pref-showing-end").setCustomValidity("Choose showing hours with the end after the start.");
+    document.querySelector("#pref-showing-end").reportValidity(); return;
+  }
+  document.querySelector("#pref-showing-end").setCustomValidity("");
   const selectedTypes = [["apartment","#pref-type-apartment"],["townhome","#pref-type-townhome"],["house","#pref-type-house"]].filter(([,selector]) => document.querySelector(selector).checked).map(([type]) => type);
   if (!selectedTypes.length) {
     document.querySelector("#pref-type-apartment").setCustomValidity("Select at least one property type");
@@ -1427,6 +1480,12 @@ document.querySelector("#save-settings").addEventListener("click", e => {
     ...preferences,
     address1:null,
     pointStyles,
+    showingStartHour: Number(document.querySelector("#pref-showing-start").value),
+    showingEndHour: Number(document.querySelector("#pref-showing-end").value),
+    googleOAuthClientId: document.querySelector("#pref-google-client").value.trim(),
+    showingAvailabilityCheckedAt:null,showingAvailabilityValidUntil:null,
+    showingAvailability: document.querySelector("#pref-showing-availability").value.trim(),
+    showingTimeZone: document.querySelector("#pref-showing-timezone").value.trim() || "America/Denver",
     defaultTourDurationMinutes: Math.max(15, Number(document.querySelector("#pref-tour-duration").value) || 60),
     defaultTourReminderMinutes: Math.max(0, Number(document.querySelector("#pref-tour-reminder").value) || 120),
     location: document.querySelector("#pref-location").value.trim() || config.search.location,

@@ -48,7 +48,7 @@ function showPropertyTooltip(id, coordinates) {
   const address = document.createElement("div");
   address.textContent = property.address || "";
   const hint = document.createElement("small");
-  hint.textContent = "Click for details and actions";
+  hint.textContent = property.status === "showing-requested" && !property.showingAt ? "Showing requested · awaiting reply" : "Click for details and actions";
   content.append(title, facts, address, hint);
   const point = cachedCoordinates(property, overviewState.latestOptions.location);
   if (!coordinates && !point) return;
