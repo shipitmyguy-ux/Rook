@@ -89,6 +89,12 @@ test("upcoming tours suppress duplicate calendar/property-time entries", () => {
   assert.equal(upcomingTours(properties,{},new Date("2099-10-01T00:00:00Z")).length,1);
 });
 
+test("POI settings expose a generic distance sort priority control", async () => {
+  const appSource = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(appSource,/data-poi-sort-priority/);
+  assert.match(appSource,/prioritizedPoiPoints/);
+});
+
 test("POI styles preserve configurable distance sort priority", () => {
   const styles=normalizePointStyles({ridge:{icon:"star",color:"gold",sortPriority:1},school:{sortPriority:3}});
   assert.equal(styles.ridge.sortPriority,1);
