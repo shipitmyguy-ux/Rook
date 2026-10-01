@@ -183,6 +183,7 @@ export function normalizeRuntimeCommunityProperty(property = {}) {
         ...(property.metadata || {}),
         communityId,
         communityName:communityName || property.metadata?.communityName || null,
+        mapAddress:String(source.mapAddress || property.metadata?.mapAddress || ""),
         configuredSourceId:communityId,
         discoveryMethod:property.metadata?.discoveryMethod || "configured-community"
       }
