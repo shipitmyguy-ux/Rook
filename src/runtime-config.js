@@ -3,7 +3,8 @@ const FILES = Object.freeze({
   searchAreas: "../config/search-areas.json",
   communitySources: "../config/community-sources.json",
   exclusions: "../config/exclusions.json",
-  uiDefaults: "../config/ui-defaults.json"
+  uiDefaults: "../config/ui-defaults.json",
+  properties: "../config/properties.json"
 });
 
 const fallback = Object.freeze({
@@ -11,7 +12,8 @@ const fallback = Object.freeze({
   searchAreas:{version:1,defaultLocation:"Fort Collins, CO",areas:[]},
   communitySources:{version:1,sources:[]},
   exclusions:{version:1,listingRules:[]},
-  uiDefaults:{version:1,pointsOfInterest:[]}
+  uiDefaults:{version:1,pointsOfInterest:[]},
+  properties:{version:1,properties:[]}
 });
 
 let state = fallback;
@@ -57,4 +59,8 @@ export function searchAreaForLocation(location = "") {
 
 export function runtimePointsOfInterest() {
   return Array.isArray(state.uiDefaults?.pointsOfInterest) ? state.uiDefaults.pointsOfInterest : [];
+}
+
+export function runtimeSeedProperties() {
+  return Array.isArray(state.properties?.properties) ? state.properties.properties : [];
 }
