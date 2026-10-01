@@ -17,5 +17,22 @@
       "lng": -105.0171262,
       "address": "5480 Ziegler Rd, Fort Collins, CO 80528"
     }
-  ]
+  ],
+  "preferenceDefaults": {
+    "radiusMiles": 15,
+    "minBeds": 2,
+    "maxPrice": 2800,
+    "propertyTypes": [
+      "apartment",
+      "townhome",
+      "house"
+    ],
+    "excludeIncomeRestricted": true,
+    "excludeMobileHomes": true,
+    "kidFriendlyPriority": true,
+    "schoolPriority": true,
+    "visualTheme": "default",
+    "defaultTourDurationMinutes": 60,
+    "defaultTourReminderMinutes": 120
+  }
 }
