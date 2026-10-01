@@ -53,6 +53,42 @@ test("shared showing sync can materialize a missing property card", async () => 
   assert.match(appSource, /applySharedRookStateRow\(property, row, preferences\)/);
 });
 
+test("community inventory collapses to one canonical property and preserves scheduled state", () => {
+  const rows=dedupeProperties([
+    normalizeProperty({
+      id:"bloom", label:"Bloom Rental Living", address:"180 N Aria Way, Fort Collins, CO 80524",
+      source:"Bloom Rental Living", status:"showing-scheduled", showingAt:"2026-10-02T17:00:00Z",
+      metadata:{communityId:"bloom",communityName:"Bloom Rental Living",discoveryMethod:"configured-community"}
+    }),
+    normalizeProperty({
+      id:"bloom-cache-1-205", label:"Bloom Rental Living · Cache #1-205",
+      address:"180 N Aria Way Unit 1-205, Fort Collins, CO 80524", source:"Bloom Rental Living",
+      status:"new", metadata:{floorPlan:"Cache"}
+    })
+  ]);
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].label,"Bloom Rental Living");
+  assert.equal(rows[0].address,"180 N Aria Way, Fort Collins, CO 80524");
+  assert.equal(rows[0].status,"showing-scheduled");
+  assert.equal(rows[0].showingAt,"2026-10-02T17:00:00Z");
+});
+
+test("address in label collapses with equivalent explicit unit address", () => {
+  const rows=dedupeProperties([
+    normalizeProperty({id:"a",label:"569 Vicot Way #A",address:"",source:"Example"}),
+    normalizeProperty({id:"b",label:"569 Vicot Way Unit A",address:"569 Vicot Way Unit A, Fort Collins, CO 80524",source:"Example"})
+  ]);
+  assert.equal(rows.length,1);
+});
+
+test("upcoming tours suppress duplicate calendar/property-time entries", async () => {
+  const properties=[
+    normalizeProperty({id:"a",label:"Bloom Rental Living",address:"180 N Aria Way, Fort Collins, CO",showingAt:"2099-10-02T17:00:00Z",metadata:{communityId:"bloom",tour:{startsAt:"2099-10-02T17:00:00Z",calendarEventId:"event-1"}}}),
+    normalizeProperty({id:"b",label:"Bloom Rental Living · Cache",address:"180 N Aria Way Unit 2, Fort Collins, CO",showingAt:"2099-10-02T17:00:00Z",metadata:{communityId:"bloom",tour:{startsAt:"2099-10-02T17:00:00Z",calendarEventId:"event-1"}}})
+  ];
+  assert.equal((await import("../src/core/tours.js")).upcomingTours(properties,{},new Date("2099-10-01T00:00:00Z")).length,1);
+});
+
 test("normalizeProperty preserves lifecycle and ranking metadata", () => {
   const property = normalizeProperty({
     id: "x",
