@@ -1,5 +1,5 @@
 import { directListingUrl, listingAction, needsListingCheck, LISTING_RESOLVER_VERSION } from "./core/listing.js";
-import { properties as seedProperties } from "./data/properties.js";
+import { properties as fallbackSeedProperties } from "./data/properties.js";
 import { createPropertyStore } from "./core/store.js";
 import { filterProperties, searchProperties, PROPERTY_STATUS, applyEvidence, classifyPropertyKind, ignorePropertyPatch, restoreIgnoredPatch } from "./core/property.js";
 import { housingEvidence } from "./data/evidence.js";
@@ -17,12 +17,13 @@ import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1"
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState } from "./integrations/sync.js?v=shared-state-v1";
 import { config } from "./config.js";
-import { loadRuntimeConfig, runtimePointsOfInterest } from "./runtime-config.js";
+import { loadRuntimeConfig, runtimePointsOfInterest, runtimeSeedProperties } from "./runtime-config.js";
 
 await loadRuntimeConfig();
 
 const app = document.querySelector("#app");
-const store = createPropertyStore(seedProperties);
+const runtimeSeeds = runtimeSeedProperties();
+const store = createPropertyStore(runtimeSeeds.length ? runtimeSeeds : fallbackSeedProperties);
 let activeFilter = "all";
 let query = "";
 let preferences = loadPreferences();
