@@ -8,6 +8,7 @@ const OPENFREEMAP_FALLBACK_STYLE_URL = "https://tiles.openfreemap.org/styles/bri
 const ROOK_SOURCE_ID = "rook-listings";
 const ROOK_LAYER_ID = "rook-listings-symbols";
 const ROOK_HALO_LAYER_ID = "rook-listings-halo";
+const ROOK_PRICE_LAYER_ID = "rook-listings-price-ping";
 const FORT_COLLINS_CENTER = [-105.0844, 40.5853];
 
 let maplibrePromise = null;
@@ -447,13 +448,15 @@ function installOverviewLayers(map) {
       paint: {
         "circle-radius": [
           "case",
+          ["boolean", ["feature-state", "pricePing"], false], 22,
           ["boolean", ["feature-state", "selected"], false], 15,
           ["boolean", ["feature-state", "hovered"], false], 12,
           0
         ],
-        "circle-color": "#ffc429",
+        "circle-color": ["case", ["boolean", ["feature-state", "pricePing"], false], "#b46cff", "#ffc429"],
         "circle-opacity": [
           "case",
+          ["boolean", ["feature-state", "pricePing"], false], 0.5,
           ["boolean", ["feature-state", "selected"], false], 0.3,
           ["boolean", ["feature-state", "hovered"], false], 0.2,
           0
@@ -464,7 +467,7 @@ function installOverviewLayers(map) {
           ["boolean", ["feature-state", "hovered"], false], 1,
           0
         ],
-        "circle-stroke-color": "#ffc429"
+        "circle-stroke-color": ["case", ["boolean", ["feature-state", "pricePing"], false], "#d8adff", "#ffc429"]
       }
     });
   }
@@ -662,6 +665,24 @@ async function ensureOverviewMap(container) {
   return map;
 }
 
+
+export function pingMapProperty(id, { label="", duration=500 } = {}) {
+  const map = overviewState.map;
+  if (!map || !overviewState.ready || id == null) return;
+  const key=String(id);
+  setFeatureStateSafe(key,{pricePing:true});
+  let popup=null;
+  const property=overviewState.latestProperties.find(p=>String(p.id)===key);
+  const point=property && cachedCoordinates(property, overviewState.latestOptions.location || "Fort Collins, CO");
+  if(label && point && window.maplibregl?.Popup){
+    const el=document.createElement("div");
+    el.className="map-price-ping-label";
+    el.textContent=label;
+    popup=new window.maplibregl.Popup({closeButton:false,closeOnClick:false,offset:18,className:"rook-price-ping-popup"})
+      .setLngLat([point.lng,point.lat]).setDOMContent(el).addTo(map);
+  }
+  window.setTimeout(()=>{ setFeatureStateSafe(key,{pricePing:false}); popup?.remove(); }, Math.max(100,Number(duration)||500));
+}
 export function renderPropertyMap(container, properties = [], options = {}) {
   if (!container) return;
   overviewState.latestProperties = [...properties];
