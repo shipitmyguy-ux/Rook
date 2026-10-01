@@ -167,7 +167,7 @@ export function googleMapsDirectionsUrl(property) {
   return "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(destination);
 }
 
-export function mapLocationQueries(property, fallbackLocation = "Fort Collins, CO") {
+export function mapLocationQueries(property, fallbackLocation = config.search.location) {
   if (validCoordinates(property)) return [];
   const values = [];
   const push = value => {
@@ -202,11 +202,11 @@ export function mapLocationQueries(property, fallbackLocation = "Fort Collins, C
   return values;
 }
 
-function mapLocationQuery(property, fallbackLocation = "Fort Collins, CO") {
+function mapLocationQuery(property, fallbackLocation = config.search.location) {
   return mapLocationQueries(property, fallbackLocation)[0] || "";
 }
 
-export function poiLocationQuery(poi = {}, fallbackLocation = "Fort Collins, CO") {
+export function poiLocationQuery(poi = {}, fallbackLocation = config.search.location) {
   const raw = String(poi.address || poi.query || poi.location || poi.label || "").trim();
   if (!raw) return "";
   const hasContext = raw.includes(",") || /\b(?:co|colorado)\b/i.test(raw) || /\b\d{5}(?:-\d{4})?\b/.test(raw);
@@ -239,7 +239,7 @@ function validCoordinates(point, fallbackLocation = "") {
   return { lat, lng };
 }
 
-function cachedCoordinates(property, fallbackLocation = "Fort Collins, CO") {
+function cachedCoordinates(property, fallbackLocation = config.search.location) {
   const direct = validCoordinates(property, fallbackLocation);
   if (direct) return direct;
   const cache = readGeocodeCache();
@@ -250,7 +250,7 @@ function cachedCoordinates(property, fallbackLocation = "Fort Collins, CO") {
   return null;
 }
 
-async function geocodeProperty(property, fallbackLocation = "Fort Collins, CO") {
+async function geocodeProperty(property, fallbackLocation = config.search.location) {
   const direct = validCoordinates(property, fallbackLocation);
   if (direct) return direct;
   for (const q of mapLocationQueries(property, fallbackLocation)) {
@@ -278,7 +278,7 @@ function mapTourLabel(property) {
   return `TOUR · ${day} · ${time}`;
 }
 
-function propertyFeature(property, fallbackLocation = "Fort Collins, CO") {
+function propertyFeature(property, fallbackLocation = config.search.location) {
   const point = cachedCoordinates(property, fallbackLocation);
   if (!point) return null;
   const tourLabel = mapTourLabel(property);
@@ -337,7 +337,7 @@ function spreadCoincidentFeatures(features = []) {
   return features;
 }
 
-function listingGeoJson(properties = [], fallbackLocation = "Fort Collins, CO") {
+function listingGeoJson(properties = [], fallbackLocation = config.search.location) {
   const features = properties.map(property => propertyFeature(property, fallbackLocation)).filter(Boolean);
   return {
     type: "FeatureCollection",
@@ -400,7 +400,7 @@ function updateOverviewSource({ fit = false } = {}) {
     overviewState.pendingSourceUpdate = true;
     return;
   }
-  const fallbackLocation = overviewState.latestOptions.location || "Fort Collins, CO";
+  const fallbackLocation = overviewState.latestOptions.location || config.search.location;
   const data = listingGeoJson(overviewState.latestProperties, fallbackLocation);
   const source = map.getSource(ROOK_SOURCE_ID);
   source?.setData(data);
@@ -432,7 +432,7 @@ function updateOverviewSource({ fit = false } = {}) {
 }
 
 async function geocodeMissingOverviewProperties() {
-  const fallbackLocation = overviewState.latestOptions.location || "Fort Collins, CO";
+  const fallbackLocation = overviewState.latestOptions.location || config.search.location;
   const properties = [...overviewState.latestProperties];
   const missing = properties.filter(property => !cachedCoordinates(property, fallbackLocation));
   if (!missing.length) {
@@ -803,7 +803,7 @@ export function pingMapProperty(id, { label="", duration=500 } = {}) {
   setFeatureStateSafe(key,{pricePing:true});
   let popup=null;
   const property=overviewState.latestProperties.find(p=>String(p.id)===key);
-  const point=property && cachedCoordinates(property, overviewState.latestOptions.location || "Fort Collins, CO");
+  const point=property && cachedCoordinates(property, overviewState.latestOptions.location || config.search.location);
   if(label && point && window.maplibregl?.Popup){
     const el=document.createElement("div");
     el.className="map-price-ping-label";
@@ -835,7 +835,7 @@ export async function focusPropertyOnMap(property, options = {}) {
   if (!container) return;
   container.dataset.focusRequestedPropertyId = String(property.id);
   await ensureOverviewMap(container);
-  const fallbackLocation = overviewState.latestOptions.location || "Fort Collins, CO";
+  const fallbackLocation = overviewState.latestOptions.location || config.search.location;
   let point = cachedCoordinates(property, fallbackLocation);
   if (!point) {
     point = await geocodeProperty(property, fallbackLocation);
@@ -870,7 +870,7 @@ function writeDistanceCache(cache) {
   catch {}
 }
 
-function distanceKey(property, poi, fallbackLocation = "Fort Collins, CO") {
+function distanceKey(property, poi, fallbackLocation = config.search.location) {
   const propertyPoint = validCoordinates(property);
   const propertyQuery = propertyPoint ? `${propertyPoint.lat},${propertyPoint.lng}` : mapLocationQuery(property, fallbackLocation);
   const poiPoint = validCoordinates(poi);
@@ -1028,7 +1028,7 @@ export function normalizePoiSearchCandidate(row = {}, originalQuery = "") {
   };
 }
 
-export function poiSearchQueries(query, fallbackLocation = "Fort Collins, CO") {
+export function poiSearchQueries(query, fallbackLocation = config.search.location) {
   const raw = normalizeQuery(query);
   if (!raw) return [];
   const hasRoadSuffix = /\b(?:st|street|rd|road|dr|drive|ln|lane|way|ct|court|ave|avenue|blvd|boulevard|pkwy|parkway|pl|place|cir|circle|trl|trail)\.?$/i.test(raw);
@@ -1044,7 +1044,7 @@ export function poiSearchQueries(query, fallbackLocation = "Fort Collins, CO") {
   return values;
 }
 
-export async function searchPoiCandidates(query, fallbackLocation = "Fort Collins, CO", limit = 5) {
+export async function searchPoiCandidates(query, fallbackLocation = config.search.location, limit = 5) {
   const queries = poiSearchQueries(query, fallbackLocation);
   if (!queries.length) return [];
   const safeLimit = Math.max(1, Math.min(5, Number(limit) || 5));
@@ -1169,7 +1169,7 @@ function markerOffset(point, center, zoom) {
 
 
 const cardMapViews = new Map();
-export function getCachedPropertyDistances(property, pointsOfInterest = [], fallbackLocation = "Fort Collins, CO") {
+export function getCachedPropertyDistances(property, pointsOfInterest = [], fallbackLocation = config.search.location) {
   return pointsOfInterest.map((poi, index) => {
     const key = distanceKey(property, poi, fallbackLocation);
     const value = cachedDistanceValue(key);
@@ -1186,7 +1186,7 @@ export function getCachedPropertyDistances(property, pointsOfInterest = [], fall
   });
 }
 
-export async function resolvePropertyDistances(property, pointsOfInterest = [], fallbackLocation = "Fort Collins, CO") {
+export async function resolvePropertyDistances(property, pointsOfInterest = [], fallbackLocation = config.search.location) {
   if (!property || !pointsOfInterest.length) return [];
   const propertyPoint = cachedCoordinates(property, fallbackLocation) || await geocodeProperty(property, fallbackLocation);
   return Promise.all(pointsOfInterest.map(async (poi, index) => {
@@ -1226,7 +1226,7 @@ export async function resolvePropertyDistances(property, pointsOfInterest = [], 
   }));
 }
 
-export async function updateCardDistances(target, property, pointsOfInterest = [], fallbackLocation = "Fort Collins, CO") {
+export async function updateCardDistances(target, property, pointsOfInterest = [], fallbackLocation = config.search.location) {
   if (!target || !property || !pointsOfInterest.length || target.dataset.distanceResolved === "true") return;
   const distances = await resolvePropertyDistances(property, pointsOfInterest, fallbackLocation);
   if (!target.isConnected) return;
@@ -1235,7 +1235,7 @@ export async function updateCardDistances(target, property, pointsOfInterest = [
 }
 
 
-export async function renderCardMap(container, property, pointsOfInterest = [], fallbackLocation = "Fort Collins, CO") {
+export async function renderCardMap(container, property, pointsOfInterest = [], fallbackLocation = config.search.location) {
   if (!container || !property) return;
   for (const [element, view] of cardMapViews) {
     if (!element.isConnected) {
