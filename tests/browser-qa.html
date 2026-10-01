@@ -44,7 +44,7 @@ function finish(){
     const links=[...doc.querySelectorAll('link[rel="stylesheet"]')].map(x=>x.getAttribute("href")||"");
     const checks={
       v3:links.some(x=>x.includes("rook-ui-v3.css")),
-      cardWide:cardRect.width>viewport*.85,
+      cardWide:selectedCard ? cardRect.width>=overview.getBoundingClientRect().width*.94 : cardRect.width>viewport*.85,
       cardHeight:mobile?cardRect.height>=120&&cardRect.height<168:cardRect.height>=105,
       realLayout:Math.abs(mediaRect.left-cardRect.left)<6&&contentRect.top>=cardRect.top&&contentRect.bottom<=cardRect.bottom+1&&contextRect.right<=cardRect.right,
       contentPosition:mobile?contentRect.top<cardRect.top+18:contentRect.left>cardRect.left+cardRect.width*.25,
