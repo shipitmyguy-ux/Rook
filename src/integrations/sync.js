@@ -1,6 +1,6 @@
 import { classifyHousingEmail, matchEmailToProperty, normalizeEmailEvent } from "./email.js";
 import { applyTour, normalizeTour } from "../core/tours.js";
-import { applyEvidence } from "../core/property.js";
+import { applyEvidence, normalizeProperty, PROPERTY_STATUS } from "../core/property.js";
 import { config } from "../config.js";
 
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
@@ -155,6 +155,36 @@ async function scanGmailInBrowser({ since = null, preferences = {} } = {}) {
     messages,
     cursor:new Date().toISOString()
   };
+}
+
+export function applySharedRookStateRow(property = {}, row = {}, preferences = {}) {
+  const rawTour = row?.tour && typeof row.tour === "object" ? row.tour : {};
+  const startsAt = rawTour.startsAt || row.showing_at || null;
+  let next = normalizeProperty({
+    ...property,
+    id:property.id,
+    ...(row.address ? {address:row.address} : {}),
+    ...(row.label ? {label:row.label} : {}),
+    ...(row.contact_outcome ? {contactOutcome:row.contact_outcome} : {}),
+    saved:Boolean(property.saved || row.saved || row.status === PROPERTY_STATUS.SHOWING_SCHEDULED),
+    metadata:{
+      ...(property.metadata || {}),
+      sharedSyncUpdatedAt:row.updated_at || null,
+      sharedSyncLastEmailAt:row.last_email_at || null,
+      sharedSyncSourceMessageIds:Array.isArray(row.source_message_ids) ? row.source_message_ids : [],
+      evidence:Array.isArray(row.evidence) ? row.evidence : (property.metadata?.evidence || [])
+    }
+  });
+  if (startsAt) {
+    next = applyTour(next, {
+      ...rawTour,
+      startsAt,
+      source:rawTour.source || "shared-sync"
+    }, preferences);
+  } else if (row.status) {
+    next = normalizeProperty({ ...next, id:next.id, status:row.status, showingAt:null });
+  }
+  return next;
 }
 
 export async function fetchSharedRookState(fetchImpl = fetch) {
