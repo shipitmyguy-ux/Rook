@@ -3,10 +3,30 @@ const clean = canonicalAddress;
 const streetKey = property => streetAddressKey(property.address);
 const compatibleIdentity = compatibleAddressIdentity;
 
+function addressLikeLabel(value = "") {
+  const label=String(value||"").trim();
+  return /^\d{1,6}\s+.+\b(?:st|street|ave|avenue|rd|road|dr|drive|ln|lane|ct|court|way|blvd|boulevard|pl|place|cir|circle)\b/i.test(label) ? label : "";
+}
+
+function communityIdentity(property = {}) {
+  const metadata=property.metadata || {};
+  if (metadata.communityId) return "community:" + clean(metadata.communityId);
+  if (metadata.configuredSourceId && metadata.discoveryMethod === "configured-community") return "community:" + clean(metadata.configuredSourceId);
+  if (metadata.floorPlan && property.source && String(property.label||"").includes("·")) return "community-source:" + clean(property.source);
+  return "";
+}
+
 function propertyKeys(property = {}) {
   const keys = [];
+  const communityKey=communityIdentity(property);
+  if (communityKey) keys.push(communityKey);
   if (property.address) keys.push("address:" + clean(property.address));
   if (property.address) keys.push("street:"+streetKey(property));
+  const labelAddress=addressLikeLabel(property.label);
+  if (labelAddress) {
+    keys.push("address:" + clean(labelAddress));
+    keys.push("street:" + streetAddressKey(labelAddress));
+  }
   if (property.sourceUrl) {
     try { const u=new URL(property.sourceUrl); keys.push("url:"+u.hostname+u.pathname.replace(/\/$/,"")); } catch {}
   }
@@ -33,7 +53,7 @@ function mergeProperty(prior, property) {
     ...prior,
     ...property,
     address: prior.address || property.address || "",
-    label: prior.label || property.label || "Untitled property",
+    label: property.metadata?.communityName || prior.metadata?.communityName || property.label || prior.label || "Untitled property",
     price: verified.price ?? prior.price ?? property.price,
     beds: verified.beds ?? prior.beds ?? property.beds,
     baths: verified.baths ?? prior.baths ?? property.baths,
