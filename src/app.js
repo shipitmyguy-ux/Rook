@@ -696,7 +696,7 @@ async function refreshListings(trigger = "manual") {
       if(meta?.adapter)discoveryTelemetry.adapters.push(meta.adapter);
       if(meta)Object.assign(discoveryTelemetry,Object.fromEntries(Object.entries(meta).filter(([key])=>key!=="adapter")));
       const indicator=document.querySelector("#pull-indicator");
-      if(indicator)indicator.textContent=`Found ${discoveryTelemetry.count} candidates · ${discoveryTelemetry.adapters.length}/8 sources checked`;
+      if(indicator)indicator.textContent=`Found ${discoveryTelemetry.count} candidates · ${discoveryTelemetry.adapters.length} source feeds checked`;
       scheduleRenderList();
       void resolveUnavailableListings().then(()=>scheduleRenderList());
     }});
