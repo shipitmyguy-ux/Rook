@@ -1122,7 +1122,9 @@ async function uncachedSearchDiscovery(location: string): Promise<AdapterResult>
   const domains = Array.isArray(runtime.providers?.searchDomains) && runtime.providers.searchDomains.length
     ? runtime.providers.searchDomains
     : ["zillow.com","realtor.com","hotpads.com","trulia.com","apartments.com","rent.com","redfin.com","homes.com","zumper.com","forrent.com"];
-  const city = String(location || "Fort Collins, CO").split(",")[0].trim();
+  const locationParts = String(location || runtime.searchAreas?.defaultLocation || "Fort Collins, CO").split(",");
+  const city = locationParts[0]?.trim() || "Fort Collins";
+  const state = locationParts[1]?.trim() || "CO";
   const rows: Listing[] = [];
   const seen = new Set<string>();
   // These public RSS requests each have an 8s timeout. Run them together so a
@@ -1130,7 +1132,7 @@ async function uncachedSearchDiscovery(location: string): Promise<AdapterResult>
   // exceed the caller's overall timeout.
   const queries=domains.flatMap(domain=>["(house OR townhome OR duplex)","(condo OR apartment)","for rent by owner"].map(category=>({domain,category})));
   const searches = await mapSettledBounded(queries,async ({domain,category}) => {
-    const query = `site:${domain} "${city}" CO ("for rent" OR rental) ${category}`;
+    const query = `site:${domain} "${city}" ${state} ("for rent" OR rental) ${category}`;
     const searchUrl = "https://www.bing.com/search?format=rss&count=50&q=" + encodeURIComponent(query);
     const rss = await fetchText(searchUrl);
     const items = [...rss.matchAll(/<item>([\s\S]*?)<\/item>/gi)].map(m => m[1]);
@@ -2060,6 +2062,8 @@ async function searchPoiSuggestions(query:string, location:string, limit=5) {
   const variants = poiQueryVariants(query, location);
   const found:any[] = [];
   const seen = new Set<string>();
+  const runtime = await loadDiscoveryRuntimeConfig();
+  const area = runtimeSearchArea(runtime.searchAreas, location);
 
   const addPhoton = (payload:any, matchedQuery:string) => {
     for (const feature of Array.isArray(payload?.features) ? payload.features : []) {
@@ -2094,9 +2098,9 @@ async function searchPoiSuggestions(query:string, location:string, limit=5) {
     photon.searchParams.set("q", variant.replace(/,\s*Fort Collins,?\s*CO$/i,""));
     photon.searchParams.set("limit", String(safeLimit));
     photon.searchParams.set("lang", "en");
-    if (/fort\s+collins/i.test(location)) {
-      photon.searchParams.set("lat", "40.5853");
-      photon.searchParams.set("lon", "-105.0844");
+    if (area?.center && Number.isFinite(Number(area.center.lat)) && Number.isFinite(Number(area.center.lng))) {
+      photon.searchParams.set("lat", String(area.center.lat));
+      photon.searchParams.set("lon", String(area.center.lng));
       photon.searchParams.set("zoom", "12");
       photon.searchParams.set("location_bias_scale", "0.05");
     }
@@ -2377,7 +2381,8 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "GET") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
 
   const url = new URL(req.url);
-  const location = url.searchParams.get("location") || "Fort Collins, CO";
+  const runtimeDefaults = await loadDiscoveryRuntimeConfig();
+  const location = url.searchParams.get("location") || runtimeDefaults.searchAreas?.defaultLocation || "Fort Collins, CO";
   if (url.searchParams.get("state") === "1") {
     const state = await readSharedRookState();
     return new Response(JSON.stringify({ state }), { headers:corsHeaders });
