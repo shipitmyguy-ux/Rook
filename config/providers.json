@@ -23,7 +23,8 @@
           "label": "condos",
           "url": "https://www.realtor.com/apartments/{slug}_CO/type-condo"
         }
-      ]
+      ],
+      "verificationFeed": "https://www.realtor.com/apartments/{slug}_CO"
     },
     {
       "id": "rent",
@@ -47,14 +48,16 @@
           "label": "condos",
           "url": "https://www.rent.com/colorado/{slug}-condos"
         }
-      ]
+      ],
+      "verificationFeed": "https://www.rent.com/colorado/{slug}-apartments"
     },
     {
       "id": "apartmentlist",
       "label": "Apartment List",
       "host": "apartmentlist.com",
       "browserDiscovery": true,
-      "cityFeed": "https://www.apartmentlist.com/co/{slug}"
+      "cityFeed": "https://www.apartmentlist.com/co/{slug}",
+      "verificationFeed": "https://www.apartmentlist.com/co/{slug}"
     },
     {
       "id": "apartments",
