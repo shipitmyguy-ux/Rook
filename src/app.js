@@ -2,7 +2,7 @@ import { directListingUrl, listingAction, needsListingCheck, LISTING_RESOLVER_VE
 import { properties as fallbackSeedProperties } from "./data/properties.js";
 import { createPropertyStore } from "./core/store.js";
 import { filterProperties, searchProperties, PROPERTY_STATUS, applyEvidence, classifyPropertyKind, ignorePropertyPatch, restoreIgnoredPatch } from "./core/property.js";
-import { housingEvidence } from "./data/evidence.js";
+import { housingEvidence as fallbackHousingEvidence } from "./data/evidence.js";
 import { propertyFromUrl } from "./core/import.js";
 import { googleMapsMultiStopUrl } from "./core/route.js";
 import { loadPreferences, savePreferences } from "./core/preferences.js";
@@ -17,16 +17,18 @@ import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1"
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState, applySharedRookStateRow } from "./integrations/sync.js?v=shared-state-v2";
 import { config } from "./config.js";
-import { loadRuntimeConfig, runtimePointsOfInterest, runtimeSeedProperties } from "./runtime-config.js";
+import { loadRuntimeConfig, runtimePointsOfInterest, runtimeSeedProperties, runtimePreferenceDefaults, runtimeHousingEvidence } from "./runtime-config.js";
 
 await loadRuntimeConfig();
 
 const app = document.querySelector("#app");
 const runtimeSeeds = runtimeSeedProperties();
 const store = createPropertyStore(runtimeSeeds.length ? runtimeSeeds : fallbackSeedProperties);
+const housingEvidence = runtimeHousingEvidence().length ? runtimeHousingEvidence() : fallbackHousingEvidence;
 let activeFilter = "all";
 let query = "";
-let preferences = loadPreferences();
+const preferenceDefaults = runtimePreferenceDefaults();
+let preferences = loadPreferences(preferenceDefaults);
 document.documentElement.dataset.theme = preferences.visualTheme || "default";
 let refreshInFlight = false;
 let discoveryTelemetry=null;
@@ -131,7 +133,7 @@ async function scanEmailNow() {
       recordActivity(update.kind || "email-update", property || store.getAll().find(p => p.id === update.propertyId), { messageId:update.email?.id });
     }
     preferences = { ...preferences, emailScanCursor:result.cursor || preferences.emailScanCursor, emailLastScanAt:result.lastScanAt };
-    savePreferences(preferences);
+    savePreferences(preferences, preferenceDefaults);
     const summary = `${result.scanned} emails scanned · ${result.updates.length} updates${result.review.length ? ` · ${result.review.length} need review` : ""}`;
     if (status) status.textContent = summary;
     renderList();
@@ -1224,7 +1226,7 @@ function approvePoiCandidate(index) {
     pointsOfInterest:[...(preferences.pointsOfInterest || []), { id, ...candidate, primary:false, kind:"poi" }],
     removedPointIds:(preferences.removedPointIds || []).filter(value => value !== id)
   };
-  savePreferences(preferences);
+  savePreferences(preferences, preferenceDefaults);
   document.querySelector("#pref-poi-query").value = "";
   pendingPoiLookup = null;
   renderPoiLookupResults();
@@ -1317,7 +1319,7 @@ document.querySelector("#pref-poi-styles").addEventListener("click", event => {
     pointsOfInterest:(preferences.pointsOfInterest || []).filter(point => String(point.id) !== String(id)),
     removedPointIds:[...new Set([...(preferences.removedPointIds || []), String(id)])]
   };
-  savePreferences(preferences);
+  savePreferences(preferences, preferenceDefaults);
   renderPoiStyleSettings();
   renderList();
 });
@@ -1365,7 +1367,7 @@ document.querySelector("#save-settings").addEventListener("click", e => {
     schoolPriority: document.querySelector("#pref-school").checked,
     visualTheme: document.querySelector("#pref-theme").value || "default"
   };
-  savePreferences(preferences);
+  savePreferences(preferences, preferenceDefaults);
   document.documentElement.dataset.theme = preferences.visualTheme || "default";
   recordActivity("preferences-updated", null);
   document.querySelector("#settings-dialog").close();
@@ -1382,7 +1384,7 @@ document.querySelector("#restore-data").addEventListener("change", async e => {
     const backup = parseRookBackup(await file.text());
     store.replaceAll(backup.properties);
     preferences = { ...preferences, ...backup.preferences };
-    savePreferences(preferences);
+    savePreferences(preferences, preferenceDefaults);
     recordActivity("backup-restored", null, { propertyCount: backup.properties.length });
     document.querySelector("#settings-dialog").close();
     renderList();
