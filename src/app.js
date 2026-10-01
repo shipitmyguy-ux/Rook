@@ -1110,8 +1110,11 @@ document.querySelector("#showing-contact-request").addEventListener("click", () 
 document.querySelector("#showing-already-requested").addEventListener("click", () => {
   const property = store.getAll().find(p => String(p.id) === workflowPropertyId);
   if (property) {
-    store.upsert(markShowingRequested(property));
-    recordActivity("showing-requested", property, { via: "manual" });
+    const patch=showingRequestPatch(property);
+    if (patch) {
+      store.update(property.id,patch);
+      recordActivity("showing-requested", property, { via:"manual" });
+    }
   }
   document.querySelector("#showing-workflow-dialog").close();
 });
