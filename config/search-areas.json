@@ -17,37 +17,51 @@
         {
           "city": "Fort Collins",
           "state": "CO",
-          "minRadiusMiles": 0
+          "lat": 40.5853,
+          "lng": -105.0844,
+          "coverageRadiusMiles": 4
         },
         {
           "city": "Laporte",
           "state": "CO",
-          "minRadiusMiles": 5
+          "lat": 40.6264,
+          "lng": -105.1392,
+          "coverageRadiusMiles": 3
         },
         {
           "city": "Timnath",
           "state": "CO",
-          "minRadiusMiles": 6
+          "lat": 40.5291,
+          "lng": -104.9853,
+          "coverageRadiusMiles": 3
         },
         {
           "city": "Wellington",
           "state": "CO",
-          "minRadiusMiles": 8
+          "lat": 40.7039,
+          "lng": -105.0086,
+          "coverageRadiusMiles": 4
         },
         {
           "city": "Bellvue",
           "state": "CO",
-          "minRadiusMiles": 8
+          "lat": 40.6266,
+          "lng": -105.1711,
+          "coverageRadiusMiles": 3
         },
         {
           "city": "Windsor",
           "state": "CO",
-          "minRadiusMiles": 10
+          "lat": 40.4775,
+          "lng": -104.9014,
+          "coverageRadiusMiles": 4
         },
         {
           "city": "Loveland",
           "state": "CO",
-          "minRadiusMiles": 12
+          "lat": 40.3978,
+          "lng": -105.075,
+          "coverageRadiusMiles": 5
         }
       ],
       "extraIndexFeeds": [
@@ -55,21 +69,18 @@
           "id": "wellington-hotpads-houses",
           "source": "HotPads · Wellington houses",
           "city": "Wellington",
-          "minRadiusMiles": 8,
           "url": "https://hotpads.com/wellington-co/houses-for-rent"
         },
         {
           "id": "wellington-hotpads-apartments",
           "source": "HotPads · Wellington apartments",
           "city": "Wellington",
-          "minRadiusMiles": 8,
           "url": "https://hotpads.com/wellington-co/apartments-for-rent"
         },
         {
           "id": "wellington-zillow",
           "source": "Zillow · Wellington",
           "city": "Wellington",
-          "minRadiusMiles": 8,
           "url": "https://www.zillow.com/wellington-co/rentals/"
         }
       ]
