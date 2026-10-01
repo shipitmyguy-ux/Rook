@@ -1080,7 +1080,7 @@ function fallbackListingFromHtml(html: string, pageUrl: string, known: { address
 
 function addressFromDiscoveryContext(text: string) {
   const normalized = String(text || "").replace(/\s+/g, " ");
-  const match = [...normalized.matchAll(/(?<![\d$,])(\d{1,6}\s+[A-Za-z0-9.'#-]+(?:\s+[A-Za-z0-9.'#-]+){0,7}\s+(?:St|Street|Ave|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Way|Blvd|Boulevard|Pl|Place|Cir|Circle)\b)(?:\s*,?\s*(?:Fort\s+Collins|Wellington|Laporte|Timnath|Windsor|Bellvue|Loveland))?(?:\s*,?\s*CO)?(?:\s+\d{5})?/gi)].find(m=>!/(?:beds?|baths?|sqft|sq\s*ft|price|bicycle|storage)/i.test(m[1]));
+  const match = [...normalized.matchAll(/(?<![\d$,])(\d{1,6}\s+[A-Za-z0-9.'#-]+(?:\s+[A-Za-z0-9.'#-]+){0,7}\s+(?:St|Street|Ave|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Way|Blvd|Boulevard|Pl|Place|Cir|Circle)\b)/gi)].find(m=>!/(?:beds?|baths?|sqft|sq\s*ft|price|bicycle|storage)/i.test(m[1]));
   const unit=normalized.slice((match?.index||0)+(match?.[0]?.length||0)).match(/^\s*(?:,?\s*(?:apt|unit|suite|#)\s*#?\s*)([a-z0-9-]+)/i);
   return match ? (match[0].trim()+(unit?" Unit "+unit[1]:"")) : "";
 }
@@ -1242,13 +1242,10 @@ function incomeRestrictionText(listing: Listing) {
   return parts.filter(Boolean).join(" ").toLowerCase();
 }
 
-function isIncomeRestrictedListing(listing: Listing) {
+function isIncomeRestrictedListing(listing: Listing, rules:any[] = []) {
   const text = incomeRestrictionText(listing);
   if (/(income[-\s]restricted|income\s+(?:limit|limits|limited|qualified|qualification|qualifications)|income-qualified|affordable\s+housing(?:\s+programs?)?|section\s*8|\blihtc\b|low[-\s]income\s+housing\s+tax\s+credit)/i.test(text)) return true;
-  const label = String(listing.label || "");
-  const address = String(listing.address || "");
-  if (/\bbuffalo\s+run(?:\s+apartments)?\b/i.test(label)) return true;
-  return /\b1245\s+e\s+lincoln\s+ave\b/i.test(address) && /buffalo\s+run/i.test(label + " " + text);
+  return listingMatchesConfiguredExclusion(listing, rules.filter(rule => rule?.kind === "income-restricted"));
 }
 
 
@@ -1267,9 +1264,7 @@ function keyOf(row: Listing) {
   const raw=String(row.address || row.label || "");
   // Keep the unit in the identity, but normalize common variants (#A, Unit A,
   // Apt A) so the same rental from different portals collapses to one record.
-  const firstLine=(raw.split(/[\n|]/)[0] || "").split(",")[0]
-    .replace(/\s+(?:Fort\s+Collins|Wellington|Laporte|Timnath|Windsor|Bellvue|Loveland)\b.*$/i,"")
-    .trim();
+  const firstLine=(raw.split(/[\n|]/)[0] || "").split(",")[0].trim();
   return canonicalAddress(firstLine) || directListingUrl(row.sourceUrl) || row.id;
 }
 
@@ -2143,6 +2138,184 @@ async function searchPoiSuggestions(query:string, location:string, limit=5) {
   }).slice(0, safeLimit);
 }
 
+const RUNTIME_CONFIG_BASE = (Deno.env.get("ROOK_RUNTIME_CONFIG_BASE") || "https://shipitmyguy-ux.github.io/Rook/config").replace(/\/$/,"");
+const runtimeConfigMemory = new Map<string,{at:number,value:any}>();
+const RUNTIME_CONFIG_TTL_MS = 60_000;
+
+async function runtimeConfigJson(fileName:string, fallback:any) {
+  const prior = runtimeConfigMemory.get(fileName);
+  if (prior && Date.now() - prior.at < RUNTIME_CONFIG_TTL_MS) return prior.value;
+  try {
+    const payload = await fetchJsonTimeout(RUNTIME_CONFIG_BASE + "/" + fileName, 2500, {
+      "accept":"application/json",
+      "user-agent":"Rook/1.0 (runtime config)"
+    });
+    if (payload && typeof payload === "object") {
+      runtimeConfigMemory.set(fileName,{at:Date.now(),value:payload});
+      return payload;
+    }
+  } catch {}
+  return prior?.value || fallback;
+}
+
+async function loadDiscoveryRuntimeConfig() {
+  const [providers,searchAreas,communitySources,exclusions] = await Promise.all([
+    runtimeConfigJson("providers.json",{providers:[]}),
+    runtimeConfigJson("search-areas.json",{areas:[]}),
+    runtimeConfigJson("community-sources.json",{sources:[]}),
+    runtimeConfigJson("exclusions.json",{listingRules:[]})
+  ]);
+  return {providers,searchAreas,communitySources,exclusions};
+}
+
+function runtimeSearchArea(config:any, location:string) {
+  const needle = String(location || config?.defaultLocation || "").trim().toLowerCase();
+  const areas = Array.isArray(config?.areas) ? config.areas : [];
+  return areas.find((area:any) => (area.aliases || []).some((alias:any) => String(alias).trim().toLowerCase() === needle))
+    || areas.find((area:any) => String(area.id || "").toLowerCase() === needle)
+    || null;
+}
+
+function runtimeDiscoveryPlaces(area:any, primaryCity:string, radiusMiles:number) {
+  const rows = Array.isArray(area?.discoveryPlaces) ? area.discoveryPlaces : [];
+  const matches = rows.filter((row:any) => radiusMiles >= Number(row?.minRadiusMiles || 0))
+    .map((row:any) => ({city:String(row.city || "").trim(),state:String(row.state || "CO").trim() || "CO"}))
+    .filter((row:any) => row.city);
+  return matches.length ? matches : [{city:primaryCity,state:"CO"}];
+}
+
+function renderFeedTemplate(template:string, city:string, state="CO") {
+  const slug = city.toLowerCase().replace(/[^a-z0-9]+/g,"-");
+  const underscore = city.replace(/\s+/g,"_");
+  return String(template || "")
+    .replaceAll("{city}",city)
+    .replaceAll("{slug}",slug)
+    .replaceAll("{underscore}",underscore)
+    .replaceAll("{state}",state)
+    .replaceAll("{stateLower}",state.toLowerCase());
+}
+
+function providerAdapterTasksFromConfig(providerConfig:any, places:any[], primaryCity:string) {
+  const providers = Array.isArray(providerConfig?.providers) ? providerConfig.providers.filter((p:any)=>p?.id && p?.cityFeed) : [];
+  const tasks:Promise<AdapterResult>[] = [];
+  for (const place of places) {
+    const city = place.city;
+    const state = place.state || "CO";
+    for (const provider of providers) {
+      const pageUrl = renderFeedTemplate(provider.cityFeed,city,state);
+      if (!pageUrl) continue;
+      const slug = city.toLowerCase().replace(/[^a-z0-9]+/g,"-");
+      tasks.push(sourceAdapter(
+        `${provider.id}-${slug}`,
+        `${provider.label || provider.id} · ${city}`,
+        pageUrl,
+        provider.browserDiscovery !== false
+      ));
+      if (city.toLowerCase() === primaryCity.toLowerCase()) {
+        for (const category of Array.isArray(provider.primaryCategoryFeeds) ? provider.primaryCategoryFeeds : []) {
+          const categoryUrl = renderFeedTemplate(category?.url || "",city,state);
+          if (!categoryUrl) continue;
+          tasks.push(sourceAdapter(
+            `${provider.id}-${category.id || "category"}-${slug}`,
+            `${provider.label || provider.id} ${category.label || category.id || "category"} · ${city}`,
+            categoryUrl,
+            provider.browserDiscovery !== false
+          ));
+        }
+      }
+    }
+    tasks.push(searchEngineDiscoveryAdapter(city + ", " + state));
+  }
+  return tasks;
+}
+
+async function configuredIndexFeedDiscovery(feed:any): Promise<AdapterResult> {
+  const id=String(feed?.id || "configured-index");
+  const source=String(feed?.source || id);
+  const pageUrl=String(feed?.url || "");
+  if (!pageUrl) return {id,listings:[],error:"missing configured index URL"};
+  try {
+    const snapshot=await browserDiscoverySnapshot(pageUrl);
+    const listings=browserDiscoveryListings(snapshot,source).map(row=>({
+      ...row,
+      metadata:{...(row.metadata||{}),discoveryMethod:"configured-index",configuredSourceId:id}
+    }));
+    return {id,listings,error:listings.length?undefined:"no rows parsed"};
+  } catch (error) {
+    return {id,listings:[],error:String(error)};
+  }
+}
+
+async function configuredCommunityDiscovery(sourceConfig:any, activeCities:string[]): Promise<AdapterResult> {
+  const id=String(sourceConfig?.id || "configured-community");
+  if (sourceConfig?.enabled === false) return {id,listings:[]};
+  const matchCities=(Array.isArray(sourceConfig?.matchCities)?sourceConfig.matchCities:[]).map((value:any)=>String(value).toLowerCase());
+  if (matchCities.length && !activeCities.some(city=>matchCities.includes(String(city).toLowerCase()))) return {id,listings:[]};
+  const parser=sourceConfig?.parser || {};
+  let splitRegex:RegExp, unitRegex:RegExp, priceRegex:RegExp, availableRegex:RegExp|null=null;
+  try {
+    splitRegex=new RegExp(parser.splitRegex || "Apartment:\\s*#\\s*","i");
+    unitRegex=new RegExp(parser.unitRegex || "^([A-Za-z0-9-]+)","i");
+    priceRegex=new RegExp(parser.priceRegex || "Starting at:\\s*\\$([\\d,.]+)","i");
+    if (parser.availableRegex) availableRegex=new RegExp(parser.availableRegex,"i");
+  } catch {
+    return {id,listings:[],error:"invalid configured parser regex"};
+  }
+  const found:Listing[]=[];
+  await Promise.all((Array.isArray(sourceConfig?.plans)?sourceConfig.plans:[]).map(async(plan:any)=>{
+    const pageUrl=String(plan?.url || "");
+    if(!pageUrl)return;
+    try{
+      const html=await fetchText(pageUrl);
+      const text=stripHtml(html).replace(/\s+/g," ");
+      const parts=text.split(splitRegex).slice(1);
+      for(const part of parts){
+        const unit=part.match(unitRegex)?.[1] || "";
+        const price=num(part.match(priceRegex)?.[1]);
+        const available=availableRegex ? (part.match(availableRegex)?.[1] || "") : "";
+        if(!unit || !(Number(price)>0))continue;
+        const address=String(sourceConfig.baseAddressTemplate || "").replaceAll("{unit}",unit);
+        const source=String(sourceConfig.source || id);
+        const planName=String(plan?.name || plan?.path || "Home");
+        const staticFacts=sourceConfig.static || {};
+        found.push({
+          id:`${id}-${String(plan?.path || planName).toLowerCase().replace(/[^a-z0-9]+/g,"-")}-${unit.toLowerCase()}`,
+          label:`${source} · ${planName} #${unit}`,
+          address,
+          type:String(sourceConfig.propertyType || "Property"),
+          listingType:String(sourceConfig.listingType || "rent"),
+          price:Number(price),
+          beds:Number(staticFacts.beds ?? 0) || null,
+          baths:Number(staticFacts.baths ?? 0) || null,
+          source,
+          sourceUrl:pageUrl,
+          metadata:{
+            floorPlan:planName,
+            sqft:Number(plan?.sqft || 0) || null,
+            availableDate:available || null,
+            discoveryMethod:"configured-community",
+            configuredSourceId:id
+          }
+        });
+      }
+    }catch{}
+  }));
+  return {id,listings:found,error:found.length?undefined:"no configured community rows parsed"};
+}
+
+function listingMatchesConfiguredExclusion(listing:Listing, rules:any[] = []) {
+  const label=String(listing.label || "");
+  const address=String(listing.address || "");
+  const text=incomeRestrictionText(listing);
+  return rules.some((rule:any)=>{
+    try {
+      const labelMatch = rule?.labelRegex ? new RegExp(rule.labelRegex,"i").test(label + " " + text) : true;
+      const addressMatch = rule?.addressRegex ? new RegExp(rule.addressRegex,"i").test(address) : true;
+      return labelMatch && addressMatch;
+    } catch { return false; }
+  });
+}
+
 async function readSharedRookState() {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!serviceKey) return [];
@@ -2253,140 +2426,28 @@ Deno.serve(async (req: Request) => {
   const radiusMiles = Math.max(0, Number(url.searchParams.get("radiusMiles") || "15"));
   const query = (url.searchParams.get("query") || "").trim().toLowerCase();
 
-  const primaryCity = location.split(",")[0].trim() || "Fort Collins";
-  const nearbyCities = primaryCity.toLowerCase() === "fort collins"
-    ? [
-        { city:"Fort Collins", minRadius:0 },
-        { city:"Laporte", minRadius:5 },
-        { city:"Timnath", minRadius:6 },
-        { city:"Wellington", minRadius:0 },
-        { city:"Bellvue", minRadius:8 },
-        { city:"Windsor", minRadius:10 },
-        { city:"Loveland", minRadius:12 }
-      ]
-    : [{ city:primaryCity, minRadius:0 }];
-  const discoveryCities = nearbyCities.filter(item => radiusMiles >= item.minRadius).map(item => item.city);
-
-  // Search each nearby city that intersects the configured radius. This fixes the
-  // prior Fort-Collins-only discovery behavior while retaining source isolation and
-  // downstream dedupe/filtering.
+  const runtimeDiscovery = await loadDiscoveryRuntimeConfig();
+  const primaryCity = location.split(",")[0].trim() || runtimeDiscovery.searchAreas?.defaultLocation?.split(",")[0]?.trim() || "Fort Collins";
+  const searchArea = runtimeSearchArea(runtimeDiscovery.searchAreas, location);
+  const discoveryPlaces = runtimeDiscoveryPlaces(searchArea, primaryCity, radiusMiles);
+  const discoveryCities = discoveryPlaces.map((place:any)=>place.city);
   const discoveryStarted=Date.now();
-  const wellingtonDirectDiscovery = async (): Promise<AdapterResult> => {
-    const id="wellington-direct";
-    const source="Wellington direct indexes";
-    const urls=[
-      "https://hotpads.com/wellington-co/houses-for-rent",
-      "https://hotpads.com/wellington-co/apartments-for-rent",
-      "https://www.zillow.com/wellington-co/rentals/"
-    ];
-    const found:Listing[]=[];
-    const seen=new Set<string>();
-    await Promise.all(urls.map(async pageUrl=>{
-      try{
-        const snapshot=await browserDiscoverySnapshot(pageUrl);
-        for(const row of browserDiscoveryListings(snapshot,source)){
-          const key=keyOf(row);if(!key||seen.has(key))continue;seen.add(key);
-          found.push({...row,metadata:{...(row.metadata||{}),discoveryMethod:"wellington-direct"}});
-        }
-      }catch{}
-    }));
-    return {id,listings:found,error:found.length?undefined:"no Wellington rows parsed"};
-  };
 
-  const bloomOfficialDiscovery = async (): Promise<AdapterResult> => {
-    const id="bloom-official";
-    if (!discoveryCities.some(city => /^fort collins$/i.test(city))) return {id,listings:[]};
-    const plans=[
-      {name:"Cache",path:"cache",sqft:1166},
-      {name:"Horsetooth",path:"horsetooth",sqft:1171},
-      {name:"Platte",path:"platte",sqft:1395}
-    ];
-    const found:Listing[]=[];
-    await Promise.all(plans.map(async plan=>{
-      const pageUrl="https://www.rentbloomhomes.com/floorplans/"+plan.path;
-      try{
-        const html=await fetchText(pageUrl);
-        const text=stripHtml(html).replace(/\s+/g," ");
-        const parts=text.split(/Apartment:\s*#\s*/i).slice(1);
-        for(const part of parts){
-          const unit=part.match(/^([A-Za-z0-9-]+)/)?.[1] || "";
-          const price=num(part.match(/Starting at:\s*\$([\d,.]+)/i)?.[1]);
-          const available=part.match(/Date Available:\s*([0-9/]+)/i)?.[1] || "";
-          if(!unit || !(Number(price)>0)) continue;
-          found.push({
-            id:"bloom-"+plan.path+"-"+unit.toLowerCase(),
-            label:`Bloom Rental Living · ${plan.name} #${unit}`,
-            address:`180 N Aria Way Unit ${unit}, Fort Collins, CO 80524`,
-            type:"Townhome",
-            listingType:"rent",
-            price:Number(price),
-            beds:2,
-            baths:2,
-            source:"Bloom Rental Living",
-            sourceUrl:pageUrl,
-            metadata:{
-              floorPlan:plan.name,
-              sqft:plan.sqft,
-              availableDate:available || null,
-              discoveryMethod:"bloom-official",
-              description:`Bloom ${plan.name} 2BR/2BA condo-style home with attached garage.`
-            }
-          });
-        }
-      }catch{}
-    }));
-    return {id,listings:found,error:found.length?undefined:"no Bloom units parsed"};
-  };
+  const adapterTasks = providerAdapterTasksFromConfig(runtimeDiscovery.providers, discoveryPlaces, primaryCity);
 
-  const adapterTasks = discoveryCities.flatMap(city => {
-    const slug = city.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const truliaCity = city.replace(/\s+/g,"_");
-    const cityLocation = city + ", CO";
-    return [
-      sourceAdapter(`realtor-${slug}`, `Realtor.com · ${city}`, `https://www.realtor.com/apartments/${slug}_CO`, true),
-      sourceAdapter(`rent-${slug}`, `Rent.com · ${city}`, `https://www.rent.com/colorado/${slug}-apartments`, true),
-      sourceAdapter(`apartmentlist-${slug}`, `Apartment List · ${city}`, `https://www.apartmentlist.com/co/${slug}`, true),
-      sourceAdapter(`apartments-${slug}`, `Apartments.com · ${city}`, `https://www.apartments.com/${slug}-co/`, true),
-      sourceAdapter(`hotpads-${slug}`, `HotPads · ${city}`, `https://hotpads.com/${slug}-co/apartments-for-rent`, true),
-      sourceAdapter(`trulia-${slug}`, `Trulia · ${city}`, `https://www.trulia.com/for_rent/${truliaCity},CO/`, true),
-      sourceAdapter(`zillow-${slug}`, `Zillow · ${city}`, `https://www.zillow.com/${slug}-co/rentals/`, true),
-      searchEngineDiscoveryAdapter(cityLocation)
-    ];
-  });
-
-  // Some portals partition houses/townhomes/condos onto separate city feeds.
-  // The broad Zillow/Trulia pages already mix home types, while Apartment List is
-  // apartment-only by design. Expand the primary-city feeds for the partitioned
-  // portals so Rook does not silently miss non-apartment inventory.
-  const primarySlug = primaryCity.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  const partitionedPrimaryFeeds = [
-    // HotPads
-    [`hotpads-houses-${primarySlug}`, `HotPads houses · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/houses-for-rent`],
-    [`hotpads-townhomes-${primarySlug}`, `HotPads townhomes · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/townhomes-for-rent`],
-    [`hotpads-condos-${primarySlug}`, `HotPads condos · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/condos-for-rent`],
-    [`hotpads-duplexes-${primarySlug}`, `HotPads duplexes · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/duplexes-for-rent`],
-    // Rent.com
-    [`rent-houses-${primarySlug}`, `Rent.com houses · ${primaryCity}`, `https://www.rent.com/colorado/${primarySlug}-houses`],
-    [`rent-townhomes-${primarySlug}`, `Rent.com townhomes · ${primaryCity}`, `https://www.rent.com/colorado/${primarySlug}-townhouses`],
-    [`rent-condos-${primarySlug}`, `Rent.com condos · ${primaryCity}`, `https://www.rent.com/colorado/${primarySlug}-condos`],
-    // Apartments.com
-    [`apartments-houses-${primarySlug}`, `Apartments.com houses · ${primaryCity}`, `https://www.apartments.com/houses/${primarySlug}-co/`],
-    [`apartments-townhomes-${primarySlug}`, `Apartments.com townhomes · ${primaryCity}`, `https://www.apartments.com/townhomes/${primarySlug}-co/`],
-    [`apartments-condos-${primarySlug}`, `Apartments.com condos · ${primaryCity}`, `https://www.apartments.com/condos/${primarySlug}-co/`],
-    // Realtor.com
-    [`realtor-houses-${primarySlug}`, `Realtor.com houses · ${primaryCity}`, `https://www.realtor.com/apartments/${primarySlug}_CO/type-single-family-home`],
-    [`realtor-townhomes-${primarySlug}`, `Realtor.com townhomes · ${primaryCity}`, `https://www.realtor.com/apartments/${primarySlug}_CO/type-townhome`],
-    [`realtor-condos-${primarySlug}`, `Realtor.com condos · ${primaryCity}`, `https://www.realtor.com/apartments/${primarySlug}_CO/type-condo`]
-  ];
-  adapterTasks.push(...partitionedPrimaryFeeds.map(([id,label,pageUrl]) => sourceAdapter(id,label,pageUrl,true)));
-  adapterTasks.push(wellingtonDirectDiscovery());
-  adapterTasks.push(bloomOfficialDiscovery());
+  for (const feed of Array.isArray(searchArea?.extraIndexFeeds) ? searchArea.extraIndexFeeds : []) {
+    if (radiusMiles < Number(feed?.minRadiusMiles || 0)) continue;
+    adapterTasks.push(configuredIndexFeedDiscovery(feed));
+  }
+  for (const sourceConfig of Array.isArray(runtimeDiscovery.communitySources?.sources) ? runtimeDiscovery.communitySources.sources : []) {
+    adapterTasks.push(configuredCommunityDiscovery(sourceConfig, discoveryCities));
+  }
 
   const selectListings=(rows:Listing[])=>rows.filter(listing=>{
     if(!directListingUrl(listing.sourceUrl))return false;
     if(minBeds&&listing.beds&&Number(listing.beds)<minBeds)return false;
     if(maxPrice&&listing.price&&Number(listing.price)>maxPrice)return false;
-    if(isIncomeRestrictedListing(listing))return false;
+    if(isIncomeRestrictedListing(listing, runtimeDiscovery.exclusions?.listingRules || []))return false;
     const text=[listing.label,listing.address,listing.type,listing.metadata?.description].filter(Boolean).join(" ").toLowerCase();
     // Reject explicit out-of-state candidates before they reach enrichment/geocoding.
     // Unknown-state snippets remain eligible so incomplete but local listings are not lost.
