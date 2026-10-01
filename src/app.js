@@ -17,7 +17,7 @@ import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1"
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState, applySharedRookStateRow } from "./integrations/sync.js?v=shared-state-v2";
 import { config } from "./config.js";
-import { loadRuntimeConfig, runtimePointsOfInterest, runtimeSeedProperties, runtimePreferenceDefaults, runtimeHousingEvidence } from "./runtime-config.js";
+import { loadRuntimeConfig, runtimePointsOfInterest, runtimeSeedProperties, runtimePreferenceDefaults, runtimeHousingEvidence, normalizeRuntimeCommunityProperty } from "./runtime-config.js";
 import { installRuntimeErrorHooks, reportRuntimeError } from "./runtime-errors.js";
 
 installRuntimeErrorHooks();
@@ -26,6 +26,7 @@ await loadRuntimeConfig();
 const app = document.querySelector("#app");
 const runtimeSeeds = runtimeSeedProperties();
 const store = createPropertyStore(runtimeSeeds.length ? runtimeSeeds : fallbackSeedProperties);
+store.replaceAll(store.getAll().map(normalizeRuntimeCommunityProperty));
 const housingEvidence = runtimeHousingEvidence().length ? runtimeHousingEvidence() : fallbackHousingEvidence;
 let activeFilter = "all";
 let query = "";
