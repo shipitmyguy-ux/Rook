@@ -79,7 +79,7 @@ function finish(){
       addListingCancelNoValidation:(()=>{const btn=doc.querySelector("#import-cancel");const input=doc.querySelector("#listing-url");return Boolean(btn&&input&&btn.type==="button"&&input.required)})(),
       scheduledTourVisuals:(()=>{const cards=[...doc.querySelectorAll(".property-card.has-scheduled-tour")];return cards.every(card=>Boolean(card.querySelector(".tour-flag")&&/TOUR/i.test(card.querySelector(".tour-flag")?.textContent||"")))})(),
       upcomingTourJumpTargets:[...doc.querySelectorAll(".upcoming-tour[data-tour-jump]")].every(btn=>Boolean(btn.dataset.tourJump)),
-      mapSquareRatio:(()=>{const r=doc.querySelector(".overview-map")?.getBoundingClientRect();if(!r||!r.width||!r.height)return false;const ratio=r.width/r.height;return ratio>.94&&ratio<1.06})(),
+      mapViewportFit:(()=>{const r=doc.querySelector(".overview-map")?.getBoundingClientRect();if(!r||!r.width||!r.height)return false;const max=window.innerWidth<700?Math.min(360,window.innerHeight*.46):Math.min(500,window.innerHeight*.52);return r.height<=max+2&&r.height>=250})(),
       distanceBarsAfterEllipsis:[...doc.querySelectorAll(".property-card")].every(el=>{const more=el.querySelector(".more-card-actions");const panel=el.querySelector(".distance-panel");if(!more||!panel||more.nextElementSibling!==panel)return false;const m=more.getBoundingClientRect(),p=panel.getBoundingClientRect();return p.left>=m.right-1&&p.left-m.right<12;}),
       addressContrast:[...doc.querySelectorAll(".property-card__identity .muted")].every(el=>{const s=getComputedStyle(el);return s.backgroundColor==="rgba(0, 0, 0, 0)"&&s.textShadow!=="none"&&parseFloat(s.fontWeight)>=500;}),
       noLegacyBlinkingDistance:!doc.querySelector("[data-primary-distance]"),
