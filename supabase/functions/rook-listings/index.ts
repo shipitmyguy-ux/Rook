@@ -2246,25 +2246,42 @@ Deno.serve(async (req: Request) => {
   }
   const minBeds = Number(url.searchParams.get("minBeds") || "2");
   const maxPrice = Number(url.searchParams.get("maxPrice") || "0");
+  const radiusMiles = Math.max(0, Number(url.searchParams.get("radiusMiles") || "15"));
   const query = (url.searchParams.get("query") || "").trim().toLowerCase();
-  const slug = location.toLowerCase().replace(/,.*$/, "").trim().replace(/[^a-z0-9]+/g, "-");
 
-  // Reuse public structured listing data exposed by source search pages. Each source
-  // is isolated so a portal change cannot break the complete Rook refresh. Rendered
-  // discovery now covers every major feed instead of only Realtor/Rent; adapters run
-  // concurrently and each browser worker request remains independently time-bounded,
-  // so a slow/blocked portal cannot prevent the other sources from contributing.
+  const primaryCity = location.split(",")[0].trim() || "Fort Collins";
+  const nearbyCities = primaryCity.toLowerCase() === "fort collins"
+    ? [
+        { city:"Fort Collins", minRadius:0 },
+        { city:"Laporte", minRadius:5 },
+        { city:"Timnath", minRadius:6 },
+        { city:"Wellington", minRadius:8 },
+        { city:"Bellvue", minRadius:8 },
+        { city:"Windsor", minRadius:10 },
+        { city:"Loveland", minRadius:12 }
+      ]
+    : [{ city:primaryCity, minRadius:0 }];
+  const discoveryCities = nearbyCities.filter(item => radiusMiles >= item.minRadius).map(item => item.city);
+
+  // Search each nearby city that intersects the configured radius. This fixes the
+  // prior Fort-Collins-only discovery behavior while retaining source isolation and
+  // downstream dedupe/filtering.
   const discoveryStarted=Date.now();
-  const adapterTasks = [
-    sourceAdapter("realtor", "Realtor.com", `https://www.realtor.com/apartments/${slug}_CO`, true),
-    sourceAdapter("rent", "Rent.com", `https://www.rent.com/colorado/${slug}-apartments`, true),
-    sourceAdapter("apartmentlist", "Apartment List", `https://www.apartmentlist.com/co/${slug}`, true),
-    sourceAdapter("apartments", "Apartments.com", `https://www.apartments.com/${slug}-co/`, true),
-    sourceAdapter("hotpads", "HotPads", `https://hotpads.com/${slug}-co/apartments-for-rent`, true),
-    sourceAdapter("trulia", "Trulia", `https://www.trulia.com/for_rent/${location.split(",")[0].trim().replace(/\\s+/g,"_")},CO/`, true),
-    sourceAdapter("zillow", "Zillow", `https://www.zillow.com/${slug}-co/rentals/`, true),
-    searchEngineDiscoveryAdapter(location)
-  ];
+  const adapterTasks = discoveryCities.flatMap(city => {
+    const slug = city.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const truliaCity = city.replace(/\s+/g,"_");
+    const cityLocation = city + ", CO";
+    return [
+      sourceAdapter(`realtor-${slug}`, `Realtor.com · ${city}`, `https://www.realtor.com/apartments/${slug}_CO`, true),
+      sourceAdapter(`rent-${slug}`, `Rent.com · ${city}`, `https://www.rent.com/colorado/${slug}-apartments`, true),
+      sourceAdapter(`apartmentlist-${slug}`, `Apartment List · ${city}`, `https://www.apartmentlist.com/co/${slug}`, true),
+      sourceAdapter(`apartments-${slug}`, `Apartments.com · ${city}`, `https://www.apartments.com/${slug}-co/`, true),
+      sourceAdapter(`hotpads-${slug}`, `HotPads · ${city}`, `https://hotpads.com/${slug}-co/apartments-for-rent`, true),
+      sourceAdapter(`trulia-${slug}`, `Trulia · ${city}`, `https://www.trulia.com/for_rent/${truliaCity},CO/`, true),
+      sourceAdapter(`zillow-${slug}`, `Zillow · ${city}`, `https://www.zillow.com/${slug}-co/rentals/`, true),
+      searchEngineDiscoveryAdapter(cityLocation)
+    ];
+  });
 
   const selectListings=(rows:Listing[])=>rows.filter(listing=>{
     if(!directListingUrl(listing.sourceUrl))return false;
@@ -2315,7 +2332,7 @@ Deno.serve(async (req: Request) => {
   return new Response(JSON.stringify({
     listings,
     meta: {
-      location, count: listings.length, rawCount:adapters.reduce((n,a)=>n+a.listings.length,0), duplicates:adapters.reduce((n,a)=>n+a.listings.length,0)-merged.size, elapsedMs:Date.now()-discoveryStarted, generatedAt: new Date().toISOString(),
+      location, radiusMiles, discoveryCities, count: listings.length, rawCount:adapters.reduce((n,a)=>n+a.listings.length,0), duplicates:adapters.reduce((n,a)=>n+a.listings.length,0)-merged.size, elapsedMs:Date.now()-discoveryStarted, generatedAt: new Date().toISOString(),
       adapters: adapters.map(a => ({ id: a.id, count: a.listings.length, ok: !a.error, error: a.error || null, discovery:a.discovery || null }))
     }
   }), { headers: corsHeaders });
