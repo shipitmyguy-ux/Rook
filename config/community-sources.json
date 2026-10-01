@@ -40,7 +40,10 @@
           "sqft": 1395,
           "url": "https://www.rentbloomhomes.com/floorplans/platte"
         }
-      ]
+      ],
+      "displayName": "Bloom Rental Living",
+      "communityAddress": "180 N Aria Way, Fort Collins, CO 80524",
+      "aggregate": "community"
     }
   ]
 }
