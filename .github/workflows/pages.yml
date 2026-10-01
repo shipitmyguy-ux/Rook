@@ -46,7 +46,7 @@ jobs:
               VISUAL_ONLY=true
               while IFS= read -r file; do
                 case "$file" in
-                  src/*.css|assets/*.png|assets/*.jpg|assets/*.jpeg|assets/*.webp|assets/*.svg|assets/*.gif|assets/*.avif|assets/*.ico|assets/*.woff|assets/*.woff2|assets/*.ttf|assets/*.otf)
+                  src/*.css|assets/*.png|assets/*.jpg|assets/*.jpeg|assets/*.webp|assets/*.svg|assets/*.gif|assets/*.avif|assets/*.ico|assets/*.woff|assets/*.woff2|assets/*.ttf|assets/*.otf|config/*.json)
                     ;;
                   *)
                     VISUAL_ONLY=false
@@ -121,6 +121,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+
+      - name: Validate runtime data files
+        run: |
+          for file in config/*.json; do
+            [ -e "$file" ] || continue
+            node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$file"
+          done
 
       - name: Prepare minimal cache-busted site
         run: |
