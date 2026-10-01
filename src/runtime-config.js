@@ -140,3 +140,53 @@ export function runtimePreferenceDefaults() {
 export function runtimeHousingEvidence() {
   return Array.isArray(state.evidence?.housingEvidence) ? state.evidence.housingEvidence : [];
 }
+
+function comparableAddressCore(value = "") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+(?:unit|apt|apartment|suite|#)\s*#?\s*[a-z0-9-]+(?=,|$)/i,"")
+    .split(",")[0]
+    .replace(/\b(street)\b/g,"st").replace(/\b(avenue)\b/g,"ave")
+    .replace(/\b(road)\b/g,"rd").replace(/\b(drive)\b/g,"dr")
+    .replace(/\b(lane)\b/g,"ln").replace(/\b(court)\b/g,"ct")
+    .replace(/\b(boulevard)\b/g,"blvd")
+    .replace(/[^a-z0-9]/g,"");
+}
+
+export function normalizeRuntimeCommunityProperty(property = {}) {
+  const communities = Array.isArray(state.communitySources?.sources) ? state.communitySources.sources : [];
+  for (const source of communities) {
+    if (String(source?.aggregate || "").toLowerCase() !== "community") continue;
+    const communityId = String(source.communityId || source.id || "").trim();
+    if (!communityId) continue;
+    const communityName = String(source.displayName || source.source || "").trim();
+    const communityAddress = String(source.communityAddress || "").trim();
+    const sourceName = String(source.source || communityName).trim();
+    const label = String(property.label || "").trim();
+    const propertySource = String(property.source || "").trim();
+    const address = String(property.address || "").trim();
+    const expectedCore = comparableAddressCore(communityAddress || String(source.baseAddressTemplate || "").replace("{unit}",""));
+    const addressMatches = Boolean(expectedCore && comparableAddressCore(address) === expectedCore);
+    const nameMatches = Boolean(
+      (communityName && (label === communityName || label.startsWith(communityName + " ·"))) ||
+      (sourceName && propertySource === sourceName)
+    );
+    const metadataMatches = String(property.metadata?.communityId || property.metadata?.configuredSourceId || "") === communityId;
+    if (!metadataMatches && !(nameMatches && (addressMatches || !address))) continue;
+    return {
+      ...property,
+      id:communityId,
+      label:communityName || property.label,
+      address:communityAddress || property.address,
+      source:sourceName || property.source,
+      metadata:{
+        ...(property.metadata || {}),
+        communityId,
+        communityName:communityName || property.metadata?.communityName || null,
+        configuredSourceId:communityId,
+        discoveryMethod:property.metadata?.discoveryMethod || "configured-community"
+      }
+    };
+  }
+  return property;
+}
