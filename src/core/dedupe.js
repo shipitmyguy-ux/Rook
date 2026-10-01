@@ -1,10 +1,7 @@
-function clean(value=""){return String(value).toLowerCase().replace(/\b(street)\b/g,"st").replace(/\b(avenue)\b/g,"ave").replace(/\b(road)\b/g,"rd").replace(/\b(drive)\b/g,"dr").replace(/\b(lane)\b/g,"ln").replace(/\b(court)\b/g,"ct").replace(/\b(boulevard)\b/g,"blvd").replace(/\b(?:apartment|apt|unit|suite)\s*#?\s*([a-z0-9-]+)/g,"unit$1").replace(/#\s*([a-z0-9-]+)/g,"unit$1").replace(/[^a-z0-9]/g,"");}
-const streetKey = property => clean(String(property.address||"").split(",")[0].replace(/\s+Fort\s+Collins\b.*$/i,""));
-function compatibleIdentity(a,b){
-  const unit=p=>String(p.address||"").match(/(?:\b(?:apartment|apt|unit|suite)\s*#?\s*|#\s*)([a-z0-9-]+)/i)?.[1]?.toLowerCase();
-  const city=p=>clean(String(p.address||"").split(",")[1]||"");
-  return !(unit(a)&&unit(b)&&unit(a)!==unit(b)) && !(city(a)&&city(b)&&city(a)!==city(b));
-}
+import { canonicalAddress, addressUnit, addressCity, streetAddressKey, compatibleAddressIdentity } from "./address.js";
+const clean = canonicalAddress;
+const streetKey = property => streetAddressKey(property.address);
+const compatibleIdentity = compatibleAddressIdentity;
 
 function propertyKeys(property = {}) {
   const keys = [];
