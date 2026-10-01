@@ -2350,8 +2350,17 @@ async function configuredCommunityDiscovery(sourceConfig:any, activeCities:strin
     const pageUrl=String(plan?.url || "");
     if(!pageUrl)return;
     try{
-      const html=await fetchText(pageUrl);
-      const text=stripHtml(html).replace(/\s+/g," ");
+      let text="";
+      try { text=stripHtml(await fetchText(pageUrl)).replace(/\s+/g," "); } catch {}
+      // Community inventory is often rendered or challenged on direct HTML reads.
+      // Reuse the existing reader, then a bounded browser snapshot only if needed.
+      if (!text.split(splitRegex).slice(1).some(part=>Number(num(part.match(priceRegex)?.[1]))>0)) {
+        const rendered=await readerText(pageUrl,10000);
+        if (rendered) text=rendered.replace(/\s+/g," ");
+      }
+      if (!text.split(splitRegex).slice(1).some(part=>Number(num(part.match(priceRegex)?.[1]))>0)) {
+        try { const snapshot=await browserSnapshot(pageUrl); text=String(snapshot?.text || "").replace(/\s+/g," "); } catch {}
+      }
       const parts=text.split(splitRegex).slice(1);
       for(const part of parts){
         const unit=part.match(unitRegex)?.[1] || "";

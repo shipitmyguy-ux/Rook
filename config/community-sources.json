@@ -16,10 +16,10 @@
         "baths": 2
       },
       "parser": {
-        "splitRegex": "Apartment:\\\\s*#\\\\s*",
+        "splitRegex": "Apartment:\\s*#\\s*",
         "unitRegex": "^([A-Za-z0-9-]+)",
-        "priceRegex": "Starting at:\\\\s*\\\\$([\\\\d,.]+)",
-        "availableRegex": "Date Available:\\\\s*([0-9/]+)"
+        "priceRegex": "Starting at:\\s*\\$([\\d,.]+)",
+        "availableRegex": "Date Available:\\s*([0-9/]+)"
       },
       "plans": [
         {
