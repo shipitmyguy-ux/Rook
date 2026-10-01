@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "id": "realtor",
+      "label": "Realtor.com",
+      "host": "realtor.com",
+      "browserDiscovery": true,
+      "cityFeed": "https://www.realtor.com/apartments/{slug}_CO",
+      "primaryCategoryFeeds": [
+        {
+          "id": "houses",
+          "label": "houses",
+          "url": "https://www.realtor.com/apartments/{slug}_CO/type-single-family-home"
+        },
+        {
+          "id": "townhomes",
+          "label": "townhomes",
+          "url": "https://www.realtor.com/apartments/{slug}_CO/type-townhome"
+        },
+        {
+          "id": "condos",
+          "label": "condos",
+          "url": "https://www.realtor.com/apartments/{slug}_CO/type-condo"
+        }
+      ]
+    },
+    {
+      "id": "rent",
+      "label": "Rent.com",
+      "host": "rent.com",
+      "browserDiscovery": true,
+      "cityFeed": "https://www.rent.com/colorado/{slug}-apartments",
+      "primaryCategoryFeeds": [
+        {
+          "id": "houses",
+          "label": "houses",
+          "url": "https://www.rent.com/colorado/{slug}-houses"
+        },
+        {
+          "id": "townhomes",
+          "label": "townhomes",
+          "url": "https://www.rent.com/colorado/{slug}-townhouses"
+        },
+        {
+          "id": "condos",
+          "label": "condos",
+          "url": "https://www.rent.com/colorado/{slug}-condos"
+        }
+      ]
+    },
+    {
+      "id": "apartmentlist",
+      "label": "Apartment List",
+      "host": "apartmentlist.com",
+      "browserDiscovery": true,
+      "cityFeed": "https://www.apartmentlist.com/co/{slug}"
+    },
+    {
+      "id": "apartments",
+      "label": "Apartments.com",
+      "host": "apartments.com",
+      "browserDiscovery": true,
+      "cityFeed": "https://www.apartments.com/{slug}-co/",
+      "primaryCategoryFeeds": [
+        {
+          "id": "houses",
+          "label": "houses",
+          "url": "https://www.apartments.com/houses/{slug}-co/"
+        },
+        {
+          "id": "townhomes",
+          "label": "townhomes",
+          "url": "https://www.apartments.com/townhomes/{slug}-co/"
+        },
+        {
+          "id": "condos",
+          "label": "condos",
+          "url": "https://www.apartments.com/condos/{slug}-co/"
+        }
+      ]
+    },
+    {
+      "id": "hotpads",
+      "label": "HotPads",
+      "host": "hotpads.com",
+      "browserDiscovery": true,
+      "cityFeed": "https://hotpads.com/{slug}-co/apartments-for-rent",
+      "primaryCategoryFeeds": [
+        {
+          "id": "houses",
+          "label": "houses",
+          "url": "https://hotpads.com/{slug}-co/houses-for-rent"
+        },
+        {
+          "id": "townhomes",
+          "label": "townhomes",
+          "url": "https://hotpads.com/{slug}-co/townhomes-for-rent"
+        },
+        {
+          "id": "condos",
+          "label": "condos",
+          "url": "https://hotpads.com/{slug}-co/condos-for-rent"
+        },
+        {
+          "id": "duplexes",
+          "label": "duplexes",
+          "url": "https://hotpads.com/{slug}-co/duplexes-for-rent"
+        }
+      ]
+    },
+    {
+      "id": "trulia",
+      "label": "Trulia",
+      "host": "trulia.com",
+      "browserDiscovery": true,
+      "cityFeed": "https://www.trulia.com/for_rent/{underscore},CO/"
+    },
+    {
+      "id": "zillow",
+      "label": "Zillow",
+      "host": "zillow.com",
+      "browserDiscovery": true,
+      "cityFeed": "https://www.zillow.com/{slug}-co/rentals/"
+    }
+  ],
+  "searchDomains": [
+    "zillow.com",
+    "realtor.com",
+    "hotpads.com",
+    "trulia.com",
+    "apartments.com",
+    "rent.com",
+    "redfin.com",
+    "homes.com",
+    "zumper.com",
+    "forrent.com"
+  ],
+  "allowedListingHosts": [
+    "realtor.com",
+    "rent.com",
+    "apartmentlist.com",
+    "zillow.com",
+    "trulia.com",
+    "apartments.com",
+    "rentcafe.com",
+    "redfin.com",
+    "homes.com",
+    "hotpads.com",
+    "zumper.com",
+    "forrent.com"
+  ]
+}
