@@ -2184,16 +2184,18 @@ Deno.serve(async (req: Request) => {
   const slug = location.toLowerCase().replace(/,.*$/, "").trim().replace(/[^a-z0-9]+/g, "-");
 
   // Reuse public structured listing data exposed by source search pages. Each source
-  // is isolated so a portal change cannot break the complete Rook refresh. Limit
-  // rendered Chromium discovery to two feeds so worker latency cannot stall refresh.
+  // is isolated so a portal change cannot break the complete Rook refresh. Rendered
+  // discovery now covers every major feed instead of only Realtor/Rent; adapters run
+  // concurrently and each browser worker request remains independently time-bounded,
+  // so a slow/blocked portal cannot prevent the other sources from contributing.
   const adapters = await Promise.all([
     sourceAdapter("realtor", "Realtor.com", `https://www.realtor.com/apartments/${slug}_CO`, true),
     sourceAdapter("rent", "Rent.com", `https://www.rent.com/colorado/${slug}-apartments`, true),
-    sourceAdapter("apartmentlist", "Apartment List", `https://www.apartmentlist.com/co/${slug}`),
-    sourceAdapter("apartments", "Apartments.com", `https://www.apartments.com/${slug}-co/`),
-    sourceAdapter("hotpads", "HotPads", `https://hotpads.com/${slug}-co/apartments-for-rent`),
-    sourceAdapter("trulia", "Trulia", `https://www.trulia.com/for_rent/${location.split(",")[0].trim().replace(/\\s+/g,"_")},CO/`),
-    sourceAdapter("zillow", "Zillow", `https://www.zillow.com/${slug}-co/rentals/`),
+    sourceAdapter("apartmentlist", "Apartment List", `https://www.apartmentlist.com/co/${slug}`, true),
+    sourceAdapter("apartments", "Apartments.com", `https://www.apartments.com/${slug}-co/`, true),
+    sourceAdapter("hotpads", "HotPads", `https://hotpads.com/${slug}-co/apartments-for-rent`, true),
+    sourceAdapter("trulia", "Trulia", `https://www.trulia.com/for_rent/${location.split(",")[0].trim().replace(/\\s+/g,"_")},CO/`, true),
+    sourceAdapter("zillow", "Zillow", `https://www.zillow.com/${slug}-co/rentals/`, true),
     searchEngineDiscoveryAdapter(location)
   ]);
 
