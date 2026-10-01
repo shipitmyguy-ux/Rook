@@ -75,7 +75,7 @@ function finish(){
       poiEditorLoosePlaceholder:/place|road|landmark/i.test(doc.querySelector("#pref-poi-query")?.getAttribute("placeholder")||""),
       settingsDialogClose:Boolean(doc.querySelector("#settings-dialog.settings-dialog-captive")&&doc.querySelector("#close-settings.settings-dialog-close")),
       settingsDialogCaptive:(()=>{const dlg=doc.querySelector("#settings-dialog");if(!dlg)return false;const s=getComputedStyle(dlg);return /auto|scroll/.test(s.overflowY||s.overflow)&&s.maxHeight!=="none"})(),
-      desktopRefreshButton:(()=>{const btn=doc.querySelector(".desktop-refresh-button[data-refresh-listings]");if(!btn)return false;const visible=getComputedStyle(btn).display!=="none";return viewport>699?visible:!visible})(),
+      refreshButtonVisible:(()=>{const btn=doc.querySelector(".desktop-refresh-button[data-refresh-listings]");return Boolean(btn&&getComputedStyle(btn).display!=="none")})(),
       addListingCancelNoValidation:(()=>{const btn=doc.querySelector("#import-cancel");const input=doc.querySelector("#listing-url");return Boolean(btn&&input&&btn.type==="button"&&input.required)})(),
       scheduledTourVisuals:(()=>{const cards=[...doc.querySelectorAll(".property-card.has-scheduled-tour")];return cards.every(card=>Boolean(card.querySelector(".tour-flag")&&/TOUR/i.test(card.querySelector(".tour-flag")?.textContent||"")))})(),
       upcomingTourJumpTargets:[...doc.querySelectorAll(".upcoming-tour[data-tour-jump]")].every(btn=>Boolean(btn.dataset.tourJump)),
