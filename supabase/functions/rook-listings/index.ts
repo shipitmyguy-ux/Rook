@@ -1120,7 +1120,8 @@ async function sourceAdapter(id: string, source: string, url: string): Promise<A
   try {
     const html = await fetchText(url);
     const structured = jsonLdListings(html, source, url);
-    if (structured.length >= 5) return { id, listings:structured };
+    // Always inspect the rendered result page too. Structured data on portal index
+    // pages is commonly only a small server-rendered subset of the full search.
     try {
       const snapshot = await browserDiscoverySnapshot(url);
       const browserRows = browserDiscoveryListings(snapshot, source);
