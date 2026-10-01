@@ -319,7 +319,7 @@ test("address marker styles normalize to predefined icons and colors", () => {
   assert.equal(styles["address-3"].color, "slate");
   assert.ok(poiGlyph(styles["address-2"].icon));
   assert.match(poiColorHex(styles["address-2"].color), /^#/);
-  assert.deepEqual(resolvePoiStyle({ id:"address-2" }, 0, styles), { icon:"diamond", color:"blue" });
+  assert.deepEqual(resolvePoiStyle({ id:"address-2" }, 0, styles), { icon:"diamond", color:"blue", sortPriority:0 });
 });
 
 test("Buffalo Run is excluded when income-restricted housing is disabled", () => {
