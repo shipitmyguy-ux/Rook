@@ -237,3 +237,10 @@ html.settings-modal-open,body.settings-modal-open{overflow:hidden;overscroll-beh
   .tour-flag{right:44px;top:6px;max-width:48%;min-height:26px;padding:3px 7px}
   .tour-flag b,.tour-flag em{font-size:8px}
 }
+
+
+@keyframes rook-price-discovered-ping{0%{color:#fff;text-shadow:0 0 0 rgba(180,108,255,0);transform:scale(1)}35%{color:#e1c0ff;text-shadow:0 0 16px rgba(180,108,255,.95);transform:scale(1.08)}100%{color:inherit;text-shadow:none;transform:scale(1)}}
+.price-discovered-ping{display:inline-block;animation:rook-price-discovered-ping 500ms ease-out both}
+.rook-price-ping-popup .maplibregl-popup-content{padding:3px 7px;border:1px solid rgba(216,173,255,.9);border-radius:7px;background:#241233;color:#f0ddff;box-shadow:0 0 16px rgba(180,108,255,.72);font:800 12px/1.2 system-ui}
+.rook-price-ping-popup .maplibregl-popup-tip{display:none}
+@media(prefers-reduced-motion:reduce){.price-discovered-ping{animation:none;color:#e1c0ff;text-shadow:0 0 10px rgba(180,108,255,.7)}}
