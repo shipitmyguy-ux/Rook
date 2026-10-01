@@ -172,7 +172,8 @@ export function applySharedRookStateRow(property = {}, row = {}, preferences = {
       sharedSyncUpdatedAt:row.updated_at || null,
       sharedSyncLastEmailAt:row.last_email_at || null,
       sharedSyncSourceMessageIds:Array.isArray(row.source_message_ids) ? row.source_message_ids : [],
-      evidence:Array.isArray(row.evidence) ? row.evidence : (property.metadata?.evidence || [])
+      evidence:Array.isArray(row.evidence) ? row.evidence : (property.metadata?.evidence || []),
+      ...(rawTour.communityId ? { communityId:String(rawTour.communityId) } : {})
     }
   });
   if (startsAt) {
