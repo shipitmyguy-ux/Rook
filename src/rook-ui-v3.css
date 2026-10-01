@@ -291,3 +291,10 @@ html.settings-modal-open,body.settings-modal-open{overflow:hidden;overscroll-beh
 @media(prefers-reduced-motion:reduce){
   #discovery-summary{transition:none}
 }
+
+/* Showing request preview and saved availability. */
+#contact-workflow-actions label { display:grid; gap:.5rem; }
+#contact-workflow-actions textarea, #contact-workflow-actions input,
+#pref-showing-availability { width:100%; box-sizing:border-box; font:inherit; padding:.75rem; border:1px solid var(--border,#526078); border-radius:10px; background:var(--surface,#111b29); color:inherit; }
+#contact-workflow-actions textarea { resize:vertical; }
+#contact-workflow-actions [role="status"] { line-height:1.5; }
