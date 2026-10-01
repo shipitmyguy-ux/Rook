@@ -17,6 +17,9 @@ import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1"
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState } from "./integrations/sync.js?v=shared-state-v1";
 import { config } from "./config.js";
+import { loadRuntimeConfig, runtimePointsOfInterest } from "./runtime-config.js";
+
+await loadRuntimeConfig();
 
 const app = document.querySelector("#app");
 const store = createPropertyStore(seedProperties);
@@ -219,10 +222,7 @@ function cardPointsOfInterest() {
   const configured = Array.isArray(preferences.pointsOfInterest)
     ? preferences.pointsOfInterest.filter(p => p && !removed.has(String(p.id)) && (p.address || p.query || p.location || (p.lat != null && p.lng != null)))
     : [];
-  const fixed = [
-    { id: "address-2", kind: "poi", label: "Address 2", lat: 40.57589, lng: -105.06223, address: "1000 Locust St, Fort Collins, CO 80524" },
-    { id: "address-3", kind: "poi", label: "Address 3", lat: 40.5104806, lng: -105.0171262, address: "5480 Ziegler Rd, Fort Collins, CO 80528" }
-  ].filter(point => !removed.has(point.id));
+  const fixed = runtimePointsOfInterest().filter(point => !removed.has(String(point.id)));
   return [...fixed, ...configured.filter(p => !fixed.some(f => String(f.id) === String(p.id)))]
     .map((point, index) => ({ ...point, primary:false, kind:"poi", ...resolvePoiStyle(point, index, preferences.pointStyles) }));
 }
