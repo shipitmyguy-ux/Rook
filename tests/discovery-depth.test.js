@@ -52,6 +52,23 @@ test('structured pagination merges observed linked pages and preserves partial r
   const result=await c.structuredDiscovery(base,'HotPads');
   assert.equal(result.listings.length,2);assert.equal(result.pages,2);assert.equal(result.failedPages,1);
 });
+test('partitioned rental portals include non-apartment category feeds',()=>{
+  const source=fs.readFileSync(new URL('../supabase/functions/rook-listings/index.ts',import.meta.url),'utf8');
+  for (const token of [
+    'hotpads-houses-',
+    'hotpads-townhomes-',
+    'rent-houses-',
+    'rent-townhomes-',
+    'rent-condos-',
+    'apartments-houses-',
+    'apartments-townhomes-',
+    'apartments-condos-',
+    'realtor-houses-',
+    'realtor-townhomes-',
+    'realtor-condos-'
+  ]) assert.match(source,new RegExp(token));
+});
+
 test('streamed provider batches arrive before completion even when records cross byte chunks',async()=>{
   const encoder=new TextEncoder();let release;
   const blocked=new Promise(r=>release=r),batches=[];
