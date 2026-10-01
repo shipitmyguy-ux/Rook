@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "defaultLocation": "Fort Collins, CO",
+  "areas": [
+    {
+      "id": "fort-collins",
+      "aliases": [
+        "Fort Collins",
+        "Fort Collins, CO"
+      ],
+      "center": {
+        "lat": 40.5853,
+        "lng": -105.0844
+      },
+      "guardRadiusMiles": 45,
+      "discoveryPlaces": [
+        {
+          "city": "Fort Collins",
+          "state": "CO",
+          "minRadiusMiles": 0
+        },
+        {
+          "city": "Laporte",
+          "state": "CO",
+          "minRadiusMiles": 5
+        },
+        {
+          "city": "Timnath",
+          "state": "CO",
+          "minRadiusMiles": 6
+        },
+        {
+          "city": "Wellington",
+          "state": "CO",
+          "minRadiusMiles": 8
+        },
+        {
+          "city": "Bellvue",
+          "state": "CO",
+          "minRadiusMiles": 8
+        },
+        {
+          "city": "Windsor",
+          "state": "CO",
+          "minRadiusMiles": 10
+        },
+        {
+          "city": "Loveland",
+          "state": "CO",
+          "minRadiusMiles": 12
+        }
+      ],
+      "extraIndexFeeds": [
+        {
+          "id": "wellington-hotpads-houses",
+          "source": "HotPads · Wellington houses",
+          "city": "Wellington",
+          "minRadiusMiles": 8,
+          "url": "https://hotpads.com/wellington-co/houses-for-rent"
+        },
+        {
+          "id": "wellington-hotpads-apartments",
+          "source": "HotPads · Wellington apartments",
+          "city": "Wellington",
+          "minRadiusMiles": 8,
+          "url": "https://hotpads.com/wellington-co/apartments-for-rent"
+        },
+        {
+          "id": "wellington-zillow",
+          "source": "Zillow · Wellington",
+          "city": "Wellington",
+          "minRadiusMiles": 8,
+          "url": "https://www.zillow.com/wellington-co/rentals/"
+        }
+      ]
+    }
+  ]
+}
