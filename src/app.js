@@ -12,7 +12,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults, canonicalAddress } from "./integrations/providers.js?v=image-enrichment-v4";
-import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates } from "./integrations/maps.js?v=park-contrast-v1";
+import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty } from "./integrations/maps.js?v=price-ping-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState } from "./integrations/sync.js?v=shared-state-v1";
@@ -26,6 +26,7 @@ let preferences = loadPreferences();
 document.documentElement.dataset.theme = preferences.visualTheme || "default";
 let refreshInFlight = false;
 let discoveryTelemetry=null;
+const pricePingUntil = new Map();
 let selectedMapPropertyId = null;
 let selectedMapCard = null;
 let selectedMapCardPlaceholder = null;
@@ -467,7 +468,7 @@ function propertyCard(property) {
     </section>
     <section class="property-card__summary">
       <header class="property-card__identity"><span class="property-type-icon" role="img" aria-label="${kind}" title="${kind}">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span><div><h2>${esc(property.label)}</h2><p class="muted">${esc(displayAddress)}</p></div></header>
-      <div class="property-card__facts"><strong>${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span></div>
+      <div class="property-card__facts"><strong class="${(pricePingUntil.get(String(property.id))||0)>Date.now() ? "price-discovered-ping" : ""}">${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span></div>
       ${tourChip(property)}
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>
       <div class="property-card__actions compact-actions">
@@ -575,7 +576,9 @@ async function resolveUnavailableListings() {
         delete metadata.listingVerification;
         delete metadata.listingClosedEvidence;
         if (result.state === 'active' && result.listing) {
+          const hadPrice = Number(property.price) > 0;
           const details = Object.fromEntries(Object.entries(result.listing).filter(([,value]) => value !== null && value !== undefined && value !== ''));
+          const discoveredPrice = !hadPrice && Number(details.price) > 0 ? Number(details.price) : 0;
           store.update(property.id, {
             ...details,
             // Keep user history and changes made while the network request was running.
@@ -585,6 +588,11 @@ async function resolveUnavailableListings() {
             listingState:'active', listingCheckedAt:result.checkedAt,
             metadata:{ ...metadata, ...result.listing.metadata, listingResolverVersion:LISTING_RESOLVER_VERSION }
           });
+          if (discoveredPrice) {
+            pricePingUntil.set(String(property.id), Date.now() + 500);
+            pingMapProperty(property.id, { color:"purple", label:"$" + discoveredPrice.toLocaleString(), duration:500 });
+            window.setTimeout(()=>{ pricePingUntil.delete(String(property.id)); renderList(); }, 500);
+          }
         } else {
           if (result.state === 'closed') metadata.listingClosedEvidence = result.evidence;
           const fallback = result.priceFallback && Number(result.priceFallback.price) > 0 && !(Number(property.price) > 0) ? result.priceFallback : null;
