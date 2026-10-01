@@ -1163,13 +1163,14 @@ async function searchEngineDiscoveryAdapter(location: string): Promise<AdapterRe
   return { id, listings:rows };
 }
 
-async function sourceAdapter(id: string, source: string, url: string): Promise<AdapterResult> {
+async function sourceAdapter(id: string, source: string, url: string, browserDiscovery = false): Promise<AdapterResult> {
   try {
     const html = await fetchText(url);
     const structured = jsonLdListings(html, source, url);
-    // Always inspect the rendered result page too. Structured data on portal index
-    // pages is commonly only a small server-rendered subset of the full search.
-    try {
+    // Rendered browser discovery is expensive: each snapshot fans out to several
+    // worker requests. Keep it to the two broadest feeds; the remaining portals
+    // still contribute structured results, and search-index discovery covers all.
+    if (browserDiscovery) try {
       const snapshot = await browserDiscoverySnapshot(url);
       const browserRows = browserDiscoveryListings(snapshot, source);
       const merged = new Map<string, Listing>();
@@ -1179,16 +1180,16 @@ async function sourceAdapter(id: string, source: string, url: string): Promise<A
       }
       return { id, listings:[...merged.values()] };
     } catch {
-      return { id, listings:structured };
     }
+    return { id, listings:structured };
   } catch (error) {
-    try {
+    if (browserDiscovery) try {
       const snapshot = await browserDiscoverySnapshot(url);
       const browserRows = browserDiscoveryListings(snapshot, source);
       return { id, listings:browserRows, error:browserRows.length ? undefined : (error instanceof Error ? error.message : "source failed") };
     } catch {
-      return { id, listings:[], error:error instanceof Error ? error.message : "source failed" };
     }
+    return { id, listings:[], error:error instanceof Error ? error.message : "source failed" };
   }
 }
 
@@ -2183,10 +2184,11 @@ Deno.serve(async (req: Request) => {
   const slug = location.toLowerCase().replace(/,.*$/, "").trim().replace(/[^a-z0-9]+/g, "-");
 
   // Reuse public structured listing data exposed by source search pages. Each source
-  // is isolated so a portal change cannot break the complete Rook refresh.
+  // is isolated so a portal change cannot break the complete Rook refresh. Limit
+  // rendered Chromium discovery to two feeds so worker latency cannot stall refresh.
   const adapters = await Promise.all([
-    sourceAdapter("realtor", "Realtor.com", `https://www.realtor.com/apartments/${slug}_CO`),
-    sourceAdapter("rent", "Rent.com", `https://www.rent.com/colorado/${slug}-apartments`),
+    sourceAdapter("realtor", "Realtor.com", `https://www.realtor.com/apartments/${slug}_CO`, true),
+    sourceAdapter("rent", "Rent.com", `https://www.rent.com/colorado/${slug}-apartments`, true),
     sourceAdapter("apartmentlist", "Apartment List", `https://www.apartmentlist.com/co/${slug}`),
     sourceAdapter("apartments", "Apartments.com", `https://www.apartments.com/${slug}-co/`),
     sourceAdapter("hotpads", "HotPads", `https://hotpads.com/${slug}-co/apartments-for-rent`),
