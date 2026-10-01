@@ -600,12 +600,17 @@ async function resolveUnavailableListings() {
         recordActivity('listing-resolve-error', snapshot, { message:String(error?.message || error) });
       }
     };
-    // Drain every due candidate, with bounded concurrency and no repeated polling.
+    // Prioritize missing-price listings and use a larger bounded pool. The server
+    // coalesces/cache-controls expensive fallbacks, so parallelism here reduces the
+    // long visible "Price unavailable" tail without creating unbounded requests.
     const worker=async()=>{while(true){
-      const snapshot=store.getAll().filter(property=>!attempted.has(property.id)&&needsListingCheck(property)).sort((a,b)=>Number(Boolean(b.sourceUrl))-Number(Boolean(a.sourceUrl)))[0];
+      const snapshot=store.getAll().filter(property=>!attempted.has(property.id)&&needsListingCheck(property)).sort((a,b)=>{
+        const aMissing=Number(!(Number(a.price)>0)), bMissing=Number(!(Number(b.price)>0));
+        return (bMissing-aMissing) || (Number(Boolean(b.sourceUrl))-Number(Boolean(a.sourceUrl)));
+      })[0];
       if(!snapshot)break;attempted.add(snapshot.id);await check(snapshot);renderList();
     }};
-    await Promise.all(Array.from({length:5},worker));
+    await Promise.all(Array.from({length:8},worker));
   })();
   try { await listingChecksInFlight; } finally { listingChecksInFlight = null; }
 }
