@@ -202,33 +202,41 @@ export function poiLocationQuery(poi = {}, fallbackLocation = "Fort Collins, CO"
   return hasContext || !fallbackLocation ? raw : [raw, fallbackLocation].filter(Boolean).join(", ");
 }
 
-function validCoordinates(point) {
+function validCoordinates(point, fallbackLocation = "") {
   // Missing values must reach geocoding, never Number(null) / Number("") = 0.
   const isNumeric = value => (typeof value === "number" || typeof value === "string")
     && String(value).trim() !== "" && Number.isFinite(Number(value));
   if (!isNumeric(point?.lat) || !isNumeric(point?.lng)) return null;
   const lat = Number(point.lat);
   const lng = Number(point.lng);
-  return Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  // Rook's Fort Collins-area search must never let a bad geocode/source result
+  // elsewhere in the country distort map bounds. This box comfortably covers
+  // Fort Collins, Wellington, Laporte, Timnath, Windsor, Bellvue and Loveland.
+  if (/fort\s+collins/i.test(String(fallbackLocation || ""))) {
+    if (lat < 40.25 || lat > 40.90 || lng < -105.45 || lng > -104.70) return null;
+  }
+  return { lat, lng };
 }
 
 function cachedCoordinates(property, fallbackLocation = "Fort Collins, CO") {
-  const direct = validCoordinates(property);
+  const direct = validCoordinates(property, fallbackLocation);
   if (direct) return direct;
   const cache = readGeocodeCache();
   for (const q of mapLocationQueries(property, fallbackLocation)) {
-    const cached = validCoordinates(cache[q]);
+    const cached = validCoordinates(cache[q], fallbackLocation);
     if (cached) return cached;
   }
   return null;
 }
 
 async function geocodeProperty(property, fallbackLocation = "Fort Collins, CO") {
-  const direct = validCoordinates(property);
+  const direct = validCoordinates(property, fallbackLocation);
   if (direct) return direct;
   for (const q of mapLocationQueries(property, fallbackLocation)) {
     const point = await geocode(q);
-    if (point) return point;
+    const valid = validCoordinates(point, fallbackLocation);
+    if (valid) return valid;
   }
   return null;
 }
