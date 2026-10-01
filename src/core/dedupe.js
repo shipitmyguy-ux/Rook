@@ -2,6 +2,15 @@ import { canonicalAddress, addressUnit, addressCity, streetAddressKey, compatibl
 const clean = canonicalAddress;
 const streetKey = property => streetAddressKey(property.address);
 const compatibleIdentity = compatibleAddressIdentity;
+const STATUS_PRIORITY = new Map([
+  ["new",0],["viewed",1],["shortlisted",2],["contacted",3],["showing-requested",4],
+  ["showing-scheduled",5],["visited",6],["rejected",-1],["archived",-2]
+]);
+function preferredStatus(a,b) {
+  const av=STATUS_PRIORITY.get(String(a||"")) ?? 0;
+  const bv=STATUS_PRIORITY.get(String(b||"")) ?? 0;
+  return bv>av ? b : a || b;
+}
 
 function addressLikeLabel(value = "") {
   const label=String(value||"").trim();
@@ -70,11 +79,11 @@ function mergeProperty(prior, property) {
     listingCheckedAt: verified.listingCheckedAt || null,
     metadata,
     saved: Boolean(prior.saved || property.saved),
-    status: property.status || prior.status,
+    status: preferredStatus(prior.status, property.status),
     note: property.note || prior.note || "",
     contactedAt: property.contactedAt || prior.contactedAt || null,
     contactOutcome: property.contactOutcome || prior.contactOutcome || null,
-    showingAt: property.showingAt || prior.showingAt || null
+    showingAt: prior.showingAt || property.showingAt || null
   };
 }
 
