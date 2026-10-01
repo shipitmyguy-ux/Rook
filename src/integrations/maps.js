@@ -602,11 +602,14 @@ function installOverviewLayers(map) {
       filter: ["==", ["get", "hasTour"], true],
       layout: {
         "text-field": ["get", "tourLabel"],
-        "text-size": 11,
-        "text-offset": [0, 2.0],
-        "text-anchor": "top",
-        "text-allow-overlap": true,
-        "text-ignore-placement": true
+        "text-size": 10.5,
+        "text-variable-anchor": ["top","bottom","left","right"],
+        "text-radial-offset": 1.35,
+        "text-padding": 4,
+        "text-max-width": 14,
+        "text-allow-overlap": false,
+        "text-ignore-placement": false,
+        "text-optional": true
       },
       paint: {
         "text-color": "#ffe18a",
