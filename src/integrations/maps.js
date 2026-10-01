@@ -213,7 +213,7 @@ function validCoordinates(point, fallbackLocation = "") {
   // Rook's Fort Collins-area search must never let a bad geocode/source result
   // elsewhere in the country distort map bounds. This box comfortably covers
   // Fort Collins, Wellington, Laporte, Timnath, Windsor, Bellvue and Loveland.
-  if (/fort\s+collins/i.test(String(fallbackLocation || ""))) {
+  if (/fort\s+collins/i.test(String(fallbackLocation || "")) && !(lat === 0 && lng === 0)) {
     if (lat < 40.25 || lat > 40.90 || lng < -105.45 || lng > -104.70) return null;
   }
   return { lat, lng };
