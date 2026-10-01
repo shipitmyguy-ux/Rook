@@ -560,6 +560,12 @@ function visibleProperties() {
       const bPromoted = String(b.id) === promotedTourPropertyId;
       if (aPromoted !== bPromoted) return aPromoted ? -1 : 1;
     }
+    for (const point of poiPriorities) {
+      const ad=prioritizedPoiDistance(a,point), bd=prioritizedPoiDistance(b,point);
+      if (ad == null && bd != null) return 1;
+      if (ad != null && bd == null) return -1;
+      if (ad != null && bd != null && ad !== bd) return ad - bd;
+    }
     const at = tourForProperty(a, preferences), bt = tourForProperty(b, preferences);
     const as = at ? tourState(at) : "none", bs = bt ? tourState(bt) : "none";
     const priority = state => state === "soon" ? 0 : state === "upcoming" ? 1 : 2;
@@ -568,12 +574,6 @@ function visibleProperties() {
     if (at?.startsAt && bt?.startsAt) {
       const timeDelta = new Date(at.startsAt) - new Date(bt.startsAt);
       if (timeDelta) return timeDelta;
-    }
-    for (const point of poiPriorities) {
-      const ad=prioritizedPoiDistance(a,point), bd=prioritizedPoiDistance(b,point);
-      if (ad == null && bd != null) return 1;
-      if (ad != null && bd == null) return -1;
-      if (ad != null && bd != null && ad !== bd) return ad - bd;
     }
     return 0;
   });
