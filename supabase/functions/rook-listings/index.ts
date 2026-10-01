@@ -2353,6 +2353,18 @@ Deno.serve(async (req: Request) => {
       searchEngineDiscoveryAdapter(cityLocation)
     ];
   });
+
+  // HotPads splits inventory by property category. The apartments feed alone
+  // misses many houses/townhomes/condos that still satisfy Rook's criteria.
+  // Query the primary city's additional category feeds; the browser worker
+  // handles scrolling/pagination and the normal merge path dedupes overlaps.
+  const primarySlug = primaryCity.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  adapterTasks.push(
+    sourceAdapter(`hotpads-houses-${primarySlug}`, `HotPads houses · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/houses-for-rent`, true),
+    sourceAdapter(`hotpads-townhomes-${primarySlug}`, `HotPads townhomes · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/townhomes-for-rent`, true),
+    sourceAdapter(`hotpads-condos-${primarySlug}`, `HotPads condos · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/condos-for-rent`, true),
+    sourceAdapter(`hotpads-duplexes-${primarySlug}`, `HotPads duplexes · ${primaryCity}`, `https://hotpads.com/${primarySlug}-co/duplexes-for-rent`, true)
+  );
   adapterTasks.push(wellingtonDirectDiscovery());
   adapterTasks.push(bloomOfficialDiscovery());
 
