@@ -2527,13 +2527,14 @@ Deno.serve(async (req: Request) => {
     if (!sourceUrl || !address || !isAllowedListingHost(new URL(sourceUrl).hostname)) {
       return new Response(JSON.stringify({point:null}), {status:400,headers:corsHeaders});
     }
-    const key = "publisher-map:v1:" + sourceUrl + "|" + canonicalAddress(address);
+    const key = "publisher-map:v2:" + sourceUrl + "|" + canonicalAddress(address);
     const result = await coalesce(key,async()=>{
       const cached = await readCache(key);
       if (cached && Date.parse(cached.expires_at) > Date.now()) return cached.payload;
       let point = null;
-      try { point = publisherCoordinates(await fetchText(sourceUrl),address); } catch {}
-      const payload = {point,sourceUrl};
+      const page = await inspectListingUrl(sourceUrl);
+      if (page.reachable) point = publisherCoordinates(page.html,address);
+      const payload = {point,sourceUrl,reason:point ? null : page.reachable ? "publisher-coordinates-missing" : "publisher-unreachable"};
       await writeCache(key,payload,point?86400000:60000);
       return payload;
     });

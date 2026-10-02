@@ -924,6 +924,13 @@ function renderList() {
   const mapSelectionToRestore = selectedMapPropertyId;
   if (mapSelectionToRestore) restoreSelectedMapCard({ keepSelection: true });
   const visible = visibleProperties();
+  const mapDiagnostics = document.querySelector("#property-map");
+  if (query.trim()) mapDiagnostics.dataset.searchMatches = JSON.stringify(searchProperties(store.getAll(), query).map(p => ({
+    id:p.id,address:p.address,price:p.price,beds:p.beds,type:p.type,status:p.status,
+    listingState:p.listingState,sourceUrl:p.sourceUrl,sourceUrls:listingSourceUrls(p),
+    visible:visible.some(v => v.id === p.id),matchesPreferences:matchesSearchDefaults(p,preferences)
+  })));
+  else delete mapDiagnostics.dataset.searchMatches;
   document.querySelector("#property-count").textContent = `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`;
   document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("") || `<p class="empty-state">${listingChecksInFlight || refreshInFlight ? "Checking current listing links…" : "No verified listings match. Open Actions → Needs listing to review saved properties."}</p>`;
   // Map exactly the same property set the user can currently see.

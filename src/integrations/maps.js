@@ -243,9 +243,13 @@ function validCoordinates(point, fallbackLocation = "") {
 function cachedCoordinates(property, fallbackLocation = config.search.location) {
   const direct = validCoordinates(property, fallbackLocation);
   if (direct) return direct;
+  const cache = readGeocodeCache();
+  for (const sourceUrl of listingSourceUrls(property)) {
+    const publisher = validCoordinates(cache["publisher:" + sourceUrl + "|" + property.address], fallbackLocation);
+    if (publisher) return publisher;
+  }
   const configured = validCoordinates(property?.metadata?.mapPoint, fallbackLocation);
   if (configured) return configured;
-  const cache = readGeocodeCache();
   for (const q of mapLocationQueries(property, fallbackLocation)) {
     const cached = validCoordinates(cache[q], fallbackLocation);
     if (cached) return cached;
@@ -297,10 +301,12 @@ async function publisherPropertyPoint(property, fallbackLocation) {
 }
 
 async function geocodeProperty(property, fallbackLocation = config.search.location) {
-  const direct = validCoordinates(property, fallbackLocation) || validCoordinates(property?.metadata?.mapPoint, fallbackLocation);
+  const direct = validCoordinates(property, fallbackLocation);
   if (direct) return direct;
   const publisherPoint = await publisherPropertyPoint(property, fallbackLocation);
   if (publisherPoint) return publisherPoint;
+  const configured = validCoordinates(property?.metadata?.mapPoint, fallbackLocation);
+  if (configured) return configured;
   for (const q of mapLocationQueries(property, fallbackLocation)) {
     const point = await geocode(q, fallbackLocation);
     const valid = validCoordinates(point, fallbackLocation);
