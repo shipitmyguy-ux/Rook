@@ -15,7 +15,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults, canonicalAddress } from "./integrations/providers.js?v=listing-sources-v1";
-import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting } from "./integrations/maps.js?v=listing-sources-v1";
+import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting, isPropertyWithinSearchRadius } from "./integrations/maps.js?v=listing-sources-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState, applySharedRookStateRow } from "./integrations/sync.js?v=shared-state-v2";
@@ -590,7 +590,8 @@ function visibleProperties() {
   const allProperties = store.getAll();
   const restricted = filterProperties(allProperties, activeFilter)
     .filter(property => ["review","pending"].includes(activeFilter) || (activeFilter === "all" && ["soon","upcoming"].includes(tourState(tourForProperty(property, preferences)))) || matchesSearchDefaults(property, preferences));
-  let filtered = searchProperties(restricted, query);
+  const withinRadius = restricted.filter(property => isPropertyWithinSearchRadius(property, preferences));
+  let filtered = searchProperties(withinRadius, query);
   if (promotedTourPropertyId && !filtered.some(property => String(property.id) === promotedTourPropertyId)) {
     const promoted = allProperties.find(property => String(property.id) === promotedTourPropertyId);
     if (promoted && ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(promoted.status)) {
@@ -928,7 +929,7 @@ function renderList() {
   if (query.trim()) mapDiagnostics.dataset.searchMatches = JSON.stringify(searchProperties(store.getAll(), query).map(p => ({
     id:p.id,address:p.address,price:p.price,beds:p.beds,type:p.type,status:p.status,
     listingState:p.listingState,sourceUrl:p.sourceUrl,sourceUrls:listingSourceUrls(p),
-    visible:visible.some(v => v.id === p.id),matchesPreferences:matchesSearchDefaults(p,preferences)
+    visible:visible.some(v => v.id === p.id),matchesPreferences:matchesSearchDefaults(p,preferences),withinRadius:isPropertyWithinSearchRadius(p,preferences)
   })));
   else delete mapDiagnostics.dataset.searchMatches;
   document.querySelector("#property-count").textContent = `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`;
@@ -938,6 +939,7 @@ function renderList() {
   renderPropertyMap(document.querySelector("#property-map"), visible, {
     activeFilter,
     dataAlreadyFiltered: true,
+    radiusMiles: preferences.radiusMiles,
     location: preferences.location || config.search.location,
     pointsOfInterest: cardPointsOfInterest(),
     onPropertyAction(action, id) {
@@ -1068,6 +1070,7 @@ document.addEventListener("rook:distances-resolved", event => {
   if (distances.some(item=>priorityIds.has(String(item.id)))) scheduleRenderList();
 });
 
+document.querySelector("#property-map").addEventListener("rook:map-locations-resolved", scheduleRenderList);
 document.querySelector("#property-map").addEventListener("rook:map-select", event => {
   const id = String(event.detail?.id || "");
   if (!id) return;

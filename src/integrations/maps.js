@@ -1,3 +1,4 @@
+import { pointWithinSearchRadius } from "../core/search-radius.js";
 import { listingSourceUrls } from "../core/listing-sources.js";
 import { classifyPropertyKind } from "../core/property.js";
 import { resolvePoiStyle, poiGlyph, poiColorHex } from "../core/poi-style.js";
@@ -257,6 +258,12 @@ function cachedCoordinates(property, fallbackLocation = config.search.location) 
   return null;
 }
 
+export function isPropertyWithinSearchRadius(property, options = {}) {
+  const location = options.location || config.search.location;
+  const center = options.center || searchAreaForLocation(location)?.center;
+  return pointWithinSearchRadius(cachedCoordinates(property,location),center,options.radiusMiles) !== false;
+}
+
 const publisherInflight = new Map();
 let publisherActive = 0;
 const publisherWaiters = [];
@@ -466,6 +473,11 @@ function updateOverviewSource({ fit = false } = {}) {
   }
   const fallbackLocation = overviewState.latestOptions.location || config.search.location;
   const data = listingGeoJson(overviewState.latestProperties, fallbackLocation);
+  const center = overviewState.latestOptions.center || searchAreaForLocation(fallbackLocation)?.center;
+  data.features = data.features.filter(feature => pointWithinSearchRadius(
+    {lng:feature.geometry.coordinates[0],lat:feature.geometry.coordinates[1]},
+    center,overviewState.latestOptions.radiusMiles
+  ) !== false);
   const source = map.getSource(ROOK_SOURCE_ID);
   source?.setData(data);
   if (overviewState.container) {
@@ -497,6 +509,7 @@ function updateOverviewSource({ fit = false } = {}) {
 
 let overviewUpdateTimer = null;
 let overviewUpdateFit = false;
+let overviewLocationsChanged = false;
 function scheduleOverviewSourceUpdate({fit = false} = {}) {
   overviewUpdateFit ||= fit;
   if (overviewUpdateTimer !== null) return;
@@ -505,6 +518,10 @@ function scheduleOverviewSourceUpdate({fit = false} = {}) {
     const fitNext = overviewUpdateFit;
     overviewUpdateFit = false;
     updateOverviewSource({fit:fitNext});
+    if (overviewLocationsChanged) {
+      overviewLocationsChanged = false;
+      overviewState.container?.dispatchEvent?.(new CustomEvent("rook:map-locations-resolved",{bubbles:true}));
+    }
   }, 100);
 }
 
@@ -513,6 +530,9 @@ async function geocodeMissingOverviewProperties() {
   const properties = [...overviewState.latestProperties];
   const cache = readGeocodeCache();
   const missing = properties.filter(property => {
+    if (validCoordinates(property,fallbackLocation)) return false;
+    const urls = listingSourceUrls(property).slice(0,3);
+    if (urls.some(sourceUrl => validCoordinates(cache["publisher:" + sourceUrl + "|" + property.address],fallbackLocation))) return false;
     if (!cachedCoordinates(property, fallbackLocation)) return true;
     // Upgrade old address-geocoder positions with publisher locations as well.
     return listingSourceUrls(property).slice(0,3).some(sourceUrl => {
@@ -529,8 +549,12 @@ async function geocodeMissingOverviewProperties() {
   // geocode() already deduplicates and serializes requests; each resolved property
   // is published immediately so late-list properties cannot starve forever.
   await Promise.all(missing.map(async property => {
+    const priorPoint = cachedCoordinates(property,fallbackLocation);
     const point = await geocodeProperty(property, fallbackLocation);
-    if (point) scheduleOverviewSourceUpdate({ fit: !overviewState.fittedOnce });
+    if (point && (!priorPoint || point.lat !== priorPoint.lat || point.lng !== priorPoint.lng)) {
+      overviewLocationsChanged = true;
+      scheduleOverviewSourceUpdate({ fit: !overviewState.fittedOnce });
+    }
   }));
   scheduleOverviewSourceUpdate({ fit: !overviewState.fittedOnce });
 }
