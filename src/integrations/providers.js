@@ -1,3 +1,4 @@
+import { listingSourceUrls } from "../core/listing-sources.js";
 import { directListingUrl, LISTING_RESOLVER_VERSION } from "../core/listing.js";
 import { config } from "../config.js";
 import { classifyPropertyKind } from "../core/property.js";
@@ -78,7 +79,7 @@ export function normalizeProviderResult(input = {}, provider = {}) {
     image,
     imageUrl: image,
     primaryImageUrl: image,
-    metadata: { ...metadata, image: image || metadata.image || null, providerId: provider.id || null }
+    metadata: { ...metadata, sourceUrls:listingSourceUrls(input), image: image || metadata.image || null, providerId: provider.id || null }
   };
 }
 
@@ -162,7 +163,7 @@ export function dedupeProviderResults(rows = []) {
       ...Object.fromEntries(Object.entries(row).filter(([, value]) => value !== null && value !== undefined && value !== "")),
       id: prior.id,
       sourceUrl: prior.sourceUrl || row.sourceUrl,
-      metadata: { ...(prior.metadata || {}), ...(row.metadata || {}), sources }
+      metadata: { ...(prior.metadata || {}), ...(row.metadata || {}), sources, sourceUrls:[...new Set([...listingSourceUrls(prior),...listingSourceUrls(row)])] }
     });
   }
   return [...merged.values()];
@@ -175,6 +176,24 @@ function sameListingAddress(a = "", b = "") {
 }
 
 export async function resolveMissingListing(property = {}, criteria = {}, fetchImpl = fetch) {
+  const urls = listingSourceUrls(property);
+  let result = null;
+  for (const sourceUrl of (urls.length ? urls.slice(0, 3) : [null])) {
+    try {
+      const attempt = await resolveListingSource({ ...property, sourceUrl }, criteria, fetchImpl);
+      if (attempt.state === "active") {
+        attempt.listing.metadata.sourceUrls = [...new Set([...urls, ...listingSourceUrls(attempt.listing)])];
+        return attempt;
+      }
+      result ||= attempt;
+    } catch (error) {
+      if (urls.length <= 1) throw error;
+    }
+  }
+  return result || {state:"unknown",url:null,checkedAt:new Date().toISOString()};
+}
+
+async function resolveListingSource(property = {}, criteria = {}, fetchImpl = fetch) {
   if (!property?.address && !property?.label) return { state: "unknown", url: null, checkedAt: new Date().toISOString() };
   const endpoint = config.listings?.endpoint;
   if (!endpoint) return { state: "unknown", url: null, checkedAt: new Date().toISOString() };

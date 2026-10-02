@@ -1,3 +1,4 @@
+import { listingSourceUrls } from "../core/listing-sources.js";
 import { classifyPropertyKind } from "../core/property.js";
 import { resolvePoiStyle, poiGlyph, poiColorHex } from "../core/poi-style.js";
 import { config } from "../config.js";
@@ -256,7 +257,7 @@ const publisherInflight = new Map();
 let publisherActive = 0;
 const publisherWaiters = [];
 async function publisherPropertyPoint(property, fallbackLocation) {
-  const urls = [...new Set([property.sourceUrl, property.id].filter(value => /^https?:\/\//i.test(String(value || ""))))];
+  const urls = listingSourceUrls(property);
   if (!config.listings?.endpoint || !property.address || !urls.length) return null;
   const key = property.address + "|" + urls.join("|");
   if (publisherInflight.has(key)) return publisherInflight.get(key);
@@ -264,7 +265,7 @@ async function publisherPropertyPoint(property, fallbackLocation) {
     if (publisherActive >= 4) await new Promise(resolve => publisherWaiters.push(resolve));
     publisherActive++;
     try {
-      for (const sourceUrl of urls.slice(0,2)) {
+      for (const sourceUrl of urls.slice(0,3)) {
         const cacheKey = "publisher:" + sourceUrl + "|" + property.address;
         const cached = readGeocodeCache()[cacheKey];
         const point = validCoordinates(cached, fallbackLocation);
@@ -336,7 +337,8 @@ function propertyFeature(property, fallbackLocation = config.search.location) {
     status: property.status || "new",
     saved: Boolean(property.saved),
     hasTour: Boolean(tourLabel),
-    tourLabel
+    tourLabel,
+    label: property.label || property.address || "Rental"
   };
   if (Number.isFinite(Number(property.price))) props.price = Number(property.price);
   if (Number.isFinite(Number(property.beds))) props.beds = Number(property.beds);
@@ -498,7 +500,7 @@ async function geocodeMissingOverviewProperties() {
   const missing = properties.filter(property => {
     if (!cachedCoordinates(property, fallbackLocation)) return true;
     // Upgrade old address-geocoder positions with publisher locations as well.
-    return [property.sourceUrl,property.id].filter(value => /^https?:\/\//i.test(String(value || ""))).slice(0,2).some(sourceUrl => {
+    return listingSourceUrls(property).slice(0,3).some(sourceUrl => {
       const entry = cache["publisher:" + sourceUrl + "|" + property.address];
       return !validCoordinates(entry,fallbackLocation) && !(entry?.missedAt && Date.now()-entry.missedAt<60000);
     });
@@ -669,7 +671,7 @@ function installOverviewLayers(map) {
       source: ROOK_SOURCE_ID,
       filter: ["==", ["get", "hasTour"], true],
       layout: {
-        "text-field": ["get", "tourLabel"],
+        "text-field": ["concat", ["get", "label"], "\n", ["get", "tourLabel"]],
         "text-font": ["Noto Sans Regular"],
         "text-size": 10.5,
         "text-variable-anchor": ["top","bottom","left","right"],

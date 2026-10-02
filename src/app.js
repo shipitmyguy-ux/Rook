@@ -1,8 +1,9 @@
+import { listingSourceUrls } from "./core/listing-sources.js";
 import { personalCalendarAvailability } from "./integrations/showing-availability.js";
 import { showingRequestMessage, showingRequestPatch, isShowingPending } from "./core/showing-request.js";
-import { directListingUrl, listingAction, needsListingCheck, LISTING_RESOLVER_VERSION } from "./core/listing.js";
+import { directListingUrl, listingAction, needsListingCheck, LISTING_RESOLVER_VERSION } from "./core/listing.js?v=listing-sources-v1";
 import { properties as fallbackSeedProperties } from "./data/properties.js";
-import { createPropertyStore } from "./core/store.js";
+import { createPropertyStore } from "./core/store.js?v=listing-sources-v1";
 import { filterProperties, searchProperties, PROPERTY_STATUS, applyEvidence, classifyPropertyKind, ignorePropertyPatch, restoreIgnoredPatch } from "./core/property.js";
 import { housingEvidence as fallbackHousingEvidence } from "./data/evidence.js";
 import { propertyFromUrl } from "./core/import.js";
@@ -13,8 +14,8 @@ import { rankProperties, rankProperty } from "./core/ranking.js";
 import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
-import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults, canonicalAddress } from "./integrations/providers.js?v=image-enrichment-v4";
-import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting } from "./integrations/maps.js?v=map-render-v4";
+import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults, canonicalAddress } from "./integrations/providers.js?v=listing-sources-v1";
+import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting } from "./integrations/maps.js?v=listing-sources-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState, applySharedRookStateRow } from "./integrations/sync.js?v=shared-state-v2";
@@ -642,7 +643,7 @@ async function resolveUnavailableListings() {
         const result = await resolveMissingListing(snapshot, { location:preferences.location || config.search.location });
         const property = store.getAll().find(p => p.id === snapshot.id);
         if (!property || [PROPERTY_STATUS.REJECTED,PROPERTY_STATUS.ARCHIVED].includes(property.status)) return;
-        const metadata = { ...property.metadata, listingResolverVersion:LISTING_RESOLVER_VERSION };
+        const metadata = { ...property.metadata, listingResolverVersion:LISTING_RESOLVER_VERSION, listingCheckedSourceUrls:listingSourceUrls(snapshot) };
         delete metadata.listingVerification;
         delete metadata.listingClosedEvidence;
         if (result.state === 'active' && result.listing) {
@@ -680,7 +681,7 @@ async function resolveUnavailableListings() {
         const property = store.getAll().find(p => p.id === snapshot.id);
         if (property) store.update(property.id, {
           listingState:'unknown', listingCheckedAt:new Date().toISOString(),
-          metadata:{ ...property.metadata, listingVerification:null, listingResolverVersion:LISTING_RESOLVER_VERSION }
+          metadata:{ ...property.metadata, listingVerification:null, listingResolverVersion:LISTING_RESOLVER_VERSION, listingCheckedSourceUrls:listingSourceUrls(snapshot) }
         });
         recordActivity('listing-resolve-error', snapshot, { message:String(error?.message || error) });
         void reportRuntimeError(error, { source:"listing-resolver", kind:"resolve", detail:snapshot.id, recovery:"Marked listing unknown and preserved the saved card." });

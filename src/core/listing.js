@@ -45,6 +45,9 @@ export function needsListingCheck(property, now = Date.now()) {
   if (['rejected', 'archived'].includes(property.status) || property.type === 'Rental area') return false;
   if (!property.address && !property.label && !directListingUrl(property.sourceUrl)) return false;
   if (Number(property.metadata?.listingResolverVersion || 0) < LISTING_RESOLVER_VERSION) return true;
+  const alternatives = property.metadata?.sourceUrls || [];
+  const checkedSources = property.metadata?.listingCheckedSourceUrls || [];
+  if (property.listingState === "unknown" && alternatives.length > 1 && alternatives.some(url => !checkedSources.includes(url))) return true;
   const checked = Date.parse(property.listingCheckedAt || '');
   const cooldown = property.listingState === 'unknown' ? 30 * 60 * 1000 : LISTING_MAX_AGE;
   return !Number.isFinite(checked) || checked > now || now - checked >= cooldown;

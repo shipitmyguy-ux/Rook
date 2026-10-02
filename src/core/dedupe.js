@@ -1,3 +1,4 @@
+import { listingSourceUrls } from "./listing-sources.js";
 import { canonicalAddress, addressUnit, addressCity, streetAddressKey, compatibleAddressIdentity } from "./address.js";
 const clean = canonicalAddress;
 const streetKey = property => streetAddressKey(property.address);
@@ -59,6 +60,7 @@ function mergeProperty(prior, property) {
     delete metadata[key];
     if (verified.metadata?.[key] != null) metadata[key] = verified.metadata[key];
   }
+  metadata.sourceUrls = [...new Set([...listingSourceUrls(prior), ...listingSourceUrls(property)])];
   const listingState = verified.listingState || 'unknown';
   return {
     ...prior,

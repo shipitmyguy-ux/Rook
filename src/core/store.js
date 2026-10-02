@@ -1,5 +1,5 @@
 import { normalizeProperty, PROPERTY_STATUS } from "./property.js";
-import { dedupeProperties } from "./dedupe.js";
+import { dedupeProperties } from "./dedupe.js?v=listing-sources-v1";
 
 const STORAGE_KEY = "rook.properties.v1";
 const IGNORED_KEY = "rook.ignored-identities.v1";
