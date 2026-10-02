@@ -260,13 +260,22 @@ function cachedCoordinates(property, fallbackLocation = config.search.location) 
 const publisherInflight = new Map();
 let publisherActive = 0;
 const publisherWaiters = [];
-async function publisherPropertyPoint(property, fallbackLocation) {
+async function publisherPropertyPoint(property, fallbackLocation, {priority=false} = {}) {
   const urls = listingSourceUrls(property);
   if (!config.listings?.endpoint || !property.address || !urls.length) return null;
   const key = property.address + "|" + urls.join("|");
-  if (publisherInflight.has(key)) return publisherInflight.get(key);
+  if (publisherInflight.has(key)) {
+    if (priority) {
+      const index = publisherWaiters.findIndex(waiter => waiter.key === key);
+      if (index >= 0) publisherWaiters.unshift(...publisherWaiters.splice(index,1));
+    }
+    return publisherInflight.get(key);
+  }
   const task = (async()=>{
-    if (publisherActive >= 4) await new Promise(resolve => publisherWaiters.push(resolve));
+    if (publisherActive >= 4) await new Promise(resolve => {
+      const waiter = {key,resolve};
+      if (priority) publisherWaiters.unshift(waiter); else publisherWaiters.push(waiter);
+    });
     publisherActive++;
     try {
       for (const sourceUrl of urls.slice(0,3)) {
@@ -293,17 +302,17 @@ async function publisherPropertyPoint(property, fallbackLocation) {
       return null;
     } finally {
       publisherActive--;
-      publisherWaiters.shift()?.();
+      publisherWaiters.shift()?.resolve();
     }
   })().finally(()=>publisherInflight.delete(key));
   publisherInflight.set(key,task);
   return task;
 }
 
-async function geocodeProperty(property, fallbackLocation = config.search.location) {
+async function geocodeProperty(property, fallbackLocation = config.search.location, options = {}) {
   const direct = validCoordinates(property, fallbackLocation);
   if (direct) return direct;
-  const publisherPoint = await publisherPropertyPoint(property, fallbackLocation);
+  const publisherPoint = await publisherPropertyPoint(property, fallbackLocation, options);
   if (publisherPoint) return publisherPoint;
   const configured = validCoordinates(property?.metadata?.mapPoint, fallbackLocation);
   if (configured) return configured;
@@ -919,7 +928,7 @@ export async function focusPropertyOnMap(property, options = {}) {
   const fallbackLocation = overviewState.latestOptions.location || config.search.location;
   let point = cachedCoordinates(property, fallbackLocation);
   if (!point) {
-    point = await geocodeProperty(property, fallbackLocation);
+    point = await geocodeProperty(property, fallbackLocation, {priority:true});
     updateOverviewSource();
   }
   if (!point || !overviewState.map) return;
@@ -941,12 +950,18 @@ const DISTANCE_CACHE_KEY = "rook.distance-cache.v1";
 const distanceCache = new Map();
 const distanceInflight = new Map();
 
+let distanceCacheMemory = null;
+let distanceCacheStorage = null;
 function readDistanceCache() {
-  try { return JSON.parse(localStorage.getItem(DISTANCE_CACHE_KEY) || "{}"); }
-  catch { return {}; }
+  try {
+    if (distanceCacheMemory && distanceCacheStorage === localStorage) return distanceCacheMemory;
+    distanceCacheStorage = localStorage;
+    return (distanceCacheMemory = JSON.parse(localStorage.getItem(DISTANCE_CACHE_KEY) || "{}"));
+  } catch { return (distanceCacheMemory = {}); }
 }
 
 function writeDistanceCache(cache) {
+  distanceCacheMemory = cache;
   try { localStorage.setItem(DISTANCE_CACHE_KEY, JSON.stringify(cache)); }
   catch {}
 }
@@ -980,6 +995,10 @@ let geocodeCacheStorage = null;
 if (typeof window !== "undefined" && window.addEventListener) {
   window.addEventListener("storage", event => {
     if (event.key === GEOCODE_CACHE_KEY || event.key === null) geocodeCacheMemory = null;
+    if (event.key === DISTANCE_CACHE_KEY || event.key === null) {
+      distanceCacheMemory = null;
+      distanceCache.clear();
+    }
   });
 }
 function readGeocodeCache() {
