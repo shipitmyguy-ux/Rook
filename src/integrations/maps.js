@@ -670,6 +670,7 @@ function installOverviewLayers(map) {
       filter: ["==", ["get", "hasTour"], true],
       layout: {
         "text-field": ["get", "tourLabel"],
+        "text-font": ["Noto Sans Regular"],
         "text-size": 10.5,
         "text-variable-anchor": ["top","bottom","left","right"],
         "text-radial-offset": 1.35,
@@ -831,7 +832,7 @@ async function ensureOverviewMap(container) {
     };
     const alreadyLoaded = typeof map.loaded === "function" && map.loaded();
     if (alreadyLoaded) reveal();
-    else if (typeof map.once === "function") map.once("idle", reveal);
+    else if (typeof map.once === "function") map.once("render", reveal);
     else reveal();
     const style = map.getStyle();
     container.dataset.baseLayerCount = String((style?.layers || []).filter(layer => layer.id !== ROOK_LAYER_ID).length);
@@ -851,6 +852,7 @@ async function ensureOverviewMap(container) {
   map.on("style.load", hydrateStyle);
   map.on("error", event => {
     const message = String(event?.error?.message || event?.error || "");
+    if (/glyph|fonts\\//i.test(message)) return;
     container.dataset.mapLastError = message.slice(0, 220);
     overviewState.baseErrorCount += 1;
     if (!overviewState.styleFallbackTried && overviewState.baseErrorCount >= 3) {
