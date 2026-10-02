@@ -301,3 +301,21 @@ html.settings-modal-open,body.settings-modal-open{overflow:hidden;overscroll-beh
 
 .showing-card-actions{margin-top:8px}
 .request-showing-button{min-height:40px;padding:8px 12px;border:1px solid #e0aa16;border-radius:10px;background:#30250f;color:#ffd03d;font:600 12px/1.25 system-ui;cursor:pointer}
+
+/* Give the map the space reclaimed by the compact masthead. */
+.shell{padding-top:10px}
+.topbar{min-height:44px;padding:0 8px 6px}
+.topbar>div:first-child{display:flex;align-items:baseline;gap:12px}
+.topbar h1{font-size:1.5rem;line-height:1.1}
+.topbar .eyebrow{margin:0;font-size:.62rem}
+.topbar .icon-button,.topbar .desktop-refresh-button{width:40px;min-width:40px;height:40px;min-height:40px;border-radius:11px}
+.overview-map{height:clamp(336px,calc(46vh + 36px),536px);margin-top:0}
+@media(max-width:699px){
+ .shell{padding-top:6px}
+ .topbar{padding:0 5px 4px}
+ .topbar>div:first-child{gap:8px}
+ .topbar h1{font-size:1.35rem}
+ .topbar .eyebrow{font-size:.56rem;letter-spacing:.1em}
+ .overview-map{height:clamp(288px,calc(42vh + 28px),388px)}
+}
+@media(max-width:389px){.topbar .eyebrow{display:none}}
