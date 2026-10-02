@@ -1,3 +1,4 @@
+import { propertySquareFeet, squareFootageFromText } from "../../../src/core/property-size.js";
 import {signedCoordinate,publisherCoordinates} from "../../../src/core/coordinates.js";
 import { directListingUrl } from "../../../src/core/listing.js";
 import { verifyDirectListing } from "./verification.js";
@@ -975,7 +976,7 @@ function fallbackListingFromText(text: string, pageUrl: string, known: { address
     address:known.address || "",
     type:"Property",
     listingType:"rent",
-    price, beds, baths,
+    price, beds, baths, sqft:squareFootageFromText(text),
     source:known.source || new URL(pageUrl).hostname,
     sourceUrl:pageUrl,
     metadata:{ enrichedFromBrowser:true }
@@ -1011,7 +1012,7 @@ function jsonLdListings(html: string, source: string, pageUrl: string): Listing[
           address,
           type: item["@type"] || "Property",
           listingType: "rent",
-          price, beds, baths,
+          price, beds, baths, sqft:propertySquareFeet(item),
           lat: signedCoordinate(item.geo?.latitude, 90),
           lng: signedCoordinate(item.geo?.longitude, 180),
           source,
@@ -1073,6 +1074,7 @@ function fallbackListingFromHtml(html: string, pageUrl: string, known: { address
     type: "Property",
     listingType: "rent",
     price, beds, baths,
+    sqft:jsonLdListings(html, known.source || new URL(pageUrl).hostname, pageUrl).find(item => known.address && sameAddress(item.address, known.address))?.sqft ?? squareFootageFromText(metaDescription),
     source: known.source || new URL(pageUrl).hostname,
     sourceUrl: pageUrl,
     image, imageUrl:image, primaryImageUrl:image,
@@ -1190,7 +1192,7 @@ function discoveryJsonListings(payloads:any[],source:string,pageUrl:string):List
     const offer=Array.isArray(item.offers)?item.offers[0]:item.offers;
     const price=num(offer?.price||item.price||item.unformattedPrice||item.rent||item.minRent);
     const beds=num(item.numberOfBedrooms??item.bedrooms??item.beds??item.maxBeds);
-    rows.push({id:url,label:item.name||address,address,type:item["@type"]||item.propertyType||"Property",listingType:"rent",source,sourceUrl:url,price,beds,baths:num(item.numberOfBathroomsTotal??item.bathrooms??item.baths),
+    rows.push({id:url,label:item.name||address,address,type:item["@type"]||item.propertyType||"Property",listingType:"rent",source,sourceUrl:url,price,beds,sqft:propertySquareFeet(item),baths:num(item.numberOfBathroomsTotal??item.bathrooms??item.baths),
       metadata:{description:item.description||null,discoveryMethod:"rendered-json"}});
   }
   return rows;
@@ -1715,7 +1717,7 @@ async function discoverListing(address: string, label: string, location: string,
           (!address && canonicalAddress(row.label) === canonicalAddress(label))
         ) || fallbackListingFromHtml(inspected.html, direct.toString(), { address, label, source:direct.hostname });
 
-        if (!match.price || match.beds == null || match.baths == null) {
+        if (!match.price || match.beds == null || match.baths == null || match.sqft == null) {
           const reader = await readerText(direct.toString(), 5000);
           if (reader && !looksLikeBrowserChallenge(reader)) {
             const enriched = fallbackListingFromText(reader, direct.toString(), { address, label, source:direct.hostname });
@@ -1724,6 +1726,7 @@ async function discoverListing(address: string, label: string, location: string,
               price: match.price || enriched.price,
               beds: match.beds ?? enriched.beds,
               baths: match.baths ?? enriched.baths,
+              sqft: match.sqft ?? enriched.sqft,
               metadata:{ ...(match.metadata || {}), directReaderEnriched:true }
             };
           }

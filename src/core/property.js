@@ -1,3 +1,4 @@
+import { propertySquareFeet } from "./property-size.js";
 import { hasVerifiedListing, directListingUrl, confirmedClosed } from "./listing.js";
 export const PROPERTY_STATUS = Object.freeze({
   NEW: "new",
@@ -33,6 +34,7 @@ export function normalizeProperty(input = {}) {
     price: Number.isFinite(input.price) ? input.price : null,
     beds: input.beds ?? null,
     baths: input.baths ?? null,
+    sqft: propertySquareFeet(input),
     lat: input.lat ?? null,
     lng: input.lng ?? null,
     status: input.status || PROPERTY_STATUS.NEW,

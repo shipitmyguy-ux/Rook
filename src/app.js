@@ -1,3 +1,4 @@
+import { squareFootageLabel } from "./core/property-size.js";
 import { listingSourceUrls } from "./core/listing-sources.js";
 import { personalCalendarAvailability } from "./integrations/showing-availability.js";
 import { showingRequestMessage, showingRequestPatch, isShowingPending } from "./core/showing-request.js";
@@ -513,7 +514,7 @@ function propertyCard(property) {
     </section>
     <section class="property-card__summary">
       <header class="property-card__identity"><span class="property-type-icon" role="img" aria-label="${kind}" title="${kind}">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span><div><h2>${esc(property.label)}</h2><p class="muted">${esc(displayAddress)}</p></div></header>
-      <div class="property-card__facts"><strong class="${(pricePingUntil.get(String(property.id))||0)>Date.now() ? "price-discovered-ping" : ""}">${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span></div>
+      <div class="property-card__facts"><strong class="${(pricePingUntil.get(String(property.id))||0)>Date.now() ? "price-discovered-ping" : ""}">${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span>${squareFootageLabel(property) ? `<span>${squareFootageLabel(property)}</span>` : ""}</div>
       ${tourChip(property)}
       ${isShowingPending(property) ? '<p class="status-chip">Showing requested · awaiting reply</p>' : ""}
       <p class="note compact-note">${esc(property.note || "No visit notes yet.")}</p>

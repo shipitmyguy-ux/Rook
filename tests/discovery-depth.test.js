@@ -1,3 +1,4 @@
+import { propertySquareFeet, squareFootageFromText } from "../src/core/property-size.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -11,7 +12,7 @@ import {dedupeProperties} from '../src/core/dedupe.js';
 
 function backend(){
   const source=stripTypeScriptTypes(fs.readFileSync(new URL('../supabase/functions/rook-listings/index.ts',import.meta.url),'utf8')).replace(/^import .*;\s*$/gm,'');
-  const context=vm.createContext({URL,Deno:{env:{get:()=>''},serve:()=>{}},directListingUrl,signedCoordinate,publisherCoordinates,console,AbortSignal,Map,Set,Date,setTimeout,clearTimeout});
+  const context=vm.createContext({propertySquareFeet,squareFootageFromText,URL,Deno:{env:{get:()=>''},serve:()=>{}},directListingUrl,signedCoordinate,publisherCoordinates,console,AbortSignal,Map,Set,Date,setTimeout,clearTimeout});
   vm.runInContext(source,context);return context;
 }
 test('runtime config owns mutable discovery data instead of named code paths',()=>{

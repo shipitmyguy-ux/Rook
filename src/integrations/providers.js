@@ -1,3 +1,4 @@
+import { propertySquareFeet } from "../core/property-size.js";
 import { listingSourceUrls } from "../core/listing-sources.js";
 import { directListingUrl, LISTING_RESOLVER_VERSION } from "../core/listing.js";
 import { config } from "../config.js";
@@ -74,6 +75,7 @@ export function normalizeProviderResult(input = {}, provider = {}) {
     price: Number.isFinite(price) ? price : null,
     beds: Number.isFinite(beds) ? beds : null,
     baths: Number.isFinite(baths) ? baths : null,
+    sqft: propertySquareFeet(input),
     source: input.source || provider.label || provider.id || null,
     sourceUrl,
     image,

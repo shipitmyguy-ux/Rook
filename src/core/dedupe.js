@@ -72,6 +72,7 @@ function mergeProperty(prior, property) {
     price: verified.price ?? prior.price ?? property.price,
     beds: verified.beds ?? prior.beds ?? property.beds,
     baths: verified.baths ?? prior.baths ?? property.baths,
+    sqft: verified.sqft ?? prior.sqft ?? property.sqft,
     lat: prior.lat ?? property.lat,
     lng: prior.lng ?? property.lng,
     source: prior.source || property.source,
