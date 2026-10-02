@@ -4,13 +4,14 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
 import {directListingUrl} from '../src/core/listing.js';
+import {signedCoordinate,publisherCoordinates} from '../src/core/coordinates.js';
 import {nextPageUrl} from '../supabase/functions/rook-browser-worker/pagination.js';
 import {createJsonProvider,matchesDiscoveryDefaults,matchesSearchDefaults} from '../src/integrations/providers.js';
 import {dedupeProperties} from '../src/core/dedupe.js';
 
 function backend(){
   const source=stripTypeScriptTypes(fs.readFileSync(new URL('../supabase/functions/rook-listings/index.ts',import.meta.url),'utf8')).replace(/^import .*;\s*$/gm,'');
-  const context=vm.createContext({URL,Deno:{env:{get:()=>''},serve:()=>{}},directListingUrl,console,AbortSignal,Map,Set,Date,setTimeout,clearTimeout});
+  const context=vm.createContext({URL,Deno:{env:{get:()=>''},serve:()=>{}},directListingUrl,signedCoordinate,publisherCoordinates,console,AbortSignal,Map,Set,Date,setTimeout,clearTimeout});
   vm.runInContext(source,context);return context;
 }
 test('runtime config owns mutable discovery data instead of named code paths',()=>{
