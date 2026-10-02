@@ -1,0 +1,18 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+test("large cached maps read persisted coordinates once per render session", async () => {
+ const {renderPropertyMap} = await import("../src/integrations/maps.js?performance");
+ let reads=0, data, onStyle;
+ const cache=Object.fromEntries(Array.from({length:500},(_,i)=>["Address "+i,{lat:40.58+i/100000,lng:-105.08}]));
+ globalThis.localStorage={getItem(){reads++;return JSON.stringify(cache);},setItem(){}};
+ const source={setData(value){data=value;}};
+ const map={addControl(){},on(event,handler){if(event==="style.load")onStyle=handler;},getSource(){return source;},getLayer(){return true;},setFilter(){},fitBounds(){},jumpTo(){},getStyle(){return {layers:[],sources:{}};}};
+ globalThis.window={maplibregl:{Map:function(){return map;},AttributionControl:function(){}}};
+ globalThis.fetch=async()=>({ok:false});
+ const container={replaceChildren(){},dataset:{}};
+ await renderPropertyMap(container,Array.from({length:500},(_,i)=>({id:String(i),address:"Address "+i})));
+ await new Promise(resolve=>setTimeout(resolve,0));
+ onStyle();
+ assert.equal(data.features.length,500);
+ assert.ok(reads<=2,"coordinate cache was read "+reads+" times");
+});

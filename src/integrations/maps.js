@@ -478,6 +478,19 @@ function updateOverviewSource({ fit = false } = {}) {
   }
 }
 
+let overviewUpdateTimer = null;
+let overviewUpdateFit = false;
+function scheduleOverviewSourceUpdate({fit = false} = {}) {
+  overviewUpdateFit ||= fit;
+  if (overviewUpdateTimer !== null) return;
+  overviewUpdateTimer = setTimeout(() => {
+    overviewUpdateTimer = null;
+    const fitNext = overviewUpdateFit;
+    overviewUpdateFit = false;
+    updateOverviewSource({fit:fitNext});
+  }, 100);
+}
+
 async function geocodeMissingOverviewProperties() {
   const fallbackLocation = overviewState.latestOptions.location || config.search.location;
   const properties = [...overviewState.latestProperties];
@@ -500,9 +513,9 @@ async function geocodeMissingOverviewProperties() {
   // is published immediately so late-list properties cannot starve forever.
   await Promise.all(missing.map(async property => {
     const point = await geocodeProperty(property, fallbackLocation);
-    if (point) updateOverviewSource({ fit: !overviewState.fittedOnce });
+    if (point) scheduleOverviewSourceUpdate({ fit: !overviewState.fittedOnce });
   }));
-  updateOverviewSource({ fit: !overviewState.fittedOnce });
+  scheduleOverviewSourceUpdate({ fit: !overviewState.fittedOnce });
 }
 
 function propertyIconCanvas(kind, color) {
@@ -952,10 +965,19 @@ function storeDistanceValue(key, value) {
   writeDistanceCache(persisted);
 }
 
+let geocodeCacheMemory = null;
+let geocodeCacheStorage = null;
+if (typeof window !== "undefined" && window.addEventListener) {
+  window.addEventListener("storage", event => {
+    if (event.key === GEOCODE_CACHE_KEY || event.key === null) geocodeCacheMemory = null;
+  });
+}
 function readGeocodeCache() {
   try {
+    if (geocodeCacheMemory && geocodeCacheStorage === localStorage) return geocodeCacheMemory;
+    geocodeCacheStorage = localStorage;
     const current = JSON.parse(localStorage.getItem(GEOCODE_CACHE_KEY) || "{}");
-    if (Object.keys(current).length) return current;
+    if (Object.keys(current).length) return (geocodeCacheMemory = current);
     const legacy = JSON.parse(localStorage.getItem(LEGACY_GEOCODE_CACHE_KEY) || "{}");
     const migrated = {};
     for (const [key, value] of Object.entries(legacy)) {
@@ -963,11 +985,12 @@ function readGeocodeCache() {
       if (point) migrated[key] = point;
     }
     if (Object.keys(migrated).length) localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(migrated));
-    return migrated;
-  } catch { return {}; }
+    return (geocodeCacheMemory = migrated);
+  } catch { return (geocodeCacheMemory = {}); }
 }
 
 function writeGeocodeCache(cache) {
+  geocodeCacheMemory = cache;
   try { localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(cache)); }
   catch {}
 }
