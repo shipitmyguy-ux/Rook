@@ -252,9 +252,54 @@ function cachedCoordinates(property, fallbackLocation = config.search.location) 
   return null;
 }
 
+const publisherInflight = new Map();
+let publisherActive = 0;
+const publisherWaiters = [];
+async function publisherPropertyPoint(property, fallbackLocation) {
+  const urls = [...new Set([property.sourceUrl, property.id].filter(value => /^https?:\/\//i.test(String(value || ""))))];
+  if (!config.listings?.endpoint || !property.address || !urls.length) return null;
+  const key = property.address + "|" + urls.join("|");
+  if (publisherInflight.has(key)) return publisherInflight.get(key);
+  const task = (async()=>{
+    if (publisherActive >= 4) await new Promise(resolve => publisherWaiters.push(resolve));
+    publisherActive++;
+    try {
+      for (const sourceUrl of urls.slice(0,2)) {
+        const cacheKey = "publisher:" + sourceUrl + "|" + property.address;
+        const cached = readGeocodeCache()[cacheKey];
+        const point = validCoordinates(cached, fallbackLocation);
+        if (point) return point;
+        if (cached?.missedAt && Date.now() - cached.missedAt < 60000) continue;
+        try {
+          const endpoint = new URL(config.listings.endpoint, window.location.href);
+          endpoint.searchParams.set("map","1");
+          endpoint.searchParams.set("sourceUrl",sourceUrl);
+          endpoint.searchParams.set("address",property.address);
+          const response = await fetch(endpoint, {signal:AbortSignal.timeout(10000)});
+          const payload = response.ok ? await response.json() : null;
+          const value = validCoordinates(payload?.point, fallbackLocation);
+          const next = readGeocodeCache();
+          next[cacheKey] = value || {missedAt:Date.now()};
+          if (value) for (const q of mapLocationQueries(property,fallbackLocation)) next[q] = value;
+          writeGeocodeCache(next);
+          if (value) return value;
+        } catch {}
+      }
+      return null;
+    } finally {
+      publisherActive--;
+      publisherWaiters.shift()?.();
+    }
+  })().finally(()=>publisherInflight.delete(key));
+  publisherInflight.set(key,task);
+  return task;
+}
+
 async function geocodeProperty(property, fallbackLocation = config.search.location) {
   const direct = validCoordinates(property, fallbackLocation) || validCoordinates(property?.metadata?.mapPoint, fallbackLocation);
   if (direct) return direct;
+  const publisherPoint = await publisherPropertyPoint(property, fallbackLocation);
+  if (publisherPoint) return publisherPoint;
   for (const q of mapLocationQueries(property, fallbackLocation)) {
     const point = await geocode(q, fallbackLocation);
     const valid = validCoordinates(point, fallbackLocation);
@@ -1258,7 +1303,7 @@ export async function renderCardMap(container, property, pointsOfInterest = [], 
   const fallbackPoint = area?.center && Number.isFinite(Number(area.center.lat)) && Number.isFinite(Number(area.center.lng))
     ? { lat:Number(area.center.lat), lng:Number(area.center.lng) }
     : { lat:0, lng:0 };
-  const point = validCoordinates(property) || await geocode(property.address || [property.label, fallbackLocation].join(", "), fallbackLocation);
+  const point = cachedCoordinates(property, fallbackLocation) || await geocodeProperty(property, fallbackLocation);
   const propertyPoint = point || fallbackPoint;
   const pois = [];
   for (const poi of pointsOfInterest) {

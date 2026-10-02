@@ -1,3 +1,4 @@
+import {signedCoordinate,publisherCoordinates} from "../../../src/core/coordinates.js";
 import { directListingUrl } from "../../../src/core/listing.js";
 import { verifyDirectListing } from "./verification.js";
 import {readCache,writeCache,coalesce} from "./cache.ts";
@@ -1011,8 +1012,8 @@ function jsonLdListings(html: string, source: string, pageUrl: string): Listing[
           type: item["@type"] || "Property",
           listingType: "rent",
           price, beds, baths,
-          lat: num(item.geo?.latitude),
-          lng: num(item.geo?.longitude),
+          lat: signedCoordinate(item.geo?.latitude, 90),
+          lng: signedCoordinate(item.geo?.longitude, 180),
           source,
           sourceUrl: url,
           image,
@@ -2520,6 +2521,24 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method !== "GET") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
 
+  if (url.searchParams.get("map") === "1") {
+    const sourceUrl = directListingUrl(url.searchParams.get("sourceUrl"));
+    const address = url.searchParams.get("address") || "";
+    if (!sourceUrl || !address || !isAllowedListingHost(new URL(sourceUrl).hostname)) {
+      return new Response(JSON.stringify({point:null}), {status:400,headers:corsHeaders});
+    }
+    const key = "publisher-map:v1:" + sourceUrl + "|" + canonicalAddress(address);
+    const result = await coalesce(key,async()=>{
+      const cached = await readCache(key);
+      if (cached && Date.parse(cached.expires_at) > Date.now()) return cached.payload;
+      let point = null;
+      try { point = publisherCoordinates(await fetchText(sourceUrl),address); } catch {}
+      const payload = {point,sourceUrl};
+      await writeCache(key,payload,point?86400000:60000);
+      return payload;
+    });
+    return new Response(JSON.stringify(result), {headers:corsHeaders});
+  }
   const runtimeDefaults = await loadDiscoveryRuntimeConfig();
   const location = url.searchParams.get("location") || runtimeDefaults.searchAreas?.defaultLocation || FALLBACK_LOCATION;
   if (url.searchParams.get("state") === "1") {
