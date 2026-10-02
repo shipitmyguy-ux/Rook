@@ -14,7 +14,7 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults, canonicalAddress } from "./integrations/providers.js?v=image-enrichment-v4";
-import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting } from "./integrations/maps.js?v=pan-smooth-v1";
+import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting } from "./integrations/maps.js?v=map-render-v4";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState, applySharedRookStateRow } from "./integrations/sync.js?v=shared-state-v2";
