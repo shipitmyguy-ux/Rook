@@ -442,7 +442,10 @@ function setFeatureStateSafe(id, state) {
   try { map.setFeatureState({ source: ROOK_SOURCE_ID, id: String(id) }, state); } catch {}
 }
 
+let focusedPropertyPopup = null;
 function clearSelectionState() {
+  focusedPropertyPopup?.remove();
+  focusedPropertyPopup = null;
   const previous = overviewState.selectedId;
   overviewState.selectedId = null;
   if (previous) setFeatureStateSafe(previous, { selected: false });
@@ -454,6 +457,7 @@ function clearSelectionState() {
 function selectFeature(id) {
   if (!id) return;
   const previous = overviewState.selectedId;
+  if (previous && previous !== String(id)) { focusedPropertyPopup?.remove(); focusedPropertyPopup = null; }
   if (previous && previous !== id) setFeatureStateSafe(previous, { selected: false });
   overviewState.selectedId = String(id);
   for (const property of overviewState.latestProperties) {
@@ -648,15 +652,17 @@ function installOverviewLayers(map) {
       paint: {
         "circle-radius": [
           "case",
+          ["boolean", ["feature-state", "selected"], false], 25,
           ["boolean", ["feature-state", "pricePing"], false], 22,
           ["boolean", ["get", "hasTour"], false], 18,
           ["boolean", ["feature-state", "selected"], false], 15,
           ["boolean", ["feature-state", "hovered"], false], 12,
           0
         ],
-        "circle-color": ["case", ["boolean", ["feature-state", "pricePing"], false], "#b46cff", "#ffc429"],
+        "circle-color": ["case", ["boolean", ["feature-state", "selected"], false], "#58eadc", ["boolean", ["feature-state", "pricePing"], false], "#b46cff", "#ffc429"],
         "circle-opacity": [
           "case",
+          ["boolean", ["feature-state", "selected"], false], 0.38,
           ["boolean", ["feature-state", "pricePing"], false], 0.5,
           ["boolean", ["get", "hasTour"], false], 0.24,
           ["boolean", ["feature-state", "selected"], false], 0.3,
@@ -665,12 +671,13 @@ function installOverviewLayers(map) {
         ],
         "circle-stroke-width": [
           "case",
+          ["boolean", ["feature-state", "selected"], false], 4,
           ["boolean", ["get", "hasTour"], false], 3,
           ["boolean", ["feature-state", "selected"], false], 2,
           ["boolean", ["feature-state", "hovered"], false], 1,
           0
         ],
-        "circle-stroke-color": ["case", ["boolean", ["feature-state", "pricePing"], false], "#d8adff", "#ffc429"]
+        "circle-stroke-color": ["case", ["boolean", ["feature-state", "selected"], false], "#8ffff0", ["boolean", ["feature-state", "pricePing"], false], "#d8adff", "#ffc429"]
       }
     });
   }
@@ -957,6 +964,17 @@ export async function focusPropertyOnMap(property, options = {}) {
   }
   if (!point || !overviewState.map) return;
   selectFeature(String(property.id));
+  focusedPropertyPopup?.remove();
+  focusedPropertyPopup = null;
+  if (window.maplibregl?.Popup) {
+    const label = document.createElement("div");
+    label.className = "map-focus-label";
+    label.textContent = property.label || property.address || "Focused property";
+    focusedPropertyPopup = new window.maplibregl.Popup({
+      closeButton:false, closeOnClick:false, offset:28, anchor:"bottom", className:"rook-focus-popup"
+    }).setLngLat([point.lng,point.lat]).setDOMContent(label).addTo(overviewState.map);
+  }
+  container.dataset.focusedPropertyId = String(property.id);
   if (options.showDetails !== false) showPropertyDetails(String(property.id), true);
   overviewState.map.easeTo({
     center: [point.lng, point.lat],
