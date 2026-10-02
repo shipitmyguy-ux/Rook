@@ -852,7 +852,7 @@ async function ensureOverviewMap(container) {
   map.on("style.load", hydrateStyle);
   map.on("error", event => {
     const message = String(event?.error?.message || event?.error || "");
-    if (/glyph|fonts\\//i.test(message)) return;
+    if (/glyph|fonts/i.test(message)) return;
     container.dataset.mapLastError = message.slice(0, 220);
     overviewState.baseErrorCount += 1;
     if (!overviewState.styleFallbackTried && overviewState.baseErrorCount >= 3) {
