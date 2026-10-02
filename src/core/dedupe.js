@@ -1,3 +1,4 @@
+import { classifyPropertyKind } from "./property.js";
 import { listingSourceUrls } from "./listing-sources.js";
 import { canonicalAddress, addressUnit, addressCity, streetAddressKey, compatibleAddressIdentity } from "./address.js";
 const clean = canonicalAddress;
@@ -67,6 +68,7 @@ function mergeProperty(prior, property) {
     ...property,
     address: prior.address || property.address || "",
     label: property.metadata?.communityName || prior.metadata?.communityName || property.label || prior.label || "Untitled property",
+    type: [verified,prior,property].find(p => classifyPropertyKind(p) !== "rental")?.type || verified.type || prior.type || property.type,
     price: verified.price ?? prior.price ?? property.price,
     beds: verified.beds ?? prior.beds ?? property.beds,
     baths: verified.baths ?? prior.baths ?? property.baths,

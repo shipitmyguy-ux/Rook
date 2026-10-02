@@ -38,3 +38,11 @@ test("new alternative URLs bypass an unknown-source cooldown only once", async (
   row.metadata.listingCheckedSourceUrls.push(hotpads);
   assert.equal(needsListingCheck(row),false);
 });
+
+test("fresh house classification survives an older verified generic property record",()=>{
+ const incoming=normalizeProviderResult({id:hotpads+"#residence",sourceUrl:apartments,address,price:2400,beds:3,type:"House"},{id:"rook-live"});
+ const old={...incoming,type:"Property",listingState:"active",listingCheckedAt:new Date().toISOString(),metadata:{providerId:"rook-resolver",sourceUrls:[apartments],listingVerification:{confirmed:true,version:5,url:apartments}}};
+ const [merged]=dedupeProperties([incoming,old]);
+ assert.equal(merged.type,"House");
+ assert.deepEqual(new Set(listingSourceUrls(merged)),new Set([apartments,hotpads]));
+});
