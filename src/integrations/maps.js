@@ -481,7 +481,15 @@ function updateOverviewSource({ fit = false } = {}) {
 async function geocodeMissingOverviewProperties() {
   const fallbackLocation = overviewState.latestOptions.location || config.search.location;
   const properties = [...overviewState.latestProperties];
-  const missing = properties.filter(property => !cachedCoordinates(property, fallbackLocation));
+  const cache = readGeocodeCache();
+  const missing = properties.filter(property => {
+    if (!cachedCoordinates(property, fallbackLocation)) return true;
+    // Upgrade old address-geocoder positions with publisher locations as well.
+    return [property.sourceUrl,property.id].filter(value => /^https?:\/\//i.test(String(value || ""))).slice(0,2).some(sourceUrl => {
+      const entry = cache["publisher:" + sourceUrl + "|" + property.address];
+      return !validCoordinates(entry,fallbackLocation) && !(entry?.missedAt && Date.now()-entry.missedAt<60000);
+    });
+  });
   if (!missing.length) {
     updateOverviewSource({ fit: !overviewState.fittedOnce });
     return;
