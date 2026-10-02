@@ -41,8 +41,15 @@ test("new alternative URLs bypass an unknown-source cooldown only once", async (
 
 test("fresh house classification survives an older verified generic property record",()=>{
  const incoming=normalizeProviderResult({id:hotpads+"#residence",sourceUrl:apartments,address,price:2400,beds:3,type:"House"},{id:"rook-live"});
- const old={...incoming,type:"Property",listingState:"active",listingCheckedAt:new Date().toISOString(),metadata:{providerId:"rook-resolver",sourceUrls:[apartments],listingVerification:{confirmed:true,version:5,url:apartments}}};
+ const old={...incoming,type:"Property",listingState:"active",listingCheckedAt:new Date().toISOString(),metadata:{description:"See apartments for rent at 526 Walhalla Ct",providerId:"rook-resolver",sourceUrls:[apartments],listingVerification:{confirmed:true,version:5,url:apartments}}};
  const [merged]=dedupeProperties([incoming,old]);
  assert.equal(merged.type,"House");
  assert.deepEqual(new Set(listingSourceUrls(merged)),new Set([apartments,hotpads]));
+});
+
+test("selecting every property kind retains rentals awaiting a specific classification",async()=>{
+ const {matchesSearchDefaults}=await import("../src/integrations/providers.js");
+ const row={address,type:"Property",price:2400,beds:3,listingType:"rent"};
+ assert.equal(matchesSearchDefaults(row,{propertyTypes:["apartment","townhome","house"],maxPrice:2500,minBeds:2}),true);
+ assert.equal(matchesSearchDefaults(row,{propertyTypes:["house"]}),false);
 });

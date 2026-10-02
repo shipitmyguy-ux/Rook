@@ -127,7 +127,8 @@ export function matchesSearchDefaults(property, criteria = {}) {
   if (Array.isArray(criteria.propertyTypes) && propertyTypes.length === 0) return false;
   if (propertyTypes.length) {
     const kind = classifyPropertyKind(property);
-    if (!propertyTypes.includes(kind)) return false;
+    const allKindsSelected = ["apartment","townhome","house"].every(kind => propertyTypes.includes(kind));
+    if (!propertyTypes.includes(kind) && !(kind === "rental" && allKindsSelected)) return false;
   }
   if (minBeds && property.beds != null && property.beds < minBeds) return false;
   const maxPrice = criteria.maxPrice;
