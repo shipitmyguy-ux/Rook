@@ -272,6 +272,28 @@ async function populateWorkspaceSwitcher() {
   if (status) status.textContent = isMainWorkspace ? "Main workspace" : "Scratch workspace · ChatGPT sync";
 }
 
+async function createNewTempMap() {
+  const raw = window.prompt("Name this temp map", "Temp map");
+  if (raw === null) return;
+  const label = String(raw || "Temp map").trim() || "Temp map";
+  const workspaceId = ("temp-" + label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + Date.now().toString(36)).slice(0, 64);
+  const endpoint = config.listings?.endpoint;
+  if (!endpoint) return;
+  const response = await fetch(endpoint + "?createWorkspace=1", {
+    method:"POST",
+    headers:{ "content-type":"application/json", Accept:"application/json" },
+    body:JSON.stringify({ workspaceId, label })
+  });
+  if (!response.ok) {
+    const status = document.querySelector("#workspace-status");
+    if (status) status.textContent = "Could not create temp map.";
+    return;
+  }
+  const url = new URL(location.href);
+  url.searchParams.set("workspace", workspaceId);
+  location.assign(url.toString());
+}
+
 function followUpBadge(property) {
   const next = nextFollowUp(property, new Date(), config.followUp.defaultHours);
   if (!next) return "";
@@ -1130,7 +1152,7 @@ function renderList() {
 }
 
 app.innerHTML = `<main class="shell">
-<header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><div class="topbar-actions"><label class="workspace-picker"><span>Map</span><select id="workspace-select" aria-label="Rook map workspace"><option value="main">Main</option></select></label><button type="button" class="desktop-refresh-button" data-refresh-listings aria-label="Refresh listings" title="Refresh listings"><span aria-hidden="true">↻</span></button><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></div></header>
+<header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><div class="topbar-actions"><label class="workspace-picker"><span>Map</span><select id="workspace-select" aria-label="Rook map workspace"><option value="main">Main</option></select></label><button type="button" id="new-temp-map" class="icon-button" aria-label="Create new temporary map" title="New temp map">＋</button><button type="button" class="desktop-refresh-button" data-refresh-listings aria-label="Refresh listings" title="Refresh listings"><span aria-hidden="true">↻</span></button><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></div></header>
 <div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div><p id="workspace-status" class="workspace-status muted" aria-live="polite"></p><div class="scratch-legend" aria-label="Scratch map source colors"><span><i class="scratch-dot scratch-dot--manual"></i>Added set</span><span><i class="scratch-dot scratch-dot--web"></i>Web search</span><span><i class="scratch-dot scratch-dot--rook"></i>From Rook</span><span><i class="scratch-dot scratch-dot--reference"></i>Reference</span></div><p id="discovery-summary" class="muted" aria-live="polite"></p>
 <section id="scratch-session-controls" class="scratch-session-controls" aria-label="Scratch session controls" hidden><div class="scratch-session-row"><div id="scratch-chips" class="scratch-chips"></div><button id="scratch-undo" type="button">Undo</button><button id="scratch-clear" type="button">Start over</button></div><form id="scratch-command-form" class="scratch-command-form"><input id="scratch-command" type="text" autocomplete="off" placeholder="Modify Scratch: under $2300, remove apartments, 2+ beds…"><button type="submit">Apply</button></form><p id="scratch-session-status" class="scratch-session-status" aria-live="polite"></p></section>
 <section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><div id="property-map" class="property-map" role="region" aria-label="Interactive property map"></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
@@ -1798,7 +1820,8 @@ document.querySelector("#property-map").addEventListener("rook:first-pin",event=
 document.querySelector("#more-results").addEventListener("click",()=>{document.querySelector("#actions-dialog").close();void refreshListings("more");});
 store.subscribe(scheduleRenderList);
 installScratchSessionControls();
-void populateWorkspaceSwitcher();
+void document.querySelector("#new-temp-map")?.addEventListener("click", createNewTempMap);
+populateWorkspaceSwitcher();
 void syncSharedRookState();
 
 // Main keeps the existing lightweight cadence. Scratch maps poll more frequently
