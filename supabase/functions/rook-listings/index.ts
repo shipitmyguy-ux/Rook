@@ -2518,6 +2518,52 @@ async function readRookWorkspaces() {
   }
 }
 
+async function persistWorkspaceCoordinates(workspaceId:string,row:any,point:any) {
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const lat=Number(point?.lat), lng=Number(point?.lng);
+  if (!serviceKey || !Number.isFinite(lat) || !Number.isFinite(lng) || !row?.property_key) return false;
+  try {
+    const filter = new URLSearchParams({
+      workspace_id:"eq." + workspaceId,
+      property_key:"eq." + String(row.property_key)
+    });
+    const response = await fetch(PROJECT_URL + "/rest/v1/rook_workspace_property_state?" + filter.toString(), {
+      method:"PATCH",
+      headers:{
+        apikey:serviceKey,
+        authorization:"Bearer " + serviceKey,
+        "content-type":"application/json",
+        prefer:"return=minimal"
+      },
+      body:JSON.stringify({
+        lat,lng,
+        coordinates_resolved_at:new Date().toISOString(),
+        updated_at:new Date().toISOString()
+      })
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveWorkspaceCoordinates(workspaceId:string, rows:any[]) {
+  const missing = rows.filter((row:any)=>
+    row?.property_key && (row.address || row.label) &&
+    !(Number.isFinite(Number(row.lat)) && Number.isFinite(Number(row.lng)))
+  );
+  if (!missing.length) return;
+  await mapSettledBounded(missing, async (row:any) => {
+    const query = String(row.address || row.label || "").trim();
+    const candidates = await searchPoiSuggestions(query, FALLBACK_LOCATION, 1);
+    const candidate = candidates[0];
+    if (!candidate) return false;
+    // Exact residential queries should not silently snap to a different street.
+    if (row.address && !contextMatchesAddress(candidate.address || candidate.label, row.address, row.label)) return false;
+    return persistWorkspaceCoordinates(workspaceId,row,candidate);
+  }, 6);
+}
+
 async function readWorkspaceRookState(workspaceId:string) {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const workspace = String(workspaceId || "").trim();
@@ -2525,7 +2571,7 @@ async function readWorkspaceRookState(workspaceId:string) {
   try {
     const query = new URLSearchParams({
       workspace_id:"eq." + workspace,
-      select:"workspace_id,property_key,property_id,address,label,source_url,price,beds,baths,sqft,saved,status,note,metadata,updated_at",
+      select:"workspace_id,property_key,property_id,address,label,source_url,price,beds,baths,sqft,lat,lng,coordinates_resolved_at,saved,status,note,metadata,updated_at",
       order:"updated_at.desc"
     });
     const response = await fetch(PROJECT_URL + "/rest/v1/rook_workspace_property_state?" + query.toString(), {
@@ -2534,8 +2580,16 @@ async function readWorkspaceRookState(workspaceId:string) {
     if (!response.ok) return [];
     const rows = await response.json();
     if (!Array.isArray(rows)) return [];
+    const background = resolveWorkspaceCoordinates(workspace, rows).catch(()=>{});
+    try {
+      const waitUntil=(globalThis as any).EdgeRuntime?.waitUntil;
+      if (typeof waitUntil === "function") waitUntil(background);
+      else void background;
+    } catch { void background; }
     return rows.map((row:any)=>({
       ...row,
+      lat:Number.isFinite(Number(row.lat)) ? Number(row.lat) : null,
+      lng:Number.isFinite(Number(row.lng)) ? Number(row.lng) : null,
       saved:Boolean(row.saved),
       metadata:row?.metadata && typeof row.metadata === "object" ? row.metadata : {},
       tour:{},
