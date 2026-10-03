@@ -18,3 +18,9 @@ test("scratch workspaces poll shared state every second", async () => {
   const source = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
   assert.match(source, /isMainWorkspace \? 30000 : 1000/);
 });
+
+test("workspace sync does not coerce null coordinates to zero", async () => {
+  const syncSource = await fs.readFile(new URL("../src/integrations/sync.js", import.meta.url), "utf8");
+  assert.match(syncSource, /row\.lat !== null/);
+  assert.match(syncSource, /row\.lng !== null/);
+});
