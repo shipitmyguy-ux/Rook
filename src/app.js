@@ -170,16 +170,16 @@ async function syncSharedRookState() {
     if (!rows.length && isMainWorkspace) return 0;
     let applied = 0;
     const remoteKeys = new Set();
-    for (const row of rows) {
-      if (row.property_key) remoteKeys.add(String(row.property_key));
-      const syncedRow = {
-        ...row,
+    for (const rawRow of rows) {
+      const row = {
+        ...rawRow,
         metadata:{
-          ...(row?.metadata && typeof row.metadata === "object" ? row.metadata : {}),
+          ...(rawRow?.metadata && typeof rawRow.metadata === "object" ? rawRow.metadata : {}),
           workspaceId:activeWorkspace,
-          ...(row.property_key ? { workspacePropertyKey:String(row.property_key) } : {})
+          ...(rawRow.property_key ? { workspacePropertyKey:String(rawRow.property_key) } : {})
         }
       };
+      if (row.property_key) remoteKeys.add(String(row.property_key));
       let property = store.getAll().find(item =>
         (row.property_id && String(item.id) === String(row.property_id)) ||
         (row.address && canonicalAddress(item.address) === canonicalAddress(row.address)) ||
@@ -198,7 +198,7 @@ async function syncSharedRookState() {
           source:"Shared sync",
           metadata:{ workspaceId:activeWorkspace }
         };
-        let next = normalizeRuntimeCommunityProperty(applySharedRookStateRow(base, syncedRow, preferences));
+        let next = normalizeRuntimeCommunityProperty(applySharedRookStateRow(base, row, preferences));
         if (!isMainWorkspace) next = { ...next, saved:Boolean(row.saved) };
         store.upsert(next);
         applied += 1;
@@ -208,7 +208,7 @@ async function syncSharedRookState() {
       // Shared ChatGPT-managed state is versioned by updated_at. Skip unchanged
       // rows so lightweight background sync does not rebuild the map/list.
       if (row.updated_at && property.metadata?.sharedSyncUpdatedAt === row.updated_at) continue;
-      let next = normalizeRuntimeCommunityProperty(applySharedRookStateRow(property, syncedRow, preferences));
+      let next = normalizeRuntimeCommunityProperty(applySharedRookStateRow(property, row, preferences));
       if (!isMainWorkspace) next = { ...next, saved:Boolean(row.saved) };
       store.upsert(next);
       applied += 1;
