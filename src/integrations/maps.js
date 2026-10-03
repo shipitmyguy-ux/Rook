@@ -658,6 +658,7 @@ function installOverviewLayers(map) {
           ["boolean", ["get", "hasTour"], false], 18,
           ["boolean", ["feature-state", "selected"], false], 15,
           ["boolean", ["feature-state", "hovered"], false], 12,
+          ["!=", ["get", "workspaceSource"], ""], 10,
           0
         ],
         "circle-color": [
@@ -676,6 +677,7 @@ function installOverviewLayers(map) {
           ["boolean", ["get", "hasTour"], false], 0.24,
           ["boolean", ["feature-state", "selected"], false], 0.3,
           ["boolean", ["feature-state", "hovered"], false], 0.2,
+          ["!=", ["get", "workspaceSource"], ""], 0.42,
           0
         ],
         "circle-stroke-width": [
@@ -684,6 +686,7 @@ function installOverviewLayers(map) {
           ["boolean", ["get", "hasTour"], false], 3,
           ["boolean", ["feature-state", "selected"], false], 2,
           ["boolean", ["feature-state", "hovered"], false], 1,
+          ["!=", ["get", "workspaceSource"], ""], 2,
           0
         ],
         "circle-stroke-color": [
