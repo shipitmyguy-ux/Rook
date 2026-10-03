@@ -2839,6 +2839,11 @@ Deno.serve(async (req: Request) => {
   const maxPrice = Number(url.searchParams.get("maxPrice") || "0");
   const radiusMiles = Math.max(0, Number(url.searchParams.get("radiusMiles") || "15"));
   const query = (url.searchParams.get("query") || "").trim().toLowerCase();
+  const queryTextNeedle = query
+    .replace(/\b\d+\s*(?:bed|beds|bedroom|bedrooms|br)\b/g," ")
+    .replace(/\b(?:house|houses|home|homes|rental|rentals|rent|townhome|townhomes|condo|condos|apartment|apartments)\b/g," ")
+    .replace(/\s+/g," ")
+    .trim();
 
   const runtimeDiscovery = await loadDiscoveryRuntimeConfig();
   const primaryCity = location.split(",")[0].trim() || runtimeDiscovery.searchAreas?.defaultLocation?.split(",")[0]?.trim() || FALLBACK_LOCATION.split(",")[0];
@@ -2867,7 +2872,7 @@ Deno.serve(async (req: Request) => {
     // Unknown-state snippets remain eligible so incomplete but local listings are not lost.
     const explicitState = text.match(/\b(?:ca|california|wy|wyoming|ne|nebraska|ks|kansas|ut|utah|nm|new mexico|az|arizona|tx|texas)\b/i);
     if(explicitState && !/\b(?:co|colorado)\b/i.test(text))return false;
-    return !/(mobile home|manufactured home|trailer park)/i.test(text)&&(!query||text.includes(query));
+    return !/(mobile home|manufactured home|trailer park)/i.test(text)&&(!queryTextNeedle||text.includes(queryTextNeedle));
   });
 
   const quickDiscoveryPromise = quickSearchDiscovery(location,{query,minBeds,maxPrice});
@@ -2922,7 +2927,7 @@ Deno.serve(async (req: Request) => {
     if (maxPrice && price && price > maxPrice) return false;
     if (isIncomeRestrictedListing(listing)) return false;
     if (/(mobile home|manufactured home|trailer park)/i.test(text)) return false;
-    if (query && !text.includes(query)) return false;
+    if (queryTextNeedle && !text.includes(queryTextNeedle)) return false;
     return true;
   });
 
