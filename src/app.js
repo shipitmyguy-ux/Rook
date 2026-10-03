@@ -270,6 +270,10 @@ function propertyKindIcon(kind) {
 }
 
 function cardPointsOfInterest() {
+  // Scratch workspaces start visually clean. Main POIs (family addresses, schools,
+  // parks, etc.) must never bleed into an ideation map unless we later add them
+  // explicitly as workspace-scoped references.
+  if (!isMainWorkspace) return [];
   const removed = new Set(preferences.removedPointIds || []);
   const configured = Array.isArray(preferences.pointsOfInterest)
     ? preferences.pointsOfInterest.filter(p => p && !removed.has(String(p.id)) && (p.address || p.query || p.location || (p.lat != null && p.lng != null)))
@@ -642,9 +646,16 @@ function prioritizedPoiDistance(property, point) {
 
 function visibleProperties() {
   const allProperties = store.getAll();
-  const restricted = filterProperties(allProperties, activeFilter)
-    .filter(property => ["review","pending"].includes(activeFilter) || (activeFilter === "all" && ["soon","upcoming"].includes(tourState(tourForProperty(property, preferences)))) || matchesSearchDefaults(property, preferences));
-  const withinRadius = restricted.filter(property => isPropertyWithinSearchRadius(property, preferences));
+  // Scratch workspaces are curated ideation sets. Do not apply Main discovery
+  // defaults (type, price, bedroom, radius) to them or lightweight synced rows
+  // disappear before rendering. Explicit status filters + text search still work.
+  const restricted = filterProperties(allProperties, activeFilter);
+  const preferenceFiltered = isMainWorkspace
+    ? restricted.filter(property => ["review","pending"].includes(activeFilter) || (activeFilter === "all" && ["soon","upcoming"].includes(tourState(tourForProperty(property, preferences)))) || matchesSearchDefaults(property, preferences))
+    : restricted;
+  const withinRadius = isMainWorkspace
+    ? preferenceFiltered.filter(property => isPropertyWithinSearchRadius(property, preferences))
+    : preferenceFiltered;
   let filtered = searchProperties(withinRadius, query);
   if (promotedTourPropertyId && !filtered.some(property => String(property.id) === promotedTourPropertyId)) {
     const promoted = allProperties.find(property => String(property.id) === promotedTourPropertyId);
@@ -987,7 +998,7 @@ function renderList() {
   if (query.trim()) mapDiagnostics.dataset.searchMatches = JSON.stringify(searchProperties(store.getAll(), query).map(p => ({
     id:p.id,address:p.address,price:p.price,beds:p.beds,type:p.type,status:p.status,
     listingState:p.listingState,sourceUrl:p.sourceUrl,sourceUrls:listingSourceUrls(p),
-    visible:visible.some(v => v.id === p.id),matchesPreferences:matchesSearchDefaults(p,preferences),withinRadius:isPropertyWithinSearchRadius(p,preferences)
+    visible:visible.some(v => v.id === p.id),matchesPreferences:isMainWorkspace ? matchesSearchDefaults(p,preferences) : true,withinRadius:isMainWorkspace ? isPropertyWithinSearchRadius(p,preferences) : true
   })));
   else delete mapDiagnostics.dataset.searchMatches;
   document.querySelector("#property-count").textContent = `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`;
