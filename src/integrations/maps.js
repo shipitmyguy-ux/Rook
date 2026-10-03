@@ -12,6 +12,7 @@ const ROOK_SOURCE_ID = "rook-listings";
 const ROOK_LAYER_ID = "rook-listings-symbols";
 const ROOK_HALO_LAYER_ID = "rook-listings-halo";
 const ROOK_PRICE_LAYER_ID = "rook-listings-price-ping";
+const ROOK_PROPERTY_LABEL_LAYER_ID = "rook-listings-property-labels";
 const ROOK_TOUR_LABEL_LAYER_ID = "rook-listings-tour-labels";
 
 let maplibrePromise = null;
@@ -536,6 +537,10 @@ async function geocodeMissingOverviewProperties() {
   const cache = readGeocodeCache();
   const missing = properties.filter(property => {
     if (validCoordinates(property,fallbackLocation)) return false;
+    // Scratch workspace coordinates are resolved server-side in parallel and
+    // synced back into the row. Never send them through the legacy serial
+    // browser geocoder/publisher path.
+    if (property?.metadata?.workspaceId) return false;
     const urls = listingSourceUrls(property).slice(0,3);
     if (urls.some(sourceUrl => validCoordinates(cache["publisher:" + sourceUrl + "|" + property.address],fallbackLocation))) return false;
     if (!cachedCoordinates(property, fallbackLocation)) return true;
@@ -726,6 +731,38 @@ function installOverviewLayers(map) {
           ["boolean", ["feature-state", "dimmed"], false], 0.3,
           0.96
         ]
+      }
+    });
+  }
+
+
+  if (!map.getLayer(ROOK_PROPERTY_LABEL_LAYER_ID)) {
+    map.addLayer({
+      id: ROOK_PROPERTY_LABEL_LAYER_ID,
+      type: "symbol",
+      source: ROOK_SOURCE_ID,
+      minzoom: 11.5,
+      layout: {
+        "text-field": ["get", "label"],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": [
+          "interpolate", ["linear"], ["zoom"],
+          11.5, 10,
+          14, 11.5,
+          16, 12.5
+        ],
+        "text-variable-anchor": ["top","bottom","left","right"],
+        "text-radial-offset": 1.15,
+        "text-padding": 3,
+        "text-max-width": 14,
+        "text-allow-overlap": false,
+        "text-ignore-placement": false,
+        "text-optional": true
+      },
+      paint: {
+        "text-color": "#f3f7fb",
+        "text-halo-color": "#07111b",
+        "text-halo-width": 2
       }
     });
   }
