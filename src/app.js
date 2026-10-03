@@ -557,6 +557,7 @@ function propertyCard(property) {
   const image = firstImageUrl(property) || "";
   const listing = propertyListingUrl(property);
   const displayAddress = property.address || (/^\d+\s/.test(String(property.label || "")) ? property.label : "Address unavailable");
+  const quickCandidate = Boolean(property.metadata?.quickCandidate && property.metadata?.verificationPending);
   const displayPrice = property.metadata?.priceLabel
     || (property.type === "Rental area" ? "Area research"
     : Number.isFinite(Number(property.price)) && Number(property.price) > 0
@@ -572,6 +573,7 @@ function propertyCard(property) {
     </section>
     <section class="property-card__summary">
       <header class="property-card__identity"><span class="property-type-icon" role="img" aria-label="${kind}" title="${kind}">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span><div><h2>${esc(property.label)}</h2><p class="muted">${esc(displayAddress)}</p></div></header>
+      ${quickCandidate ? '<span class="quick-result-badge" title="Fast first-pass result; Rook is refining source details in the background">Quick result · refining</span>' : ""}
       <div class="property-card__facts"><strong class="${(pricePingUntil.get(String(property.id))||0)>Date.now() ? "price-discovered-ping" : ""}">${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span>${squareFootageLabel(property) ? `<span>${squareFootageLabel(property)}</span>` : ""}</div>
       ${tourChip(property)}
       ${isShowingPending(property) ? '<p class="status-chip">Showing requested · awaiting reply</p>' : ""}
