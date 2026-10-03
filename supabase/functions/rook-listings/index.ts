@@ -2932,15 +2932,17 @@ Deno.serve(async (req: Request) => {
   const discoveryCities = discoveryPlaces.map((place:any)=>place.city);
   const discoveryStarted=Date.now();
 
-  const adapterTasks = providerAdapterTasksFromConfig(runtimeDiscovery.providers, discoveryPlaces, primaryCity);
-
-  for (const feed of Array.isArray(searchArea?.extraIndexFeeds) ? searchArea.extraIndexFeeds : []) {
-    if (feed?.city && !discoveryCities.some((city:any)=>String(city).toLowerCase()===String(feed.city).toLowerCase())) continue;
-    adapterTasks.push(configuredIndexFeedDiscovery(feed));
-  }
-  for (const sourceConfig of Array.isArray(runtimeDiscovery.communitySources?.sources) ? runtimeDiscovery.communitySources.sources : []) {
-    adapterTasks.push(configuredCommunityDiscovery(sourceConfig, discoveryCities));
-  }
+  const buildAdapterTasks=()=>{
+    const tasks=providerAdapterTasksFromConfig(runtimeDiscovery.providers, discoveryPlaces, primaryCity);
+    for (const feed of Array.isArray(searchArea?.extraIndexFeeds) ? searchArea.extraIndexFeeds : []) {
+      if (feed?.city && !discoveryCities.some((city:any)=>String(city).toLowerCase()===String(feed.city).toLowerCase())) continue;
+      tasks.push(configuredIndexFeedDiscovery(feed));
+    }
+    for (const sourceConfig of Array.isArray(runtimeDiscovery.communitySources?.sources) ? runtimeDiscovery.communitySources.sources : []) {
+      tasks.push(configuredCommunityDiscovery(sourceConfig, discoveryCities));
+    }
+    return tasks;
+  };
 
   const selectListings=(rows:Listing[])=>rows.filter(listing=>{
     if(!directListingUrl(listing.sourceUrl))return false;
@@ -2971,7 +2973,10 @@ Deno.serve(async (req: Request) => {
   if(url.searchParams.get("fast")==="1"){
     const quick=await quickDiscoveryPromise;
     const listings=selectQuickListings(quick.listings);
-    const warming=Promise.allSettled(adapterTasks).then(()=>undefined);
+    const warming=(async()=>{
+      await new Promise(resolve=>setTimeout(resolve,25));
+      await Promise.allSettled(buildAdapterTasks());
+    })();
     try{
       const waitUntil=(globalThis as any).EdgeRuntime?.waitUntil;
       if(typeof waitUntil==="function")waitUntil(warming);
@@ -2998,6 +3003,7 @@ Deno.serve(async (req: Request) => {
             listings:quickListings,
             meta:{adapter:{id:"quick-search",count:quickListings.length,ok:true,discovery:quick.discovery},count,elapsedMs:Date.now()-discoveryStarted,stage:"quick",authoritative:false}
           });
+          const adapterTasks=buildAdapterTasks();
           const finished=await Promise.all(adapterTasks.map(async task=>{
             const adapter=await task;raw+=adapter.listings.length;for(const row of adapter.listings)allKeys.add(keyOf(row));
             const listings=selectListings(adapter.listings).filter(row=>{const key=keyOf(row);if(seen.has(key))return false;seen.add(key);return true});
@@ -3012,7 +3018,7 @@ Deno.serve(async (req: Request) => {
     });
     return new Response(stream,{headers:{...corsHeaders,"Content-Type":"application/x-ndjson","Cache-Control":"no-store"}});
   }
-  const adapters=await Promise.all(adapterTasks);
+  const adapters=await Promise.all(buildAdapterTasks());
 
   const merged=mergeAdapterListings(adapters);
 
