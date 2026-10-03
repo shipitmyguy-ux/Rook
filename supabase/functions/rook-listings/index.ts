@@ -2841,6 +2841,27 @@ async function readWorkspaceRookState(workspaceId:string) {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const url = new URL(req.url);
+  if (req.method === "POST" && url.searchParams.get("createWorkspace") === "1") {
+    const origin=String(req.headers.get("origin") || "");
+    if (origin && origin !== "https://shipitmyguy-ux.github.io") return new Response(JSON.stringify({ok:false}),{status:403,headers:corsHeaders});
+    try {
+      const body=await req.json();
+      const workspaceId=String(body?.workspaceId || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g,"-").slice(0,64);
+      const label=String(body?.label || "Temp map").trim().slice(0,80) || "Temp map";
+      if (!workspaceId || workspaceId === "main") return new Response(JSON.stringify({ok:false,error:"invalid workspace"}),{status:400,headers:corsHeaders});
+      const serviceKey=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+      if (!serviceKey) return new Response(JSON.stringify({ok:false,error:"workspace storage unavailable"}),{status:503,headers:corsHeaders});
+      const response=await fetch(PROJECT_URL + "/rest/v1/rook_workspaces?on_conflict=workspace_id",{
+        method:"POST",
+        headers:{apikey:serviceKey,authorization:"Bearer "+serviceKey,"content-type":"application/json",prefer:"resolution=merge-duplicates,return=representation"},
+        body:JSON.stringify({workspace_id:workspaceId,label,is_protected:false,updated_at:new Date().toISOString()})
+      });
+      if (!response.ok) return new Response(JSON.stringify({ok:false,error:"workspace create failed"}),{status:502,headers:corsHeaders});
+      return new Response(JSON.stringify({ok:true,workspaceId,label}),{headers:corsHeaders});
+    } catch {
+      return new Response(JSON.stringify({ok:false,error:"invalid request"}),{status:400,headers:corsHeaders});
+    }
+  }
   if (req.method === "POST" && url.searchParams.get("reportError") === "1") {
     const origin=String(req.headers.get("origin") || "");
     if (origin && origin !== "https://shipitmyguy-ux.github.io") return new Response(JSON.stringify({ok:false}),{status:403,headers:corsHeaders});
