@@ -2503,6 +2503,53 @@ async function readSharedRookState() {
   }
 }
 
+async function readRookWorkspaces() {
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!serviceKey) return [];
+  try {
+    const response = await fetch(PROJECT_URL + "/rest/v1/rook_workspaces?select=workspace_id,label,is_protected,updated_at&order=updated_at.desc", {
+      headers:{ apikey:serviceKey, authorization:"Bearer " + serviceKey, accept:"application/json" }
+    });
+    if (!response.ok) return [];
+    const rows = await response.json();
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+async function readWorkspaceRookState(workspaceId:string) {
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const workspace = String(workspaceId || "").trim();
+  if (!serviceKey || !workspace || workspace === "main") return [];
+  try {
+    const query = new URLSearchParams({
+      workspace_id:"eq." + workspace,
+      select:"workspace_id,property_key,property_id,address,label,source_url,price,beds,baths,sqft,saved,status,note,metadata,updated_at",
+      order:"updated_at.desc"
+    });
+    const response = await fetch(PROJECT_URL + "/rest/v1/rook_workspace_property_state?" + query.toString(), {
+      headers:{ apikey:serviceKey, authorization:"Bearer " + serviceKey, accept:"application/json" }
+    });
+    if (!response.ok) return [];
+    const rows = await response.json();
+    if (!Array.isArray(rows)) return [];
+    return rows.map((row:any)=>({
+      ...row,
+      saved:Boolean(row.saved),
+      metadata:row?.metadata && typeof row.metadata === "object" ? row.metadata : {},
+      tour:{},
+      evidence:[],
+      source_message_ids:[],
+      last_email_at:null,
+      showing_at:null,
+      contact_outcome:null
+    }));
+  } catch {
+    return [];
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const url = new URL(req.url);
@@ -2545,9 +2592,14 @@ Deno.serve(async (req: Request) => {
   }
   const runtimeDefaults = await loadDiscoveryRuntimeConfig();
   const location = url.searchParams.get("location") || runtimeDefaults.searchAreas?.defaultLocation || FALLBACK_LOCATION;
+  if (url.searchParams.get("workspaces") === "1") {
+    const workspaces = await readRookWorkspaces();
+    return new Response(JSON.stringify({ workspaces }), { headers:corsHeaders });
+  }
   if (url.searchParams.get("state") === "1") {
-    const state = await readSharedRookState();
-    return new Response(JSON.stringify({ state }), { headers:corsHeaders });
+    const workspace = String(url.searchParams.get("workspace") || "main").trim() || "main";
+    const state = workspace === "main" ? await readSharedRookState() : await readWorkspaceRookState(workspace);
+    return new Response(JSON.stringify({ state, workspace }), { headers:corsHeaders });
   }
   if (url.searchParams.get("poi") === "1") {
     const query = (url.searchParams.get("query") || "").trim();
