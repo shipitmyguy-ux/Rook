@@ -336,3 +336,12 @@ html.settings-modal-open,body.settings-modal-open{overflow:hidden;overscroll-beh
 html[data-workspace-mode="scratch"] .main-only-controls{display:none!important}
 html[data-workspace-mode="scratch"] #open-settings,
 html[data-workspace-mode="scratch"] [data-refresh-listings]{display:none!important}
+
+.scratch-legend{display:none;gap:10px;align-items:center;flex-wrap:wrap;margin:0 8px 8px;color:#aeb8c4;font-size:.7rem}
+html[data-workspace-mode="scratch"] .scratch-legend{display:flex}
+.scratch-legend span{display:inline-flex;align-items:center;gap:5px}
+.scratch-dot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 1px #ffffff55}
+.scratch-dot--manual{background:#9664ff}
+.scratch-dot--web{background:#4ba8ff}
+.scratch-dot--rook{background:#ffc429}
+.scratch-dot--reference{background:#58eadc}
