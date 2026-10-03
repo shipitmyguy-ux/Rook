@@ -31,6 +31,7 @@ const app = document.querySelector("#app");
 const workspaceParam = typeof location !== "undefined" ? new URLSearchParams(location.search).get("workspace") : null;
 const activeWorkspace = (String(workspaceParam || "main").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "main");
 const isMainWorkspace = activeWorkspace === "main";
+document.documentElement.dataset.workspaceMode = isMainWorkspace ? "main" : "scratch";
 const runtimeSeeds = runtimeSeedProperties();
 const initialSeeds = isMainWorkspace ? (runtimeSeeds.length ? runtimeSeeds : fallbackSeedProperties) : [];
 const store = createPropertyStore(initialSeeds, { namespace:isMainWorkspace ? "" : activeWorkspace });
@@ -646,17 +647,18 @@ function prioritizedPoiDistance(property, point) {
 
 function visibleProperties() {
   const allProperties = store.getAll();
-  // Scratch workspaces are curated ideation sets. Do not apply Main discovery
-  // defaults (type, price, bedroom, radius) to them or lightweight synced rows
-  // disappear before rendering. Explicit status filters + text search still work.
-  const restricted = filterProperties(allProperties, activeFilter);
-  const preferenceFiltered = isMainWorkspace
-    ? restricted.filter(property => ["review","pending"].includes(activeFilter) || (activeFilter === "all" && ["soon","upcoming"].includes(tourState(tourForProperty(property, preferences)))) || matchesSearchDefaults(property, preferences))
-    : restricted;
-  const withinRadius = isMainWorkspace
-    ? preferenceFiltered.filter(property => isPropertyWithinSearchRadius(property, preferences))
-    : preferenceFiltered;
-  let filtered = searchProperties(withinRadius, query);
+  // Scratch workspaces are render-only ideation canvases. They intentionally
+  // ignore Main search defaults, radius, property-type, price, bedroom, text
+  // query, and status filters. Only explicitly ignored/archived rows stay hidden.
+  let filtered;
+  if (!isMainWorkspace) {
+    filtered = allProperties.filter(property => ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(property.status));
+  } else {
+    const restricted = filterProperties(allProperties, activeFilter)
+      .filter(property => ["review","pending"].includes(activeFilter) || (activeFilter === "all" && ["soon","upcoming"].includes(tourState(tourForProperty(property, preferences)))) || matchesSearchDefaults(property, preferences));
+    const withinRadius = restricted.filter(property => isPropertyWithinSearchRadius(property, preferences));
+    filtered = searchProperties(withinRadius, query);
+  }
   if (promotedTourPropertyId && !filtered.some(property => String(property.id) === promotedTourPropertyId)) {
     const promoted = allProperties.find(property => String(property.id) === promotedTourPropertyId);
     if (promoted && ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(promoted.status)) {
@@ -1042,9 +1044,8 @@ app.innerHTML = `<main class="shell">
 
 <button id="more-button" class="more-button" aria-label="Open Rook actions" aria-haspopup="dialog">•••</button>
 <dialog id="actions-dialog" class="actions-dialog"><form method="dialog"><div class="dialog-heading"><div><p class="eyebrow">ROOK</p><h2>Actions</h2></div><button class="dialog-close" value="cancel" aria-label="Close">×</button></div>
-<label for="property-search">Search properties</label><input id="property-search" type="search" placeholder="Address, neighborhood, property…">
-<nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Favorited</button><button type="button" data-filter="review">Needs listing</button><button type="button" data-filter="pending">Pending showings</button></nav>
-<div class="action-menu"><button id="open-ignored" type="button">Ignored properties</button><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route favorites</button><button type="button" data-refresh-listings>Refresh listings</button><button id="open-settings" type="button">Search preferences</button></div>
+<div class="main-only-controls"><label for="property-search">Search properties</label><input id="property-search" type="search" placeholder="Address, neighborhood, property…">
+<nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Favorited</button><button type="button" data-filter="review">Needs listing</button><button type="button" data-filter="pending">Pending showings</button></nav></div><div class="action-menu"><button id="open-ignored" type="button">Ignored properties</button><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route favorites</button><button type="button" data-refresh-listings>Refresh listings</button><button id="open-settings" type="button">Search preferences</button></div>
 </form></dialog>
 
 <div id="ignore-toast" class="ignore-toast" role="status" hidden><span id="ignore-message"></span><button id="undo-ignore" type="button">Undo</button><button id="dismiss-ignore" type="button" aria-label="Dismiss">×</button></div>
