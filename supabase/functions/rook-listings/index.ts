@@ -2551,6 +2551,23 @@ async function workspaceExactAddressPoint(row:any) {
   const address = String(row?.address || "").trim();
   if (!address) return null;
 
+  // Exact address geocoding is the low-latency first path. It normally
+  // resolves in well under a second and avoids waiting on listing websites.
+  try {
+    const endpoint = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=us&limit=1&q=" + encodeURIComponent(address);
+    const rows = await fetchJsonTimeout(endpoint, 2800, {
+      "accept-language":"en-US,en;q=0.9",
+      "user-agent":"Rook/1.0 (scratch workspace address resolver)"
+    });
+    const candidate = Array.isArray(rows) ? rows[0] : null;
+    if (candidate) {
+      const normalized = normalizePoiCandidate(candidate,address);
+      if (normalized && contextMatchesAddress(normalized.address || normalized.label,address,row.label)) return normalized;
+    }
+  } catch {}
+
+  // Publisher coordinates are a precision fallback for addresses that OSM
+  // does not resolve to a house-level point.
   const sourceUrl = directListingUrl(row?.source_url);
   if (sourceUrl && isAllowedListingHost(new URL(sourceUrl).hostname)) {
     try {
@@ -2563,19 +2580,6 @@ async function workspaceExactAddressPoint(row:any) {
       if (point) return point;
     } catch {}
   }
-
-  try {
-    const endpoint = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=us&limit=1&q=" + encodeURIComponent(address);
-    const rows = await fetchJsonTimeout(endpoint, 4500, {
-      "accept-language":"en-US,en;q=0.9",
-      "user-agent":"Rook/1.0 (scratch workspace address resolver)"
-    });
-    const candidate = Array.isArray(rows) ? rows[0] : null;
-    if (candidate) {
-      const normalized = normalizePoiCandidate(candidate,address);
-      if (normalized && contextMatchesAddress(normalized.address || normalized.label,address,row.label)) return normalized;
-    }
-  } catch {}
 
   const source = String(row?.metadata?.workspaceSource || row?.metadata?.workspaceRole || "");
   if (source === "reference") {
@@ -2595,7 +2599,7 @@ async function resolveWorkspaceCoordinates(workspaceId:string, rows:any[]) {
   await mapSettledBounded(missing, async (row:any) => {
     const point = await workspaceExactAddressPoint(row);
     return point ? persistWorkspaceCoordinates(workspaceId,row,point) : false;
-  }, 6);
+  }, 4);
 }
 
 async function readWorkspaceRookState(workspaceId:string) {
