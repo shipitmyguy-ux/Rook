@@ -2869,6 +2869,16 @@ Deno.serve(async (req: Request) => {
     if(explicitState && !/\b(?:co|colorado)\b/i.test(text))return false;
     return !/(mobile home|manufactured home|trailer park)/i.test(text)&&(!query||text.includes(query));
   });
+
+  const quickDiscoveryPromise = quickSearchDiscovery(location,{query,minBeds,maxPrice});
+  if(url.searchParams.get("fast")==="1"){
+    const quick=await quickDiscoveryPromise;
+    const listings=selectListings(quick.listings);
+    return new Response(JSON.stringify({
+      listings,
+      meta:{...quick.discovery,stage:"quick",count:listings.length,generatedAt:new Date().toISOString()}
+    }),{headers:{...corsHeaders,"Cache-Control":"no-store"}});
+  }
   if(url.searchParams.get("stream")==="1"){
     const encoder=new TextEncoder();let cancelled=false;
     const stream=new ReadableStream({
@@ -2876,6 +2886,15 @@ Deno.serve(async (req: Request) => {
         const seen=new Set<string>(),allKeys=new Set<string>();let raw=0,count=0;
         const emit=(payload:any)=>{if(!cancelled)controller.enqueue(encoder.encode(JSON.stringify(payload)+"\n"))};
         try{
+          const quick=await quickDiscoveryPromise;
+          const quickListings=selectListings(quick.listings).filter(row=>{
+            const key=keyOf(row);if(!key||seen.has(key))return false;seen.add(key);return true;
+          });
+          count+=quickListings.length;
+          if(quickListings.length) emit({
+            listings:quickListings,
+            meta:{adapter:{id:"quick-search",count:quickListings.length,ok:true,discovery:quick.discovery},count,elapsedMs:Date.now()-discoveryStarted,stage:"quick",authoritative:false}
+          });
           const finished=await Promise.all(adapterTasks.map(async task=>{
             const adapter=await task;raw+=adapter.listings.length;for(const row of adapter.listings)allKeys.add(keyOf(row));
             const listings=selectListings(adapter.listings).filter(row=>{const key=keyOf(row);if(seen.has(key))return false;seen.add(key);return true});
