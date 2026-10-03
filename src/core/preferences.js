@@ -2,6 +2,16 @@ import { normalizePointStyles } from "./poi-style.js";
 
 const KEY = "rook.preferences.v1";
 
+function preferenceStorageKey() {
+  try {
+    const workspace = String(new URLSearchParams(globalThis.location?.search || "").get("workspace") || "main")
+      .trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "main";
+    return workspace === "main" ? KEY : KEY + ".workspace." + workspace;
+  } catch {
+    return KEY;
+  }
+}
+
 export const defaultPreferences = Object.freeze({
   location: "Fort Collins, CO",
   radiusMiles: 15,
@@ -59,10 +69,10 @@ export function normalizePreferences(value = {}, overrides = {}) {
 }
 export function loadPreferences(overrides = {}) {
   const defaults = { ...defaultPreferences, ...(overrides || {}) };
-  try { return normalizePreferences(JSON.parse(localStorage.getItem(KEY) || "{}"), defaults); }
+  try { return normalizePreferences(JSON.parse(localStorage.getItem(preferenceStorageKey()) || "{}"), defaults); }
   catch { return { ...defaults, propertyTypes:[...(defaults.propertyTypes || defaultPreferences.propertyTypes)] }; }
 }
 
 export function savePreferences(value, overrides = {}) {
-  localStorage.setItem(KEY, JSON.stringify(normalizePreferences(value, overrides)));
+  localStorage.setItem(preferenceStorageKey(), JSON.stringify(normalizePreferences(value, overrides)));
 }
