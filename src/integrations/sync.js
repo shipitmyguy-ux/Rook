@@ -171,8 +171,8 @@ export function applySharedRookStateRow(property = {}, row = {}, preferences = {
     ...(Number(row.beds) > 0 ? {beds:Number(row.beds)} : {}),
     ...(Number(row.baths) > 0 ? {baths:Number(row.baths)} : {}),
     ...(Number(row.sqft) > 0 ? {sqft:Number(row.sqft)} : {}),
-    ...(Number.isFinite(Number(row.lat)) ? {lat:Number(row.lat)} : {}),
-    ...(Number.isFinite(Number(row.lng)) ? {lng:Number(row.lng)} : {}),
+    ...(row.lat !== null && row.lat !== undefined && String(row.lat).trim() !== "" && Number.isFinite(Number(row.lat)) ? {lat:Number(row.lat)} : {}),
+    ...(row.lng !== null && row.lng !== undefined && String(row.lng).trim() !== "" && Number.isFinite(Number(row.lng)) ? {lng:Number(row.lng)} : {}),
     ...(row.contact_outcome ? {contactOutcome:row.contact_outcome} : {}),
     saved:Boolean(property.saved || row.saved || row.status === PROPERTY_STATUS.SHOWING_SCHEDULED),
     metadata:{
