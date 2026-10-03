@@ -1003,7 +1003,9 @@ function renderList() {
     visible:visible.some(v => v.id === p.id),matchesPreferences:isMainWorkspace ? matchesSearchDefaults(p,preferences) : true,withinRadius:isMainWorkspace ? isPropertyWithinSearchRadius(p,preferences) : true
   })));
   else delete mapDiagnostics.dataset.searchMatches;
-  document.querySelector("#property-count").textContent = isMainWorkspace\n    ? `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`\n    : `${visible.length} workspace properties · Scratch renderer`;
+  document.querySelector("#property-count").textContent = isMainWorkspace
+    ? `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`
+    : `${visible.length} workspace properties · Scratch renderer`;
   document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("") || `<p class="empty-state">${listingChecksInFlight || refreshInFlight ? "Checking current listing links…" : "No verified listings match. Open Actions → Needs listing to review saved properties."}</p>`;
   // Map exactly the same property set the user can currently see.
   // This keeps list/map completeness as a hard invariant.
