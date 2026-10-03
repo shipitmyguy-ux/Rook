@@ -1202,16 +1202,25 @@ async function recentCachedDiscovery(location:string, criteria:any={}):Promise<L
 async function quickSearchDiscovery(location:string, criteria:any={}):Promise<AdapterResult> {
   const started=Date.now();
   const cached=await recentCachedDiscovery(location,criteria);
-  if(cached.length){
+  const meaningfulNeedle=String(criteria.query||"")
+    .toLowerCase()
+    .replace(/\b\d+\s*(?:bed|beds|bedroom|bedrooms|br)\b/g," ")
+    .replace(/\b(?:house|houses|home|homes|rental|rentals|rent|townhome|townhomes|condo|condos|apartment|apartments)\b/g," ")
+    .replace(/\s+/g," ")
+    .trim();
+  const cachedRelevant=meaningfulNeedle
+    ? cached.filter((row:any)=>[row.label,row.address,row.source,row.metadata?.description].filter(Boolean).join(" ").toLowerCase().includes(meaningfulNeedle))
+    : cached;
+  if(cachedRelevant.length){
     return {
       id:"quick-cache",
-      listings:cached,
+      listings:cachedRelevant,
       discovery:{
         quick:true,
         authoritative:false,
         source:"recent-provider-cache",
         elapsedMs:Date.now()-started,
-        cacheCount:cached.length
+        cacheCount:cachedRelevant.length
       }
     };
   }
@@ -2947,12 +2956,30 @@ Deno.serve(async (req: Request) => {
   });
 
   const quickDiscoveryPromise = quickSearchDiscovery(location,{query,minBeds,maxPrice});
+  const quickCandidateScore=(listing:Listing)=>{
+    const beds=Number(listing.beds||0), price=Number(listing.price||0);
+    const houseLike=/house|singlefamily|single-family/i.test([listing.type,listing.source,listing.metadata?.description].filter(Boolean).join(" "));
+    let score=houseLike?4:0;
+    if(minBeds)score+=beds>=minBeds?5:beds?0:1;
+    if(maxPrice)score+=price>0&&price<=maxPrice?4:price?0:1;
+    if(listing.address)score+=1;
+    return score;
+  };
+  const selectQuickListings=(rows:Listing[])=>selectListings(rows)
+    .sort((a,b)=>quickCandidateScore(b)-quickCandidateScore(a))
+    .slice(0,25);
   if(url.searchParams.get("fast")==="1"){
     const quick=await quickDiscoveryPromise;
-    const listings=selectListings(quick.listings);
+    const listings=selectQuickListings(quick.listings);
+    const warming=Promise.allSettled(adapterTasks).then(()=>undefined);
+    try{
+      const waitUntil=(globalThis as any).EdgeRuntime?.waitUntil;
+      if(typeof waitUntil==="function")waitUntil(warming);
+      else void warming;
+    }catch{void warming}
     return new Response(JSON.stringify({
       listings,
-      meta:{...quick.discovery,stage:"quick",count:listings.length,generatedAt:new Date().toISOString()}
+      meta:{...quick.discovery,stage:"quick",count:listings.length,backgroundRefinement:true,generatedAt:new Date().toISOString()}
     }),{headers:{...corsHeaders,"Cache-Control":"no-store"}});
   }
   if(url.searchParams.get("stream")==="1"){
@@ -2963,7 +2990,7 @@ Deno.serve(async (req: Request) => {
         const emit=(payload:any)=>{if(!cancelled)controller.enqueue(encoder.encode(JSON.stringify(payload)+"\n"))};
         try{
           const quick=await quickDiscoveryPromise;
-          const quickListings=selectListings(quick.listings).filter(row=>{
+          const quickListings=selectQuickListings(quick.listings).filter(row=>{
             const key=keyOf(row);if(!key||seen.has(key))return false;seen.add(key);return true;
           });
           count+=quickListings.length;
