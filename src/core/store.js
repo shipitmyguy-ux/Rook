@@ -46,6 +46,11 @@ export function createPropertyStore(seed = [], options = {}) {
     upsert(property) {
       this.upsertMany([property]);
     },
+    remove(id) {
+      const before = properties.length;
+      properties = properties.filter(p => p.id !== id);
+      if (properties.length !== before) persist();
+    },
     upsertMany(incoming = []) {
       if (!Array.isArray(incoming) || !incoming.length) return;
       let ignored=new Set();
