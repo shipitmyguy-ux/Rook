@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rook Temporary Rental Map</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+<style>
+html,body{margin:0;background:#111318;color:#f4f6f8;font:14px system-ui,-apple-system,sans-serif}#map{height:72vh;min-height:520px}
+.top{padding:14px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}.top h1{font-size:18px;margin:0}.muted{color:#aeb6c2}
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-left:auto}.key{display:flex;align-items:center;gap:5px}.dot{width:11px;height:11px;border-radius:50%}.fav{background:#f2b705}.candidate{background:#8b5cf6}.reference{background:#38bdf8}.bloom{background:#94a3b8}
+.marker{border:2px solid white;border-radius:16px;padding:5px 8px;color:#fff;font-weight:800;white-space:nowrap;box-shadow:0 2px 10px #0008;cursor:pointer}.marker.fav{background:#b77900}.marker.candidate{background:#6d28d9}.marker.reference{background:#0369a1}.marker.bloom{background:#475569}
+.maplibregl-popup-content{background:#171a20;color:#fff;border-radius:10px;max-width:270px}.maplibregl-popup-tip{border-top-color:#171a20!important}.maplibregl-popup-content a{color:#7dd3fc}
+.status{padding:8px 16px;background:#181c23;border-top:1px solid #2c3440;color:#c8d0da}
+</style></head><body>
+<div class="top"><h1>Temporary Rook Rental Map</h1><span class="muted">944 Ridge Runner reference + active comparison set</span>
+<div class="legend"><span class="key"><i class="dot fav"></i>Favorite</span><span class="key"><i class="dot candidate"></i>Candidate</span><span class="key"><i class="dot reference"></i>Reference</span><span class="key"><i class="dot bloom"></i>Bloom</span></div></div>
+<div id="map"></div><div id="status" class="status">Locating properties…</div>
+<script>
+const properties=[
+{address:'944 Ridge Runner Dr, Fort Collins, CO 80524',label:'944 Ridge Runner',kind:'reference',note:'Reference point'},
+{address:'180 N Aria Way, Fort Collins, CO 80524',label:'Bloom Rental Living',kind:'bloom',note:'Reference only'},
+{address:'526 Walhalla Ct, Fort Collins, CO 80524',label:'526 Walhalla · $2,400',kind:'fav',note:'3 bd · 2.5 ba · 1,738 sf · fenced yard · 3-car garage · solar'},
+{address:'438 Houghton Ct, Fort Collins, CO 80524',label:'438 Houghton · $2,550',kind:'candidate',note:'3 bd · 2.5 ba · 1,569 sf · cul-de-sac · patio'},
+{address:'1902 Mackinac St, Fort Collins, CO 80524',label:'1902 Mackinac · $2,500',kind:'candidate',note:'3 bd · 2.5 ba · 1,578 sf · fenced yard'},
+{address:'2159 Scarecrow Rd, Fort Collins, CO 80525',label:'2159 Scarecrow · $2,350',kind:'candidate',note:'2 bd · 2.5 ba · water/sewer/trash included'},
+{address:'2226 Clearfield Way, Fort Collins, CO 80524',label:'2226 Clearfield · $2,400',kind:'candidate',note:'3 bd · 2.5 ba · 1,462 sf · private yard'},
+{address:'3518 Camelot Dr, Fort Collins, CO 80525',label:'3518 Camelot · $2,200',kind:'candidate',note:'3 bd · 1.5 ba · 1,550 sf · large fenced yard'},
+{address:'3406 Avon Ct, Fort Collins, CO 80526',label:'3406 Avon · $2,250',kind:'candidate',note:'3 bd · 2 ba · 1,440 sf · cul-de-sac · fenced yard'},
+{address:'2443 W Stuart St, Fort Collins, CO 80521',label:'2443 W Stuart · $2,200',kind:'candidate',note:'3 bd · 2 ba · 1,242 sf · fenced yard · trail access'},
+{address:'1937 Connecticut Dr, Fort Collins, CO 80525',label:'1937 Connecticut · $2,300',kind:'candidate',note:'3 bd · 2 ba · 1,310 sf · cul-de-sac · fenced yard'},
+{address:'821 Skyline Dr, Fort Collins, CO 80521',label:'821 Skyline · $1,999',kind:'candidate',note:'3 bd · 1 ba · 984 sf · fenced yard'}
+];
+const map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:[-105.075,40.585],zoom:11.2});
+map.addControl(new maplibregl.NavigationControl(),'top-right');
+const bounds=new maplibregl.LngLatBounds(); let done=0,failed=0;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function geocode(p){
+ const q=encodeURIComponent(p.address);
+ const res=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q='+q,{headers:{'Accept':'application/json'}});
+ if(!res.ok) throw new Error('geocode '+res.status);
+ const a=await res.json(); if(!a.length) throw new Error('not found');
+ return [Number(a[0].lon),Number(a[0].lat)];
+}
+async function addAll(){
+ for(const p of properties){
+  try{
+   const ll=await geocode(p); bounds.extend(ll);
+   const el=document.createElement('button');el.type='button';el.className='marker '+p.kind;el.textContent=p.label;
+   const popup=new maplibregl.Popup({offset:18}).setHTML('<strong>'+p.label+'</strong><br>'+p.address+'<br><span>'+p.note+'</span>');
+   new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat(ll).setPopup(popup).addTo(map); done++;
+  }catch(e){failed++}
+  document.getElementById('status').textContent='Located '+done+' of '+properties.length+(failed?' · '+failed+' unresolved':'');
+  await sleep(1100);
+ }
+ if(!bounds.isEmpty()) map.fitBounds(bounds,{padding:55,maxZoom:13});
+ document.getElementById('status').textContent='Temporary comparison map · '+done+' properties located'+(failed?' · '+failed+' could not be geocoded':'')+'. Locations come from OpenStreetMap geocoding.';
+}
+map.on('load',addAll);
+</script></body></html>
