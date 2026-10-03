@@ -120,6 +120,11 @@ async function scheduleTour(property, startsAt, source = "manual") {
 }
 
 async function scanEmailNow() {
+  if (!isMainWorkspace) {
+    const status = document.querySelector("#email-scan-status");
+    if (status) status.textContent = "Email sync is available in Main only.";
+    return;
+  }
   const buttons = document.querySelectorAll("[data-scan-email]");
   buttons.forEach(button => { button.disabled = true; button.textContent = "Scanning email…"; });
   const status = document.querySelector("#email-scan-status");
@@ -162,9 +167,19 @@ async function scanEmailNow() {
 async function syncSharedRookState() {
   try {
     const rows = await fetchSharedRookState(fetch, activeWorkspace);
-    if (!rows.length) return 0;
+    if (!rows.length && isMainWorkspace) return 0;
     let applied = 0;
+    const remoteKeys = new Set();
     for (const row of rows) {
+      if (row.property_key) remoteKeys.add(String(row.property_key));
+      const syncedRow = {
+        ...row,
+        metadata:{
+          ...(row?.metadata && typeof row.metadata === "object" ? row.metadata : {}),
+          workspaceId:activeWorkspace,
+          ...(row.property_key ? { workspacePropertyKey:String(row.property_key) } : {})
+        }
+      };
       let property = store.getAll().find(item =>
         (row.property_id && String(item.id) === String(row.property_id)) ||
         (row.address && canonicalAddress(item.address) === canonicalAddress(row.address)) ||
@@ -180,10 +195,12 @@ async function syncSharedRookState() {
           listingType:"rent",
           saved:false,
           status:PROPERTY_STATUS.NEW,
-          source:isMainWorkspace ? "Shared sync" : "ChatGPT workspace",
+          source:"Shared sync",
           metadata:{ workspaceId:activeWorkspace }
         };
-        store.upsert(normalizeRuntimeCommunityProperty(applySharedRookStateRow(base, row, preferences)));
+        let next = normalizeRuntimeCommunityProperty(applySharedRookStateRow(base, syncedRow, preferences));
+        if (!isMainWorkspace) next = { ...next, saved:Boolean(row.saved) };
+        store.upsert(next);
         applied += 1;
         continue;
       }
@@ -191,8 +208,19 @@ async function syncSharedRookState() {
       // Shared ChatGPT-managed state is versioned by updated_at. Skip unchanged
       // rows so lightweight background sync does not rebuild the map/list.
       if (row.updated_at && property.metadata?.sharedSyncUpdatedAt === row.updated_at) continue;
-      store.upsert(normalizeRuntimeCommunityProperty(applySharedRookStateRow(property, row, preferences)));
+      let next = normalizeRuntimeCommunityProperty(applySharedRookStateRow(property, syncedRow, preferences));
+      if (!isMainWorkspace) next = { ...next, saved:Boolean(row.saved) };
+      store.upsert(next);
       applied += 1;
+    }
+    if (!isMainWorkspace) {
+      for (const property of store.getAll()) {
+        const key = property.metadata?.workspacePropertyKey;
+        if (property.metadata?.workspaceId === activeWorkspace && key && !remoteKeys.has(String(key))) {
+          store.remove(property.id);
+          applied += 1;
+        }
+      }
     }
     if (applied) renderList();
     return applied;
