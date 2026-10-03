@@ -579,9 +579,10 @@ function propertyCard(property) {
     : Number.isFinite(Number(property.price)) && Number(property.price) > 0
       ? "$" + Number(property.price).toLocaleString() + (property.listingType === "rent" ? "/mo" : "")
       : "Price unavailable");
+  const scratchPinned = Boolean(scratchSession?.isPinned(property.id));
   return `<article class="property-card visual-card type-${kind}${tourVisual.className}" data-id="${esc(property.id)}" tabindex="0" aria-label="View summary for ${esc(property.label)}" aria-haspopup="dialog" style="--score:${score}">
       ${tourVisual.html}
-      <button class="quick-ignore-button" data-action="reject" aria-label="Ignore ${esc(property.label)}" title="Ignore property">×</button>
+      ${!isMainWorkspace ? `<button class="scratch-pin-button ${scratchPinned ? "is-pinned" : ""}" data-action="scratch-pin" aria-pressed="${scratchPinned}" aria-label="${scratchPinned ? "Unpin" : "Pin"} ${esc(property.label)}" title="${scratchPinned ? "Pinned in Scratch" : "Keep through Scratch filters"}">📌</button>` : `<button class="quick-ignore-button" data-action="reject" aria-label="Ignore ${esc(property.label)}" title="Ignore property">×</button>`}
       <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
     <section class="property-card__media" aria-label="Listing image">
       <div class="property-visual ${image ? "" : "property-visual--fallback"}" ${image ? `style="--property-image:url(\'${esc(image)}\')"` : ""} aria-hidden="true">${!image ? `<span class="property-placeholder-icon">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span>` : ""}</div>
@@ -616,6 +617,7 @@ function propertyCard(property) {
             ? `<span class="more-listing-link listing-closed">Closed</span>`
             : `<a class="listing-recovery-link more-listing-link" href="${esc(listing.searchUrl)}" target="_blank" rel="noopener noreferrer">Find listing</a>`}
         <button data-action="retry-listing">Retry details</button><button data-action="verify-deeper">Verify with more sources</button>
+        ${!isMainWorkspace ? `<button data-action="scratch-promote">Add to Main Rook</button><button data-action="scratch-exclude">Hide from Scratch</button>` : ""}
         <button data-action="visited">Visited</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Ignore</button><button data-action="archive">Archive</button>
       </div>
     </section>
@@ -1353,6 +1355,30 @@ function handlePropertyCardClick(e) {
     more.hidden = !opening;
     card.classList.toggle("expanded", opening);
     button.setAttribute("aria-expanded", String(opening));
+    return;
+  }
+
+  if (action === "scratch-pin" && scratchSession) {
+    scratchSession.togglePin(p.id);
+    renderList();
+    return;
+  }
+  if (action === "scratch-exclude" && scratchSession) {
+    scratchSession.exclude(p.id);
+    renderList();
+    return;
+  }
+  if (action === "scratch-promote" && scratchSession) {
+    const mainStore = createPropertyStore([], {});
+    mainStore.upsert({
+      ...p,
+      saved:true,
+      status:[PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(p.status) ? PROPERTY_STATUS.NEW : p.status,
+      metadata:{ ...(p.metadata || {}), promotedFromWorkspace:activeWorkspace, promotedAt:new Date().toISOString() }
+    });
+    recordActivity("scratch-promoted", p, { workspace:activeWorkspace });
+    const scratchStatus = document.querySelector("#scratch-session-status");
+    if (scratchStatus) scratchStatus.textContent = (p.label || p.address || "Property") + " added to Main Rook.";
     return;
   }
 
