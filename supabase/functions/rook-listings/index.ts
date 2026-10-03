@@ -1144,8 +1144,78 @@ async function searchEngineDiscoveryAdapter(location:string):Promise<AdapterResu
   });
 }
 
+async function recentCachedDiscovery(location:string, criteria:any={}):Promise<Listing[]> {
+  const serviceKey=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
+  if(!serviceKey)return [];
+  const runtime=await loadDiscoveryRuntimeConfig();
+  const city=String(location||runtime.searchAreas?.defaultLocation||FALLBACK_LOCATION).split(",")[0].trim();
+  const citySlug=city.toLowerCase().replace(/[^a-z0-9]+/g,"-");
+  const since=new Date(Date.now()-24*60*60*1000).toISOString();
+  try{
+    const params=new URLSearchParams({
+      select:"cache_key,payload,updated_at",
+      cache_key:"ilike.*"+citySlug+"*",
+      updated_at:"gte."+since,
+      order:"updated_at.desc",
+      limit:"40"
+    });
+    const response=await fetch(PROJECT_URL+"/rest/v1/rook_discovery_cache?"+params.toString(),{
+      headers:{apikey:serviceKey,authorization:"Bearer "+serviceKey,accept:"application/json"}
+    });
+    if(!response.ok)return [];
+    const cacheRows=await response.json();
+    if(!Array.isArray(cacheRows))return [];
+    const wantsHouse=/\b(?:house|houses|home|homes)\b/i.test(String(criteria.query||""))||Number(criteria.minBeds)>=3;
+    cacheRows.sort((a:any,b:any)=>{
+      const aHouse=/houses|single-family|house/i.test(String(a.cache_key||""))?1:0;
+      const bHouse=/houses|single-family|house/i.test(String(b.cache_key||""))?1:0;
+      return wantsHouse?(bHouse-aHouse):0;
+    });
+    const merged=new Map<string,Listing>();
+    for(const cacheRow of cacheRows){
+      const payload=cacheRow?.payload||{};
+      const rows=Array.isArray(payload?.result?.listings)?payload.result.listings:Array.isArray(payload?.listings)?payload.listings:[];
+      for(const row of rows){
+        if(!row||!directListingUrl(row.sourceUrl))continue;
+        const key=keyOf(row)||row.sourceUrl;
+        if(!key||merged.has(key))continue;
+        merged.set(key,{
+          ...row,
+          metadata:{
+            ...(row.metadata||{}),
+            discoveryMethod:"recent-provider-cache",
+            quickCandidate:true,
+            verificationPending:true,
+            cacheUpdatedAt:cacheRow.updated_at
+          }
+        });
+        if(merged.size>=120)break;
+      }
+      if(merged.size>=120)break;
+    }
+    return [...merged.values()];
+  }catch{
+    return [];
+  }
+}
+
 async function quickSearchDiscovery(location:string, criteria:any={}):Promise<AdapterResult> {
   const started=Date.now();
+  const cached=await recentCachedDiscovery(location,criteria);
+  if(cached.length){
+    return {
+      id:"quick-cache",
+      listings:cached,
+      discovery:{
+        quick:true,
+        authoritative:false,
+        source:"recent-provider-cache",
+        elapsedMs:Date.now()-started,
+        cacheCount:cached.length
+      }
+    };
+  }
+
   const runtime=await loadDiscoveryRuntimeConfig();
   const domains=(Array.isArray(runtime.providers?.searchDomains)&&runtime.providers.searchDomains.length
     ? runtime.providers.searchDomains
@@ -1205,6 +1275,7 @@ async function quickSearchDiscovery(location:string, criteria:any={}):Promise<Ad
     discovery:{
       quick:true,
       authoritative:false,
+      source:"search-index",
       queries:queries.length,
       elapsedMs:Date.now()-started,
       failedQueries:searches.filter((item:any)=>item.status==="rejected").length
