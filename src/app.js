@@ -10,6 +10,7 @@ import { showingRequestMessage, showingRequestPatch, isShowingPending } from "./
 import { directListingUrl, listingAction, needsListingCheck, LISTING_RESOLVER_VERSION } from "./core/listing.js?v=listing-sources-v1";
 import { properties as fallbackSeedProperties } from "./data/properties.js";
 import { createPropertyStore } from "./core/store.js?v=listing-sources-v1";
+import { createScratchSession, scratchChips } from "./core/scratch-session.js";
 import { filterProperties, searchProperties, PROPERTY_STATUS, applyEvidence, classifyPropertyKind, ignorePropertyPatch, restoreIgnoredPatch } from "./core/property.js";
 import { housingEvidence as fallbackHousingEvidence } from "./data/evidence.js";
 import { propertyFromUrl } from "./core/import.js";
@@ -40,6 +41,7 @@ document.documentElement.dataset.workspaceMode = isMainWorkspace ? "main" : "scr
 const runtimeSeeds = runtimeSeedProperties();
 const initialSeeds = isMainWorkspace ? (runtimeSeeds.length ? runtimeSeeds : fallbackSeedProperties) : [];
 const store = createPropertyStore(initialSeeds, { namespace:isMainWorkspace ? "" : activeWorkspace });
+const scratchSession = isMainWorkspace ? null : createScratchSession(activeWorkspace);
 store.replaceAll(store.getAll().map(property => normalizeRuntimeCommunityProperty(property)));
 const housingEvidence = isMainWorkspace ? (runtimeHousingEvidence().length ? runtimeHousingEvidence() : fallbackHousingEvidence) : [];
 let activeFilter = "all";
@@ -672,6 +674,7 @@ function visibleProperties() {
   let filtered;
   if (!isMainWorkspace) {
     filtered = allProperties.filter(property => ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(property.status));
+    filtered = scratchSession ? scratchSession.apply(filtered) : filtered;
   } else {
     const restricted = filterProperties(allProperties, activeFilter)
       .filter(property => ["review","pending"].includes(activeFilter) || (activeFilter === "all" && ["soon","upcoming"].includes(tourState(tourForProperty(property, preferences)))) || matchesSearchDefaults(property, preferences));
@@ -1023,6 +1026,62 @@ function scheduleRenderList() {
   else queueMicrotask(run);
 }
 
+function renderScratchSession(visible = []) {
+  const controls = document.querySelector("#scratch-session-controls");
+  if (!controls || !scratchSession) return;
+  controls.hidden = false;
+  const state = scratchSession.getState();
+  const chipTarget = document.querySelector("#scratch-chips");
+  if (chipTarget) {
+    const chips = scratchChips(state);
+    chipTarget.innerHTML = chips.length
+      ? chips.map(chip => '<button type="button" class="scratch-chip" data-scratch-remove-filter="' + esc(chip.key) + '">' + esc(chip.label) + ' <span aria-hidden="true">×</span></button>').join("")
+      : '<span class="scratch-chip scratch-chip--empty">No temporary filters</span>';
+  }
+  const status = document.querySelector("#scratch-session-status");
+  if (status) {
+    const total = store.getAll().filter(property => ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(property.status)).length;
+    const pinned = state.pinnedIds.length;
+    const enriching = store.getAll().filter(property => property.metadata?.verificationPending || property.metadata?.quickCandidate).length;
+    status.textContent = visible.length + " visible · " + total + " discovered · " + enriching + " enriching" + (pinned ? " · " + pinned + " pinned" : "");
+  }
+  const undo = document.querySelector("#scratch-undo");
+  if (undo) undo.disabled = !state.history.length;
+}
+
+function installScratchSessionControls() {
+  if (!scratchSession) return;
+  document.querySelector("#scratch-command-form")?.addEventListener("submit", event => {
+    event.preventDefault();
+    const input = document.querySelector("#scratch-command");
+    const value = input?.value.trim() || "";
+    if (!value) return;
+    scratchSession.command(value);
+    input.value = "";
+    renderList();
+  });
+  document.querySelector("#scratch-chips")?.addEventListener("click", event => {
+    const key = event.target.closest("[data-scratch-remove-filter]")?.dataset.scratchRemoveFilter;
+    if (!key) return;
+    scratchSession.removeFilter(key);
+    renderList();
+  });
+  document.querySelector("#scratch-undo")?.addEventListener("click", () => { scratchSession.undo(); renderList(); });
+  document.querySelector("#scratch-clear")?.addEventListener("click", () => { scratchSession.clear(); renderList(); });
+  scratchSession.subscribe(() => scheduleRenderList());
+  globalThis.rookScratchSession = {
+    workspace:activeWorkspace,
+    getState:() => scratchSession.getState(),
+    command:text => scratchSession.command(text),
+    setFilters:patch => scratchSession.setFilters(patch),
+    pin:id => { if (!scratchSession.isPinned(id)) scratchSession.togglePin(id); return scratchSession.getState(); },
+    unpin:id => { if (scratchSession.isPinned(id)) scratchSession.togglePin(id); return scratchSession.getState(); },
+    hide:id => scratchSession.exclude(id),
+    undo:() => scratchSession.undo(),
+    clear:() => scratchSession.clear()
+  };
+}
+
 function renderList() {
   const mapSelectionToRestore = selectedMapPropertyId;
   if (mapSelectionToRestore) restoreSelectedMapCard({ keepSelection: true });
@@ -1036,7 +1095,8 @@ function renderList() {
   else delete mapDiagnostics.dataset.searchMatches;
   document.querySelector("#property-count").textContent = isMainWorkspace
     ? `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`
-    : `${visible.length} workspace properties · Scratch renderer`;
+    : `${visible.length} visible · ${store.getAll().length} discovered · Scratch session`;
+  if (!isMainWorkspace) renderScratchSession(visible);
   document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("") || `<p class="empty-state">${listingChecksInFlight || refreshInFlight ? "Checking current listing links…" : "No verified listings match. Open Actions → Needs listing to review saved properties."}</p>`;
   if(visible.length)requestAnimationFrame(()=>speedMetrics.mark("firstVisibleCard",{count:visible.length,workspace:activeWorkspace}));
   // Map exactly the same property set the user can currently see.
@@ -1070,6 +1130,7 @@ function renderList() {
 app.innerHTML = `<main class="shell">
 <header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><div class="topbar-actions"><label class="workspace-picker"><span>Map</span><select id="workspace-select" aria-label="Rook map workspace"><option value="main">Main</option></select></label><button type="button" class="desktop-refresh-button" data-refresh-listings aria-label="Refresh listings" title="Refresh listings"><span aria-hidden="true">↻</span></button><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></div></header>
 <div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div><p id="workspace-status" class="workspace-status muted" aria-live="polite"></p><div class="scratch-legend" aria-label="Scratch map source colors"><span><i class="scratch-dot scratch-dot--manual"></i>Added set</span><span><i class="scratch-dot scratch-dot--web"></i>Web search</span><span><i class="scratch-dot scratch-dot--rook"></i>From Rook</span><span><i class="scratch-dot scratch-dot--reference"></i>Reference</span></div><p id="discovery-summary" class="muted" aria-live="polite"></p>
+<section id="scratch-session-controls" class="scratch-session-controls" aria-label="Scratch session controls" hidden><div class="scratch-session-row"><div id="scratch-chips" class="scratch-chips"></div><button id="scratch-undo" type="button">Undo</button><button id="scratch-clear" type="button">Start over</button></div><form id="scratch-command-form" class="scratch-command-form"><input id="scratch-command" type="text" autocomplete="off" placeholder="Modify Scratch: under $2300, remove apartments, 2+ beds…"><button type="submit">Apply</button></form><p id="scratch-session-status" class="scratch-session-status" aria-live="polite"></p></section>
 <section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><div id="property-map" class="property-map" role="region" aria-label="Interactive property map"></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
 <section id="map-details" class="map-details" aria-label="Property details" aria-live="polite" hidden></section>
 <section id="upcoming-tours" class="upcoming-tours" aria-live="polite" hidden></section>
@@ -1710,6 +1771,7 @@ document.addEventListener("touchend", () => {
 document.querySelector("#property-map").addEventListener("rook:first-pin",event=>speedMetrics.mark("firstVisiblePin",event.detail));
 document.querySelector("#more-results").addEventListener("click",()=>{document.querySelector("#actions-dialog").close();void refreshListings("more");});
 store.subscribe(scheduleRenderList);
+installScratchSessionControls();
 void populateWorkspaceSwitcher();
 void syncSharedRookState();
 
