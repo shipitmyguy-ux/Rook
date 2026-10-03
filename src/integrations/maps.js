@@ -358,6 +358,7 @@ function propertyFeature(property, fallbackLocation = config.search.location) {
     listingType: property.listingType === "buy" ? "buy" : "rent",
     status: property.status || "new",
     saved: Boolean(property.saved),
+    workspaceSource: String(property.metadata?.workspaceSource || property.metadata?.workspaceRole || ""),
     hasTour: Boolean(tourLabel),
     tourLabel,
     label: property.label || property.address || "Rental"
@@ -659,7 +660,15 @@ function installOverviewLayers(map) {
           ["boolean", ["feature-state", "hovered"], false], 12,
           0
         ],
-        "circle-color": ["case", ["boolean", ["feature-state", "selected"], false], "#58eadc", ["boolean", ["feature-state", "pricePing"], false], "#b46cff", "#ffc429"],
+        "circle-color": [
+          "case",
+          ["boolean", ["feature-state", "selected"], false], "#58eadc",
+          ["boolean", ["feature-state", "pricePing"], false], "#b46cff",
+          ["==", ["get", "workspaceSource"], "web-search"], "#4ba8ff",
+          ["==", ["get", "workspaceSource"], "rook-main"], "#ffc429",
+          ["==", ["get", "workspaceSource"], "reference"], "#58eadc",
+          "#9664ff"
+        ],
         "circle-opacity": [
           "case",
           ["boolean", ["feature-state", "selected"], false], 0.38,
@@ -677,7 +686,15 @@ function installOverviewLayers(map) {
           ["boolean", ["feature-state", "hovered"], false], 1,
           0
         ],
-        "circle-stroke-color": ["case", ["boolean", ["feature-state", "selected"], false], "#8ffff0", ["boolean", ["feature-state", "pricePing"], false], "#d8adff", "#ffc429"]
+        "circle-stroke-color": [
+          "case",
+          ["boolean", ["feature-state", "selected"], false], "#8ffff0",
+          ["boolean", ["feature-state", "pricePing"], false], "#d8adff",
+          ["==", ["get", "workspaceSource"], "web-search"], "#9ad0ff",
+          ["==", ["get", "workspaceSource"], "rook-main"], "#ffe18a",
+          ["==", ["get", "workspaceSource"], "reference"], "#8ffff0",
+          "#c3a6ff"
+        ]
       }
     });
   }
