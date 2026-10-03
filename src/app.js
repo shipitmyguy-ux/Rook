@@ -19,7 +19,7 @@ import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMis
 import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting, isPropertyWithinSearchRadius } from "./integrations/maps.js?v=listing-sources-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
-import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState, applySharedRookStateRow } from "./integrations/sync.js?v=shared-state-v2";
+import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState, fetchRookWorkspaces, applySharedRookStateRow } from "./integrations/sync.js?v=shared-state-v3";
 import { config } from "./config.js";
 import { loadRuntimeConfig, runtimePointsOfInterest, runtimeSeedProperties, runtimePreferenceDefaults, runtimeHousingEvidence, normalizeRuntimeCommunityProperty } from "./runtime-config.js";
 import { installRuntimeErrorHooks, reportRuntimeError } from "./runtime-errors.js";
@@ -28,10 +28,14 @@ installRuntimeErrorHooks();
 await loadRuntimeConfig();
 
 const app = document.querySelector("#app");
+const workspaceParam = typeof location !== "undefined" ? new URLSearchParams(location.search).get("workspace") : null;
+const activeWorkspace = (String(workspaceParam || "main").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "main");
+const isMainWorkspace = activeWorkspace === "main";
 const runtimeSeeds = runtimeSeedProperties();
-const store = createPropertyStore(runtimeSeeds.length ? runtimeSeeds : fallbackSeedProperties);
+const initialSeeds = isMainWorkspace ? (runtimeSeeds.length ? runtimeSeeds : fallbackSeedProperties) : [];
+const store = createPropertyStore(initialSeeds, { namespace:isMainWorkspace ? "" : activeWorkspace });
 store.replaceAll(store.getAll().map(property => normalizeRuntimeCommunityProperty(property)));
-const housingEvidence = runtimeHousingEvidence().length ? runtimeHousingEvidence() : fallbackHousingEvidence;
+const housingEvidence = isMainWorkspace ? (runtimeHousingEvidence().length ? runtimeHousingEvidence() : fallbackHousingEvidence) : [];
 let activeFilter = "all";
 let query = "";
 const preferenceDefaults = runtimePreferenceDefaults();
@@ -68,7 +72,7 @@ function applySyncedEvidence() {
     if (property && !(property.metadata?.evidence || []).some(item => JSON.stringify(item) === JSON.stringify(evidence))) store.upsert(applyEvidence(property, evidence));
   }
 }
-applySyncedEvidence();
+if (isMainWorkspace) applySyncedEvidence();
 
 function esc(value = "") {
   return String(value).replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
@@ -157,7 +161,7 @@ async function scanEmailNow() {
 // Shared sync carries lifecycle state and explicit bookmarks from ChatGPT-managed Rook sync.
 async function syncSharedRookState() {
   try {
-    const rows = await fetchSharedRookState();
+    const rows = await fetchSharedRookState(fetch, activeWorkspace);
     if (!rows.length) return 0;
     let applied = 0;
     for (const row of rows) {
@@ -168,23 +172,20 @@ async function syncSharedRookState() {
       );
       if (!property && (row.address || row.label)) {
         const id = row.property_id || "shared-" + canonicalAddress(row.address || row.label);
-        store.upsert({
+        const base = {
           id,
           label:row.label || row.address || "Synced property",
           address:row.address || "",
           type:"Property",
           listingType:"rent",
-          saved:Boolean(row.saved) || row.status === "showing-scheduled",
-          status:row.status || PROPERTY_STATUS.NEW,
-          contactOutcome:row.contact_outcome || null,
-          showingAt:row.showing_at || null,
-          source:"Shared sync",
-          metadata:{
-            sharedSyncUpdatedAt:row.updated_at || null,
-            ...(row.tour && typeof row.tour === "object" && Object.keys(row.tour).length ? { tour:row.tour } : {})
-          }
-        });
-        property = store.getAll().find(item => String(item.id) === String(id));
+          saved:false,
+          status:PROPERTY_STATUS.NEW,
+          source:isMainWorkspace ? "Shared sync" : "ChatGPT workspace",
+          metadata:{ workspaceId:activeWorkspace }
+        };
+        store.upsert(normalizeRuntimeCommunityProperty(applySharedRookStateRow(base, row, preferences)));
+        applied += 1;
+        continue;
       }
       if (!property) continue;
       // Shared ChatGPT-managed state is versioned by updated_at. Skip unchanged
@@ -196,10 +197,34 @@ async function syncSharedRookState() {
     if (applied) renderList();
     return applied;
   } catch (error) {
-    recordActivity("shared-sync-read-error", null, { message:String(error?.message || error) });
+    recordActivity("shared-sync-read-error", null, { workspace:activeWorkspace, message:String(error?.message || error) });
     void reportRuntimeError(error, { source:"shared-state", kind:"sync", recovery:"Kept local property state and will retry on the next focus/interval." });
     return 0;
   }
+}
+
+async function populateWorkspaceSwitcher() {
+  const select = document.querySelector("#workspace-select");
+  const status = document.querySelector("#workspace-status");
+  if (!select) return;
+  let rows = [];
+  try { rows = await fetchRookWorkspaces(); } catch {}
+  if (!rows.some(row => row.workspace_id === activeWorkspace)) rows.push({ workspace_id:activeWorkspace, label:activeWorkspace, is_protected:false });
+  select.replaceChildren(...rows.map(row => {
+    const option = document.createElement("option");
+    option.value = row.workspace_id;
+    option.textContent = row.label || row.workspace_id;
+    return option;
+  }));
+  select.value = activeWorkspace;
+  select.addEventListener("change", () => {
+    const url = new URL(location.href);
+    const next = String(select.value || "main");
+    if (next === "main") url.searchParams.delete("workspace");
+    else url.searchParams.set("workspace", next);
+    location.assign(url.toString());
+  });
+  if (status) status.textContent = isMainWorkspace ? "Main workspace" : "Scratch workspace · ChatGPT sync";
 }
 
 function followUpBadge(property) {
@@ -783,6 +808,10 @@ function showDiscoveryStatus(message = "", detail = "", duration = 4500) {
 }
 
 async function refreshListings(trigger = "manual") {
+  if (!isMainWorkspace) {
+    showDiscoveryStatus("Scratch workspace", "Live candidates come from ChatGPT sync. Main discovery is paused here.", 4200);
+    return;
+  }
   if (refreshInFlight) return;
   refreshInFlight = true;
   const buttons = document.querySelectorAll("[data-refresh-listings]");
@@ -964,8 +993,8 @@ function renderList() {
 }
 
 app.innerHTML = `<main class="shell">
-<header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><div class="topbar-actions"><button type="button" class="desktop-refresh-button" data-refresh-listings aria-label="Refresh listings" title="Refresh listings"><span aria-hidden="true">↻</span></button><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></div></header>
-<div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div><p id="discovery-summary" class="muted" aria-live="polite"></p>
+<header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><div class="topbar-actions"><label class="workspace-picker"><span>Map</span><select id="workspace-select" aria-label="Rook map workspace"><option value="main">Main</option></select></label><button type="button" class="desktop-refresh-button" data-refresh-listings aria-label="Refresh listings" title="Refresh listings"><span aria-hidden="true">↻</span></button><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></div></header>
+<div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div><p id="workspace-status" class="workspace-status muted" aria-live="polite"></p><p id="discovery-summary" class="muted" aria-live="polite"></p>
 <section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><div id="property-map" class="property-map" role="region" aria-label="Interactive property map"></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
 <section id="map-details" class="map-details" aria-label="Property details" aria-live="polite" hidden></section>
 <section id="upcoming-tours" class="upcoming-tours" aria-live="polite" hidden></section>
@@ -1592,16 +1621,17 @@ document.addEventListener("touchend", () => {
 }, { passive: true });
 
 store.subscribe(scheduleRenderList);
+void populateWorkspaceSwitcher();
 void syncSharedRookState();
 
-// Keep ChatGPT/Calendar-added tours current while Rook is already open. Shared
-// state is tiny; only changed rows are applied, so this does not trigger map churn.
+// Main keeps the existing lightweight cadence. Scratch maps poll more frequently
+// while visible so ChatGPT-added candidates appear without a manual refresh.
 window.setInterval(() => {
   if (document.visibilityState === "visible") void syncSharedRookState();
-}, 30000);
+}, isMainWorkspace ? 30000 : 5000);
 window.addEventListener("focus", () => void syncSharedRookState());
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") void syncSharedRookState();
 });
 renderList();
-if (!BROWSER_QA_MODE) queueMicrotask(() => refreshListings("startup"));
+if (!BROWSER_QA_MODE && isMainWorkspace) queueMicrotask(() => refreshListings("startup"));
