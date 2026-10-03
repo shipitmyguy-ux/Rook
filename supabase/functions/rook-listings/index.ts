@@ -2720,6 +2720,16 @@ async function persistWorkspaceCoordinates(workspaceId:string,row:any,point:any)
 async function workspaceExactAddressPoint(row:any) {
   const address = String(row?.address || "").trim();
   if (!address) return null;
+  const geocodeKey="workspace-geocode:v1:"+canonicalAddress(address);
+  const cached=await readCache(geocodeKey);
+  if(cached && Date.parse(cached.expires_at)>Date.now() && cached.payload?.point) return cached.payload.point;
+  const remember=async(point:any)=>{
+    if(point && Number.isFinite(Number(point.lat)) && Number.isFinite(Number(point.lng))){
+      await writeCache(geocodeKey,{point:{lat:Number(point.lat),lng:Number(point.lng)}},30*24*60*60*1000);
+      return {lat:Number(point.lat),lng:Number(point.lng)};
+    }
+    return null;
+  };
 
   // Exact address geocoding is the low-latency first path. It normally
   // resolves in well under a second and avoids waiting on listing websites.
@@ -2732,7 +2742,7 @@ async function workspaceExactAddressPoint(row:any) {
     const candidate = Array.isArray(rows) ? rows[0] : null;
     if (candidate) {
       const normalized = normalizePoiCandidate(candidate,address);
-      if (normalized && contextMatchesAddress(normalized.address || normalized.label,address,row.label)) return normalized;
+      if (normalized && contextMatchesAddress(normalized.address || normalized.label,address,row.label)) return await remember(normalized);
     }
   } catch {}
 
@@ -2742,19 +2752,19 @@ async function workspaceExactAddressPoint(row:any) {
   if (sourceUrl && isAllowedListingHost(new URL(sourceUrl).hostname)) {
     try {
       const key = "publisher-map:v2:" + sourceUrl + "|" + canonicalAddress(address);
-      const cached = await readCache(key);
-      if (cached && Date.parse(cached.expires_at) > Date.now() && cached.payload?.point) return cached.payload.point;
+      const publisherCached = await readCache(key);
+      if (publisherCached && Date.parse(publisherCached.expires_at) > Date.now() && publisherCached.payload?.point) return await remember(publisherCached.payload.point);
       const page = await inspectListingUrl(sourceUrl);
       const point = page.reachable ? publisherCoordinates(page.html,address) : null;
       await writeCache(key,{point,sourceUrl,reason:point ? null : page.reachable ? "publisher-coordinates-missing" : "publisher-unreachable"},point?86400000:60000);
-      if (point) return point;
+      if (point) return await remember(point);
     } catch {}
   }
 
   const source = String(row?.metadata?.workspaceSource || row?.metadata?.workspaceRole || "");
   if (source === "reference") {
     const candidates = await searchPoiSuggestions(address || row.label,FALLBACK_LOCATION,1);
-    return candidates[0] || null;
+    return candidates[0] ? await remember(candidates[0]) : null;
   }
   return null;
 }
