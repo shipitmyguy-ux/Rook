@@ -159,16 +159,24 @@ async function scanGmailInBrowser({ since = null, preferences = {} } = {}) {
 
 export function applySharedRookStateRow(property = {}, row = {}, preferences = {}) {
   const rawTour = row?.tour && typeof row.tour === "object" ? row.tour : {};
+  const rowMetadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
   const startsAt = rawTour.startsAt || row.showing_at || null;
   let next = normalizeProperty({
     ...property,
     id:property.id,
     ...(row.address ? {address:row.address} : {}),
     ...(row.label ? {label:row.label} : {}),
+    ...(row.source_url ? {sourceUrl:row.source_url} : {}),
+    ...(Number(row.price) > 0 ? {price:Number(row.price)} : {}),
+    ...(Number(row.beds) > 0 ? {beds:Number(row.beds)} : {}),
+    ...(Number(row.baths) > 0 ? {baths:Number(row.baths)} : {}),
+    ...(Number(row.sqft) > 0 ? {sqft:Number(row.sqft)} : {}),
     ...(row.contact_outcome ? {contactOutcome:row.contact_outcome} : {}),
     saved:Boolean(property.saved || row.saved || row.status === PROPERTY_STATUS.SHOWING_SCHEDULED),
     metadata:{
       ...(property.metadata || {}),
+      ...rowMetadata,
+      ...(row.note ? { workspaceNote:String(row.note) } : {}),
       sharedSyncUpdatedAt:row.updated_at || null,
       sharedSyncLastEmailAt:row.last_email_at || null,
       sharedSyncSourceMessageIds:Array.isArray(row.source_message_ids) ? row.source_message_ids : [],
@@ -188,15 +196,28 @@ export function applySharedRookStateRow(property = {}, row = {}, preferences = {
   return next;
 }
 
-export async function fetchSharedRookState(fetchImpl = fetch) {
+export async function fetchSharedRookState(fetchImpl = fetch, workspace = "main") {
   const endpoint = config.listings?.endpoint;
   if (!endpoint) return [];
   const url = new URL(endpoint, typeof window !== "undefined" ? window.location.href : "http://localhost/");
   url.searchParams.set("state", "1");
-  const response = await fetchImpl(url, { headers:{ Accept:"application/json" } });
+  url.searchParams.set("workspace", String(workspace || "main"));
+  const response = await fetchImpl(url, { headers:{ Accept:"application/json" }, cache:"no-store" });
   if (!response.ok) return [];
   const payload = await response.json();
   return Array.isArray(payload?.state) ? payload.state : [];
+}
+
+export async function fetchRookWorkspaces(fetchImpl = fetch) {
+  const endpoint = config.listings?.endpoint;
+  if (!endpoint) return [{ workspace_id:"main", label:"Main", is_protected:true }];
+  const url = new URL(endpoint, typeof window !== "undefined" ? window.location.href : "http://localhost/");
+  url.searchParams.set("workspaces", "1");
+  const response = await fetchImpl(url, { headers:{ Accept:"application/json" }, cache:"no-store" });
+  if (!response.ok) return [{ workspace_id:"main", label:"Main", is_protected:true }];
+  const payload = await response.json();
+  const rows = Array.isArray(payload?.workspaces) ? payload.workspaces : [];
+  return [{ workspace_id:"main", label:"Main", is_protected:true }, ...rows.filter(row => row?.workspace_id && row.workspace_id !== "main")];
 }
 
 export function getRookSyncBridge() {
