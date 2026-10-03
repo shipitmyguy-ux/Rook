@@ -1,11 +1,14 @@
 import { normalizeProperty, PROPERTY_STATUS } from "./property.js";
 import { dedupeProperties } from "./dedupe.js?v=listing-sources-v1";
 
-const STORAGE_KEY = "rook.properties.v1";
-const IGNORED_KEY = "rook.ignored-identities.v1";
+const BASE_STORAGE_KEY = "rook.properties.v1";
+const BASE_IGNORED_KEY = "rook.ignored-identities.v1";
 const ignoredIdentities = p => [p.id && "id:"+p.id, p.address && "address:"+p.address.toLowerCase().replace(/[^a-z0-9]/g,""),p.sourceUrl && "url:"+p.sourceUrl].filter(Boolean);
 
-export function createPropertyStore(seed = []) {
+export function createPropertyStore(seed = [], options = {}) {
+  const namespace = String(options.namespace || "").trim().replace(/[^a-z0-9_-]+/gi, "-");
+  const STORAGE_KEY = namespace ? BASE_STORAGE_KEY + ".workspace." + namespace : BASE_STORAGE_KEY;
+  const IGNORED_KEY = namespace ? BASE_IGNORED_KEY + ".workspace." + namespace : BASE_IGNORED_KEY;
   let properties = load(seed);
   const listeners = new Set();
 
