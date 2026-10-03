@@ -332,3 +332,7 @@ html.settings-modal-open,body.settings-modal-open{overflow:hidden;overscroll-beh
 .workspace-picker option{background:#0a121d;color:#f7f9fc}
 .workspace-status{margin:0 8px 8px;font-size:.72rem}
 @media(max-width:699px){.workspace-picker{min-height:42px;padding:0 6px}.workspace-picker span{display:none}.workspace-picker select{max-width:118px;font-size:.78rem}}
+
+html[data-workspace-mode="scratch"] .main-only-controls{display:none!important}
+html[data-workspace-mode="scratch"] #open-settings,
+html[data-workspace-mode="scratch"] [data-refresh-listings]{display:none!important}
