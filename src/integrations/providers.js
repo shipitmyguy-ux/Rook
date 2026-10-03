@@ -1,3 +1,5 @@
+import {completePropertyMatch, exactPropertyMatch, sourcePriority} from "../core/discovery-speed.js";
+import {hasVerifiedListing} from "../core/listing.js";
 import { propertySquareFeet } from "../core/property-size.js";
 import { listingSourceUrls } from "../core/listing-sources.js";
 import { directListingUrl, LISTING_RESOLVER_VERSION } from "../core/listing.js";
@@ -179,16 +181,27 @@ function sameListingAddress(a = "", b = "") {
 }
 
 export async function resolveMissingListing(property = {}, criteria = {}, fetchImpl = fetch) {
-  const urls = listingSourceUrls(property);
+  if (!criteria.deep && hasVerifiedListing(property) && completePropertyMatch(property,property)) {
+    return {state:"active",url:property.sourceUrl,listing:property,checkedAt:property.listingCheckedAt};
+  }
+  const urls = listingSourceUrls(property).sort((a,b)=>sourcePriority(a)-sourcePriority(b));
   let result = null;
-  for (const sourceUrl of (urls.length ? urls.slice(0, 3) : [null])) {
+  for (const sourceUrl of (urls.length ? urls.slice(0, criteria.deep ? 3 : 2) : [null])) {
     try {
       const attempt = await resolveListingSource({ ...property, sourceUrl }, criteria, fetchImpl);
       if (attempt.state === "active") {
         attempt.listing.metadata.sourceUrls = [...new Set([...urls, ...listingSourceUrls(attempt.listing)])];
-        return attempt;
-      }
-      result ||= attempt;
+        // Complete exact matches end discovery; incomplete matches may use one more source.
+        if(result?.state === "active") {
+          const first=result.listing, second=attempt.listing;
+          const conflicts=["price","beds"].some(key=>first[key]!=null&&second[key]!=null&&first[key]!==second[key]);
+          result.listing={...first,...Object.fromEntries(Object.entries(second).filter(([key,value])=>first[key]==null&&value!=null)),
+            metadata:{...first.metadata,factsConflict:conflicts,secondarySourceUrl:second.sourceUrl}};
+          return result;
+        }
+        if (!criteria.deep && completePropertyMatch(property,{...property,...Object.fromEntries(Object.entries(attempt.listing).filter(([,v])=>v!=null)),metadata:attempt.listing.metadata})) return attempt;
+        result=attempt;
+      } else if (!result || result.state !== "active") result=attempt;
     } catch (error) {
       if (urls.length <= 1) throw error;
     }
@@ -202,7 +215,7 @@ async function resolveListingSource(property = {}, criteria = {}, fetchImpl = fe
   if (!endpoint) return { state: "unknown", url: null, checkedAt: new Date().toISOString() };
   const url = new URL(endpoint, typeof window !== "undefined" ? window.location.href : "http://localhost/");
   url.searchParams.set("resolve", "1");
-  if (!(Number(property.price) > 0)) url.searchParams.set("comparables", "1");
+  if (criteria.deep) {url.searchParams.set("deep","1"); if (!(Number(property.price)>0))url.searchParams.set("comparables","1");}
   if (property.address) url.searchParams.set("address", property.address);
   if (property.label) url.searchParams.set("label", property.label);
   if (property.sourceUrl) url.searchParams.set("sourceUrl", property.sourceUrl);
@@ -210,7 +223,7 @@ async function resolveListingSource(property = {}, criteria = {}, fetchImpl = fe
   if (property.baths != null) url.searchParams.set("baths", String(property.baths));
   url.searchParams.set("listingType", property.listingType === "buy" ? "buy" : "rent");
   if (criteria.location) url.searchParams.set("location", criteria.location);
-  const response = await fetchImpl(url, { headers: { Accept: "application/json" }, signal:AbortSignal.timeout(60000) });
+  const response = await fetchImpl(url, { headers: { Accept: "application/json" }, signal:AbortSignal.timeout(criteria.deep ? 60000 : 20000) });
   if (!response.ok) throw new Error(`Listing resolver returned ${response.status}`);
   const payload = await response.json();
   const candidate = payload?.listing || null;
@@ -218,7 +231,7 @@ async function resolveListingSource(property = {}, criteria = {}, fetchImpl = fe
   if (payload?.state === "active" && directListingUrl(candidate?.sourceUrl)
       && payload?.verification?.confirmed === true && payload.verification.version >= LISTING_RESOLVER_VERSION
       && directListingUrl(payload.verification.url) === directListingUrl(candidate.sourceUrl)
-      && (!property.address || sameListingAddress(candidate.address, property.address))) {
+      && (!property.address || exactPropertyMatch(candidate, property))) {
     const normalized = normalizeProviderResult(candidate, { id: "rook-resolver", label: candidate.source || "Recovered listing" });
     normalized.metadata.listingVerification = payload.verification;
     const listing = normalized.price
@@ -309,19 +322,28 @@ export function createJsonProvider({ id, label, endpoint, mapResult = value => v
       Object.entries(criteria).forEach(([key, value]) => {
         if (value !== null && value !== undefined && value !== "") url.searchParams.set(key, String(value));
       });
+      const cacheKey="rook-candidates:v1:"+JSON.stringify(Object.entries(criteria).filter(([key])=>key!=="more").sort());
+      let previous=[];
+      try {const cached=JSON.parse(globalThis.localStorage?.getItem(cacheKey)||"null");
+        if(cached?.rows?.length){previous=cached.rows;options.onResults?.(previous.map(row=>({...mapResult(row),metadata:{...row.metadata,quickCandidate:true,verificationPending:true,cacheUpdatedAt:cached.checkedAt}})),{stage:"saved",checkedAt:cached.checkedAt,count:previous.length});}
+      }catch{}
+      const save=rows=>{if(!rows.length)return;try {globalThis.localStorage?.setItem(cacheKey,JSON.stringify({rows:rows.slice(0,600),checkedAt:new Date().toISOString()}));}catch{}};
       if(options.onResults)url.searchParams.set("stream","1");
+      try {
       const response = await fetchImpl(url, { headers: { Accept: "application/json" },signal:AbortSignal.timeout(35000) });
       if (!response.ok) throw new Error(`${label || id} returned ${response.status}`);
       if(response.headers?.get("content-type")?.includes("application/x-ndjson")&&response.body){
         const reader=response.body.getReader(),decoder=new TextDecoder();let pending="",rows=[];
-        const consume=line=>{if(!line.trim())return;const payload=JSON.parse(line);if(payload.error)throw new Error(payload.error);const batch=(payload.listings||[]).map(mapResult);if(payload.meta?.authoritative)rows=batch;else rows.push(...batch);options.onResults?.(batch,payload.meta);};
+        const consume=line=>{if(!line.trim())return;const payload=JSON.parse(line);if(payload.error)throw new Error(payload.error);const batch=(payload.listings||[]).map(mapResult);if(payload.meta?.authoritative && batch.length)rows=batch;else rows.push(...batch);save(rows);options.onResults?.(batch,payload.meta);};
         try{while(true){const {done,value}=await reader.read();pending+=decoder.decode(value||new Uint8Array(),{stream:!done});let newline;while((newline=pending.indexOf("\n"))>=0){consume(pending.slice(0,newline));pending=pending.slice(newline+1)}if(done)break;}if(pending.trim())consume(pending);}finally{reader.releaseLock()}
-        return rows;
+        return rows.length ? rows : previous;
       }
       const payload = await response.json();
       const rows = Array.isArray(payload) ? payload : payload.listings;
       if(options.onResults)options.onResults(Array.isArray(rows)?rows.map(mapResult):[],payload.meta);
-      return Array.isArray(rows) ? rows.map(mapResult) : [];
+      save(Array.isArray(rows)?rows:[]);
+      return Array.isArray(rows)&&rows.length ? rows.map(mapResult) : previous.map(mapResult);
+      } catch(error) {if(previous.length){options.onResults?.([], {degraded:true,keptSaved:true});return previous.map(mapResult);}throw error;}
     }
   };
 }

@@ -1,0 +1,17 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Rook cold-load speed QA</title><link rel="stylesheet" href="../src/rook-ui-v3.css"></head>
+<body><div id="app"></div><script>
+// Isolated namespace supplied by the test URL: no user properties are modified.
+const networkFetch=window.fetch.bind(window);
+const workspace=new URLSearchParams(location.search).get('workspace');
+window.fetch=async(input,options)=>{
+  const url=new URL(input,location.href);
+  if(url.pathname.endsWith('/rook-listings') && url.searchParams.has('workspaces'))return Response.json({workspaces:[{workspace_id:workspace,label:'Speed QA'}]});
+  if(url.pathname.endsWith('/rook-listings') && url.searchParams.has('state')){
+    await new Promise(resolve=>setTimeout(resolve,800));
+    return Response.json({state:Array.from({length:12},(_,i)=>({property_id:'speed-'+i,property_key:'speed-'+i,address:`${100+i} Main St, Fort Collins, CO`,label:'Speed fixture '+i,price:1800,beds:2,lat:40.55+i*.001,lng:-105.07,source_url:`https://manager.test/property-${i}`,updated_at:'2026-10-03T00:00:00Z'}))});
+  }
+  if(url.pathname.endsWith('/rook-listings'))return Response.json({});
+  return networkFetch(input,options);
+};
+</script><script type="module" src="../src/app.js"></script></body></html>

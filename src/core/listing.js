@@ -56,5 +56,6 @@ export function needsListingCheck(property, now = Date.now()) {
 export function listingAction(property, now = Date.now()) {
   if (confirmedClosed(property)) return { url:null, closed:true, resolving:false };
   if (hasVerifiedListing(property, now)) return { url:directListingUrl(property.sourceUrl), closed:false, resolving:false };
-  return { url:null, closed:false, resolving:needsListingCheck(property, now) };
+  const url = directListingUrl(property?.sourceUrl);
+  return { url, closed:false, resolving:needsListingCheck(property, now), candidate:Boolean(url) };
 }

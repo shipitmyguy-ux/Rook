@@ -486,6 +486,16 @@ function updateOverviewSource({ fit = false } = {}) {
   ) !== false);
   const source = map.getSource(ROOK_SOURCE_ID);
   source?.setData(data);
+  if(data.features.length && !overviewState.container?.dataset.pinMeasurementPending && !overviewState.container?.dataset.firstPinMeasured && typeof map.on === "function" && typeof map.off === "function") {
+    overviewState.container.dataset.pinMeasurementPending="true";
+    const measured=()=>{
+      if(typeof map.queryRenderedFeatures !== "function" || !map.queryRenderedFeatures({layers:[ROOK_LAYER_ID]}).length)return;
+      map.off("render",measured);
+      overviewState.container.dataset.firstPinMeasured="true";
+      overviewState.container.dispatchEvent(new CustomEvent("rook:first-pin",{detail:{count:Number(overviewState.container.dataset.mapFeatureCount)},bubbles:true}));
+    };
+    map.on("render",measured);
+  }
   if (overviewState.container) {
     overviewState.container.dataset.mapExpectedPropertyCount = String(overviewState.latestProperties.length);
     overviewState.container.dataset.mapFeatureCount = String(data.features.length);

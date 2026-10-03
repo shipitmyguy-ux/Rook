@@ -205,7 +205,7 @@ export async function fetchSharedRookState(fetchImpl = fetch, workspace = "main"
   url.searchParams.set("state", "1");
   url.searchParams.set("workspace", String(workspace || "main"));
   const response = await fetchImpl(url, { headers:{ Accept:"application/json" }, cache:"no-store" });
-  if (!response.ok) return [];
+  if (!response.ok) throw new Error("Workspace sync returned " + response.status);
   const payload = await response.json();
   return Array.isArray(payload?.state) ? payload.state : [];
 }

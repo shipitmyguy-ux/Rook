@@ -2,7 +2,8 @@ import { propertySquareFeet, squareFootageFromText } from "../../../src/core/pro
 import {signedCoordinate,publisherCoordinates} from "../../../src/core/coordinates.js";
 import { directListingUrl } from "../../../src/core/listing.js";
 import { verifyDirectListing } from "./verification.js";
-import {readCache,writeCache,coalesce} from "./cache.ts";
+import {readCache,writeCache,coalesce,claimLease,releaseLease} from "./cache.ts";
+import {boundedDiscovery,backoffMilliseconds} from "../../../src/core/discovery-speed.js";
 import {nextPageUrl} from "../rook-browser-worker/pagination.js";
 
 const corsHeaders = {
@@ -1150,7 +1151,7 @@ async function recentCachedDiscovery(location:string, criteria:any={}):Promise<L
   const runtime=await loadDiscoveryRuntimeConfig();
   const city=String(location||runtime.searchAreas?.defaultLocation||FALLBACK_LOCATION).split(",")[0].trim();
   const citySlug=city.toLowerCase().replace(/[^a-z0-9]+/g,"-");
-  const since=new Date(Date.now()-24*60*60*1000).toISOString();
+  const since=new Date(Date.now()-30*24*60*60*1000).toISOString();
   try{
     const params=new URLSearchParams({
       select:"cache_key,payload,updated_at",
@@ -1160,7 +1161,7 @@ async function recentCachedDiscovery(location:string, criteria:any={}):Promise<L
       limit:"40"
     });
     const response=await fetch(PROJECT_URL+"/rest/v1/rook_discovery_cache?"+params.toString(),{
-      headers:{apikey:serviceKey,authorization:"Bearer "+serviceKey,accept:"application/json"}
+      headers:{apikey:serviceKey,authorization:"Bearer "+serviceKey,accept:"application/json"},signal:AbortSignal.timeout(1200)
     });
     if(!response.ok)return [];
     const cacheRows=await response.json();
@@ -1199,9 +1200,19 @@ async function recentCachedDiscovery(location:string, criteria:any={}):Promise<L
   }
 }
 
+function areaSnapshotKey(location:string) { return "area:v1:"+canonicalAddress(location); }
+function keepBackground(work:Promise<any>) {
+  const guarded=work.catch(error=>console.error("Rook refinement",String(error)));
+  const runtime=(globalThis as any).EdgeRuntime;
+  if(runtime?.waitUntil)runtime.waitUntil(guarded);
+}
+
 async function quickSearchDiscovery(location:string, criteria:any={}):Promise<AdapterResult> {
   const started=Date.now();
-  const cached=await recentCachedDiscovery(location,criteria);
+  const snapshot=await readCache(areaSnapshotKey(location));
+  const cached=snapshot?.payload?.listings?.length
+    ? snapshot.payload.listings.map((row:any)=>({...row,metadata:{...row.metadata,quickCandidate:true,verificationPending:true,cacheUpdatedAt:snapshot.updated_at}}))
+    : await recentCachedDiscovery(location,criteria);
   const meaningfulNeedle=String(criteria.query||"")
     .toLowerCase()
     .replace(/\b\d+\s*(?:bed|beds|bedroom|bedrooms|br)\b/g," ")
@@ -1212,13 +1223,16 @@ async function quickSearchDiscovery(location:string, criteria:any={}):Promise<Ad
     ? cached.filter((row:any)=>[row.label,row.address,row.source,row.metadata?.description].filter(Boolean).join(" ").toLowerCase().includes(meaningfulNeedle))
     : cached;
   if(cachedRelevant.length){
+    if(!snapshot?.payload?.listings?.length) await writeCache(areaSnapshotKey(location),{listings:cached},5*60000);
     return {
       id:"quick-cache",
       listings:cachedRelevant,
       discovery:{
         quick:true,
         authoritative:false,
-        source:"recent-provider-cache",
+        source:snapshot?.payload?.listings?.length ? "area-snapshot" : "recent-provider-cache",
+        checkedAt:snapshot?.updated_at || cachedRelevant[0]?.metadata?.cacheUpdatedAt || null,
+        stale:!snapshot || Date.parse(snapshot.expires_at)<=Date.now(),
         elapsedMs:Date.now()-started,
         cacheCount:cachedRelevant.length
       }
@@ -1831,14 +1845,14 @@ async function resolveComparablePrice(address: string, label: string, location: 
 
 const listingVerificationCache = new Map<string, { expires:number; result:any }>();
 
-async function resolveListing(address: string, label: string, location: string, sourceUrl = "", listingType = "rent") {
-  const key = JSON.stringify([address,label,sourceUrl,listingType]);
+async function resolveListing(address: string, label: string, location: string, sourceUrl = "", listingType = "rent", deep = false) {
+  const key = JSON.stringify([address,label,sourceUrl,listingType,deep]);
   const cached = listingVerificationCache.get(key);
   if (cached && cached.expires > Date.now()) return cached.result;
   // Discovery only proposes a candidate. Search snippets and ZIP pages never verify it.
   const discovered = directListingUrl(sourceUrl)
     ? { state:"active", listing:{ address, label, sourceUrl } }
-    : await discoverListing(address, label, location);
+    : await discoverListing(address, label, location, "", deep);
   let result:any = { state:"unknown", listing:null, checkedAt:new Date().toISOString() };
   if (discovered.state === "closed") result = discovered;
   else if (discovered.listing?.sourceUrl) {
@@ -1861,7 +1875,7 @@ async function resolveListing(address: string, label: string, location: string, 
   return result;
 }
 
-async function discoverListing(address: string, label: string, location: string, sourceUrl = "") {
+async function discoverListing(address: string, label: string, location: string, sourceUrl = "", deep = false) {
   const checkedAt = new Date().toISOString();
   const runtime = await loadDiscoveryRuntimeConfig();
   const locationParts = String(location || runtime.searchAreas?.defaultLocation || FALLBACK_LOCATION).split(",");
@@ -1950,7 +1964,7 @@ async function discoverListing(address: string, label: string, location: string,
 
   let successfulSources = 0;
   const closedEvidence:any[] = [];
-  for (const sourcePage of sourcePages) {
+  for (const sourcePage of sourcePages.slice(0,deep ? sourcePages.length : 1)) {
     try {
       const html = await fetchText(sourcePage.url);
       successfulSources += 1;
@@ -1979,7 +1993,7 @@ async function discoverListing(address: string, label: string, location: string,
     "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query)
   ];
   const seenCandidates = new Set<string>();
-  for (const searchUrl of searchUrls) {
+  for (const searchUrl of searchUrls.slice(0,deep ? searchUrls.length : 1)) {
     try {
       const searchHtml = await fetchText(searchUrl);
 
@@ -2019,6 +2033,7 @@ async function discoverListing(address: string, label: string, location: string,
           if (!isAllowedListingHost(hostname)) continue;
           const normalizedCandidate = candidate.toString();
           if (seenCandidates.has(normalizedCandidate)) continue;
+          if(!deep && seenCandidates.size>=2)break;
           seenCandidates.add(normalizedCandidate);
 
           const inspected = await inspectListingUrl(normalizedCandidate);
@@ -2062,6 +2077,7 @@ async function discoverListing(address: string, label: string, location: string,
 
   // Reader-backed exact-address search is the last cheap discovery tier before
   // opening a real browser. It is bounded so a missing listing cannot stall Rook.
+  if(!deep)return {state:"unknown",listing:null,checkedAt,checkedSources:successfulSources,reason:"limited-search"};
   const exactQuery = ['"' + (address || label) + '"', location, "rental"].filter(Boolean).join(" ");
   const readerSearchUrls = [
     "https://www.google.com/search?q=" + encodeURIComponent(exactQuery),
@@ -2454,7 +2470,7 @@ function renderFeedTemplate(template:string, city:string, state="CO") {
 
 function providerAdapterTasksFromConfig(providerConfig:any, places:any[], primaryCity:string) {
   const providers = Array.isArray(providerConfig?.providers) ? providerConfig.providers.filter((p:any)=>p?.id && p?.cityFeed) : [];
-  const tasks:Promise<AdapterResult>[] = [];
+  const tasks:Array<()=>Promise<AdapterResult>> = [];
   for (const place of places) {
     const city = place.city;
     const state = place.state || "CO";
@@ -2462,7 +2478,7 @@ function providerAdapterTasksFromConfig(providerConfig:any, places:any[], primar
       const pageUrl = renderFeedTemplate(provider.cityFeed,city,state);
       if (!pageUrl) continue;
       const slug = city.toLowerCase().replace(/[^a-z0-9]+/g,"-");
-      tasks.push(sourceAdapter(
+      tasks.push(()=>sourceAdapter(
         `${provider.id}-${slug}`,
         `${provider.label || provider.id} · ${city}`,
         pageUrl,
@@ -2472,7 +2488,7 @@ function providerAdapterTasksFromConfig(providerConfig:any, places:any[], primar
         for (const category of Array.isArray(provider.primaryCategoryFeeds) ? provider.primaryCategoryFeeds : []) {
           const categoryUrl = renderFeedTemplate(category?.url || "",city,state);
           if (!categoryUrl) continue;
-          tasks.push(sourceAdapter(
+          tasks.push(()=>sourceAdapter(
             `${provider.id}-${category.id || "category"}-${slug}`,
             `${provider.label || provider.id} ${category.label || category.id || "category"} · ${city}`,
             categoryUrl,
@@ -2481,7 +2497,7 @@ function providerAdapterTasksFromConfig(providerConfig:any, places:any[], primar
         }
       }
     }
-    tasks.push(searchEngineDiscoveryAdapter(city + ", " + state));
+    tasks.push(()=>searchEngineDiscoveryAdapter(city + ", " + state));
   }
   return tasks;
 }
@@ -2896,11 +2912,12 @@ Deno.serve(async (req: Request) => {
     const targetBaths = Number(url.searchParams.get("baths") || "0");
     if (!address && !label && !sourceUrl) return new Response(JSON.stringify({ state:"unknown", listing:null, checkedAt:new Date().toISOString(), error:"address, label, or sourceUrl required" }), { status:400, headers:corsHeaders });
     const listingType=url.searchParams.get("listingType") === "buy" ? "buy" : "rent";
-    const resolveKey="verified:v5:"+[canonicalAddress(address),sourceUrl,listingType].join("|");
+    const deep=url.searchParams.get("deep")==="1";
+    const resolveKey="verified:v6:"+[canonicalAddress(address),sourceUrl,listingType,deep].join("|");
     const result=await coalesce(resolveKey,async()=>{
       const cached=await readCache(resolveKey);
       if(cached&&Date.parse(cached.expires_at)>Date.now())return cached.payload;
-      const result=await resolveListing(address,label,location,sourceUrl,listingType);
+      const result=await resolveListing(address,label,location,sourceUrl,listingType,deep);
       if(result?.state==="active"&&result.verification?.confirmed&&directListingUrl(result.verification.url)===directListingUrl(result.listing?.sourceUrl))await writeCache(resolveKey,result,900000);
       return result;
     });
@@ -2946,10 +2963,10 @@ Deno.serve(async (req: Request) => {
     const tasks=providerAdapterTasksFromConfig(runtimeDiscovery.providers, discoveryPlaces, primaryCity);
     for (const feed of Array.isArray(searchArea?.extraIndexFeeds) ? searchArea.extraIndexFeeds : []) {
       if (feed?.city && !discoveryCities.some((city:any)=>String(city).toLowerCase()===String(feed.city).toLowerCase())) continue;
-      tasks.push(configuredIndexFeedDiscovery(feed));
+      tasks.push(()=>configuredIndexFeedDiscovery(feed));
     }
     for (const sourceConfig of Array.isArray(runtimeDiscovery.communitySources?.sources) ? runtimeDiscovery.communitySources.sources : []) {
-      tasks.push(configuredCommunityDiscovery(sourceConfig, discoveryCities));
+      tasks.unshift(Object.assign(()=>configuredCommunityDiscovery(sourceConfig, discoveryCities),{essential:true}));
     }
     return tasks;
   };
@@ -2967,89 +2984,72 @@ Deno.serve(async (req: Request) => {
     return !/(mobile home|manufactured home|trailer park)/i.test(text)&&(!queryTextNeedle||text.includes(queryTextNeedle));
   });
 
-  const quickDiscoveryPromise = quickSearchDiscovery(location,{query,minBeds,maxPrice});
-  const quickCandidateScore=(listing:Listing)=>{
-    const beds=Number(listing.beds||0), price=Number(listing.price||0);
-    const houseLike=/house|singlefamily|single-family/i.test([listing.type,listing.source,listing.metadata?.description].filter(Boolean).join(" "));
-    let score=houseLike?4:0;
-    if(minBeds)score+=beds>=minBeds?5:beds?0:1;
-    if(maxPrice)score+=price>0&&price<=maxPrice?4:price?0:1;
-    if(listing.address)score+=1;
-    return score;
-  };
-  const selectQuickListings=(rows:Listing[])=>selectListings(rows)
-    .sort((a,b)=>quickCandidateScore(b)-quickCandidateScore(a))
-    .slice(0,25);
-  if(url.searchParams.get("fast")==="1"){
-    const quick=await quickDiscoveryPromise;
-    const listings=selectQuickListings(quick.listings);
-    const warming=(async()=>{
-      await new Promise(resolve=>setTimeout(resolve,25));
-      await Promise.allSettled(buildAdapterTasks());
-    })();
+  const more=url.searchParams.get("more")==="1";
+  const snapshotKey=areaSnapshotKey(location);
+  const quick=await quickSearchDiscovery(location,{query,minBeds,maxPrice});
+  const quickListings=selectListings(quick.listings).slice(0,25);
+  const target=more ? 100 : 25;
+  let jobState="paused";
+  const refine=()=>coalesce("refinement:"+snapshotKey,async()=>{
+    const leaseKey="lease:"+snapshotKey,token=await claimLease(leaseKey);
+    if(!token){
+      jobState="reused";
+      // Follow the existing job's snapshots; never launch a second crawl.
+      for(let attempt=0;attempt<8;attempt++){
+        const latest=await readCache(snapshotKey,true);
+        if(latest?.payload?.listings?.length && selectListings(latest.payload.listings).length>quickListings.length)return latest.payload.listings;
+        const lease=await readCache(leaseKey,true);
+        if(!lease || Date.parse(lease.expires_at)<=Date.now())break;
+        await new Promise(resolve=>setTimeout(resolve,500));
+      }
+      return quick.listings;
+    }
+    jobState="running";
     try{
-      const waitUntil=(globalThis as any).EdgeRuntime?.waitUntil;
-      if(typeof waitUntil==="function")waitUntil(warming);
-      else void warming;
-    }catch{void warming}
-    return new Response(JSON.stringify({
-      listings,
-      meta:{...quick.discovery,stage:"quick",count:listings.length,backgroundRefinement:true,generatedAt:new Date().toISOString()}
-    }),{headers:{...corsHeaders,"Cache-Control":"no-store"}});
+      const tasks=buildAdapterTasks();
+      const wrapped=tasks.map((task:any,index:number)=>async()=>{
+        const cooldownKey="provider-backoff:v1:"+snapshotKey+":"+index;
+        const [globalBackoff,sourceBackoff]=await Promise.all([readCache("provider-backoff:v1"),readCache(cooldownKey)]);
+        if(!task.essential && [globalBackoff,sourceBackoff].some(row=>row && Date.parse(row.expires_at)>Date.now()))return {id:"provider-backoff",listings:[],error:"Provider cooling down",discovery:{backoff:true}};
+        const adapter=await task();
+        const delay=backoffMilliseconds(adapter.error);
+        if(delay){
+          const shared=/concurrent session|session creates|rate limit exceeded.*trace|Steel websocket/i.test(String(adapter.error));
+          await writeCache(shared?"provider-backoff:v1":cooldownKey,{reason:String(adapter.error).slice(0,180)},delay);
+        }
+        return adapter;
+      });
+      const result=await boundedDiscovery(wrapped,{initial:quick.listings,identity:keyOf,select:selectListings,target,maxTasks:more?24:8,concurrency:2,
+        onBatch:async(rows:any[])=>{if(rows.length)await writeCache(snapshotKey,{listings:rows.slice(0,600),partial:true},5*60000)}
+      });
+      if(result.listings.length)await writeCache(snapshotKey,{listings:result.listings.slice(0,600),partial:result.paused,attempted:result.attempted},5*60000);
+      jobState=result.paused ? "paused" : "complete";
+      return result.listings;
+    }finally{await releaseLease(leaseKey,token)}
+  });
+  const needsRefinement=quickListings.length<target;
+  const meta=()=>({...quick.discovery,adapters:[{id:quick.id,count:quickListings.length,ok:quickListings.length>0,discovery:quick.discovery}],stage:"quick",count:quickListings.length,firstCandidateMs:quickListings.length?Date.now()-discoveryStarted:null,
+    backgroundRefinement:needsRefinement,refinement:jobState,paused:!needsRefinement,generatedAt:new Date().toISOString()});
+  if(url.searchParams.get("fast")==="1"){
+    if(needsRefinement)keepBackground(refine());
+    return new Response(JSON.stringify({listings:quickListings,meta:meta()}),{headers:{...corsHeaders,"Cache-Control":"no-store"}});
   }
   if(url.searchParams.get("stream")==="1"){
     const encoder=new TextEncoder();let cancelled=false;
     const stream=new ReadableStream({
       async start(controller){
-        const seen=new Set<string>(),allKeys=new Set<string>();let raw=0,count=0;
         const emit=(payload:any)=>{if(!cancelled)controller.enqueue(encoder.encode(JSON.stringify(payload)+"\n"))};
         try{
-          const quick=await quickDiscoveryPromise;
-          const quickListings=selectQuickListings(quick.listings).filter(row=>{
-            const key=keyOf(row);if(!key||seen.has(key))return false;seen.add(key);return true;
-          });
-          count+=quickListings.length;
-          if(quickListings.length) emit({
-            listings:quickListings,
-            meta:{adapter:{id:"quick-search",count:quickListings.length,ok:true,discovery:quick.discovery},count,elapsedMs:Date.now()-discoveryStarted,stage:"quick",authoritative:false}
-          });
-          const adapterTasks=buildAdapterTasks();
-          const finished=await Promise.all(adapterTasks.map(async task=>{
-            const adapter=await task;raw+=adapter.listings.length;for(const row of adapter.listings)allKeys.add(keyOf(row));
-            const listings=selectListings(adapter.listings).filter(row=>{const key=keyOf(row);if(seen.has(key))return false;seen.add(key);return true});
-            count+=listings.length;
-            emit({listings,meta:{adapter:{id:adapter.id,count:adapter.listings.length,ok:!adapter.error,error:adapter.error||null,discovery:adapter.discovery||null},count,elapsedMs:Date.now()-discoveryStarted}});
-            return adapter;
-          }));
-          const merged=mergeAdapterListings(finished),finalListings=selectListings([...merged.values()]);
-          emit({listings:finalListings,meta:{done:true,authoritative:true,count:finalListings.length,rawCount:raw,duplicates:raw-merged.size,filtered:merged.size-finalListings.length,elapsedMs:Date.now()-discoveryStarted}});
+          emit({listings:quickListings,meta:meta()});
+          if(needsRefinement){
+            const refined=selectListings(await refine()).slice(0,target);
+            emit({listings:refined,meta:{done:true,authoritative:true,count:refined.length,refinement:jobState,paused:jobState==="paused",elapsedMs:Date.now()-discoveryStarted}});
+          }else emit({listings:quickListings,meta:{done:true,authoritative:true,count:quickListings.length,paused:true,elapsedMs:Date.now()-discoveryStarted}});
         }catch(error){emit({error:String(error)})}finally{if(!cancelled)controller.close()}
       },cancel(){cancelled=true}
     });
     return new Response(stream,{headers:{...corsHeaders,"Content-Type":"application/x-ndjson","Cache-Control":"no-store"}});
   }
-  const adapters=await Promise.all(buildAdapterTasks());
-
-  const merged=mergeAdapterListings(adapters);
-
-  const listings = [...merged.values()].filter((listing) => {
-    if (!directListingUrl(listing.sourceUrl)) return false;
-    const beds = Number(listing.beds ?? 0);
-    const price = Number(listing.price ?? 0);
-    const text = [listing.label, listing.address, listing.type, listing.metadata?.description].filter(Boolean).join(" ").toLowerCase();
-    if (minBeds && beds && beds < minBeds) return false;
-    if (maxPrice && price && price > maxPrice) return false;
-    if (isIncomeRestrictedListing(listing)) return false;
-    if (/(mobile home|manufactured home|trailer park)/i.test(text)) return false;
-    if (queryTextNeedle && !text.includes(queryTextNeedle)) return false;
-    return true;
-  });
-
-  return new Response(JSON.stringify({
-    listings,
-    meta: {
-      location, radiusMiles, discoveryCities, count: listings.length, rawCount:adapters.reduce((n,a)=>n+a.listings.length,0), duplicates:adapters.reduce((n,a)=>n+a.listings.length,0)-merged.size, elapsedMs:Date.now()-discoveryStarted, generatedAt: new Date().toISOString(),
-      adapters: adapters.map(a => ({ id: a.id, count: a.listings.length, ok: !a.error, error: a.error || null, discovery:a.discovery || null }))
-    }
-  }), { headers: corsHeaders });
+  const listings=needsRefinement?selectListings(await refine()).slice(0,target):quickListings;
+  return new Response(JSON.stringify({listings,meta:{...meta(),count:listings.length,elapsedMs:Date.now()-discoveryStarted}}),{headers:corsHeaders});
 });

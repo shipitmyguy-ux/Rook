@@ -1,3 +1,8 @@
+import {createSpeedMetrics} from "./core/speed-metrics.js";
+const speedMetrics=createSpeedMetrics({startAt:0,persist:samples=>{
+  document.documentElement.dataset.rookSpeed=JSON.stringify(samples);
+  try{sessionStorage.setItem("rook-speed:last-load",JSON.stringify({at:new Date().toISOString(),samples}));}catch{}
+}});
 import { squareFootageLabel } from "./core/property-size.js";
 import { listingSourceUrls } from "./core/listing-sources.js";
 import { personalCalendarAvailability } from "./integrations/showing-availability.js";
@@ -57,6 +62,9 @@ let promotedTourPropertyId = null;
 let promotedTourResetTimer = null;
 const BROWSER_QA_MODE = typeof location !== "undefined" && new URLSearchParams(location.search).has("browser-qa");
 let listingChecksInFlight = null;
+const explicitChecks=new Set();
+const enrichmentPriority=new Set();
+let imageEnrichmentInFlight=null;
 // Increment when generic image recovery improves so prior misses retry immediately.
 const IMAGE_ENRICHMENT_VERSION = 4;
 // Distance values are derived once per property/address pair and persisted; rerenders only read the cache. The compact hybrid bar panel is anchored beside the card actions, scales to every configured address, and never resets during ordinary card rerenders.
@@ -165,7 +173,13 @@ async function scanEmailNow() {
 }
 
 // Shared sync carries lifecycle state and explicit bookmarks from ChatGPT-managed Rook sync.
+let sharedSyncInFlight=null;
 async function syncSharedRookState() {
+  if(sharedSyncInFlight)return sharedSyncInFlight;
+  sharedSyncInFlight=syncSharedRookStateNow();
+  try{return await sharedSyncInFlight;}finally{sharedSyncInFlight=null;}
+}
+async function syncSharedRookStateNow() {
   try {
     const rows = await fetchSharedRookState(fetch, activeWorkspace);
     if (!rows.length && isMainWorkspace) return 0;
@@ -573,7 +587,9 @@ function propertyCard(property) {
     </section>
     <section class="property-card__summary">
       <header class="property-card__identity"><span class="property-type-icon" role="img" aria-label="${kind}" title="${kind}">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span><div><h2>${esc(property.label)}</h2><p class="muted">${esc(displayAddress)}</p></div></header>
-      ${quickCandidate ? '<span class="quick-result-badge" title="Fast first-pass result; Rook is refining source details in the background">Quick result · refining</span>' : ""}
+      ${listing.candidate && !quickCandidate ? `<span class="quick-result-badge">${property.metadata?.enrichmentError || !listing.resolving ? "Could not verify availability" : "Availability pending"}</span>` : ""}
+      ${quickCandidate ? '<span class="quick-result-badge" title="Candidate details may need verification">Candidate · details pending</span>' : ""}
+      ${property.metadata?.cacheUpdatedAt ? `<span class="quick-result-badge">Saved result · checked ${esc(new Date(property.metadata.cacheUpdatedAt).toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}))}</span>` : ""}
       <div class="property-card__facts"><strong class="${(pricePingUntil.get(String(property.id))||0)>Date.now() ? "price-discovered-ping" : ""}">${displayPrice}</strong><span>${icon("bed")} ${property.beds ?? "—"} bd</span><span>${icon("bath")} ${property.baths ?? "—"} ba</span>${squareFootageLabel(property) ? `<span>${squareFootageLabel(property)}</span>` : ""}</div>
       ${tourChip(property)}
       ${isShowingPending(property) ? '<p class="status-chip">Showing requested · awaiting reply</p>' : ""}
@@ -581,12 +597,12 @@ function propertyCard(property) {
       <div class="showing-card-actions"><button type="button" class="request-showing-button" data-action="request-showing">${isShowingPending(property) ? "View showing request" : "Request showing"}</button></div>
       <div class="property-card__actions compact-actions">
         ${listing.url
-          ? `<a class="status-action listing-action source-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer" aria-label="View source listing for ${esc(property.label)}" title="View source listing"><span aria-hidden="true">↗</span><b>View listing</b></a>`
+          ? `<a class="status-action listing-action source-link" href="${esc(listing.url)}" target="_blank" rel="noopener noreferrer" aria-label="View source listing for ${esc(property.label)}" title="${listing.candidate ? "Source link; availability not yet verified" : "View source listing"}"><span aria-hidden="true">↗</span><b>View listing</b></a>`
           : listing.closed
             ? `<span class="status-action listing-action listing-closed" aria-label="Listing closed" title="The source confirms this listing is no longer available"><span aria-hidden="true">×</span><b>Closed</b></span>`
             : listing.resolving
-              ? `<span class="status-action listing-action listing-resolving" aria-label="Rook is looking for this listing" title="Rook is checking live sources"><span aria-hidden="true">…</span><b>Finding…</b></span>`
-              : `<a class="status-action listing-action listing-recovery-link" href="${esc(listing.searchUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Find a current listing for ${esc(property.label)}" title="Rook already checked live sources — search manually"><span aria-hidden="true">⌕</span><b>Find listing</b></a>`}
+              ? `<button class="status-action listing-action listing-resolving" data-action="retry-listing" aria-label="Retry listing details for ${esc(property.label)}"><b>Details pending · retry</b></button>`
+              : `<a class="status-action listing-action listing-recovery-link" href="${esc(listing.searchUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Find a current listing for ${esc(property.label)}" title="Rook already checked live sources — search manually"><span aria-hidden="true">⌕</span><b>Couldn’t verify · search</b></a>`}
         <button class="icon-action" data-action="map" aria-label="Focus on map" title="Focus on map">${icon("pin")}</button>
         <button class="icon-action more-card-actions" data-action="expand" aria-label="More property actions" aria-expanded="false">${icon("more")}</button>
         ${distancePanel(property)}
@@ -597,6 +613,7 @@ function propertyCard(property) {
           : listing.closed
             ? `<span class="more-listing-link listing-closed">Closed</span>`
             : `<a class="listing-recovery-link more-listing-link" href="${esc(listing.searchUrl)}" target="_blank" rel="noopener noreferrer">Find listing</a>`}
+        <button data-action="retry-listing">Retry details</button><button data-action="verify-deeper">Verify with more sources</button>
         <button data-action="visited">Visited</button><button data-action="showing">Request showing</button><button data-action="schedule">Schedule</button><button data-action="note">Notes</button><button data-action="reject">Ignore</button><button data-action="archive">Archive</button>
       </div>
     </section>
@@ -710,10 +727,11 @@ async function resolveUnavailableListings() {
     const attempted=new Set();
     const check = async snapshot => {
       try {
-        const result = await resolveMissingListing(snapshot, { location:preferences.location || config.search.location });
+        const result = await resolveMissingListing(snapshot, { location:preferences.location || config.search.location, deep:explicitChecks.has(snapshot.id) });
         const property = store.getAll().find(p => p.id === snapshot.id);
         if (!property || [PROPERTY_STATUS.REJECTED,PROPERTY_STATUS.ARCHIVED].includes(property.status)) return;
-        const metadata = { ...property.metadata, listingResolverVersion:LISTING_RESOLVER_VERSION, listingCheckedSourceUrls:listingSourceUrls(snapshot) };
+        explicitChecks.delete(snapshot.id);
+        const metadata = { ...property.metadata, enrichmentError:false, listingResolverVersion:LISTING_RESOLVER_VERSION, listingCheckedSourceUrls:listingSourceUrls(snapshot) };
         delete metadata.listingVerification;
         delete metadata.listingClosedEvidence;
         if (result.state === 'active' && result.listing) {
@@ -734,7 +752,7 @@ async function resolveUnavailableListings() {
             type:details.type === "Property" && property.type !== "Property" ? property.type : details.type,
             contactedAt:property.contactedAt, contactOutcome:property.contactOutcome, showingAt:property.showingAt,
             listingState:'active', listingCheckedAt:result.checkedAt,
-            metadata:{ ...metadata, ...result.listing.metadata, listingResolverVersion:LISTING_RESOLVER_VERSION }
+            metadata:{ ...metadata, ...result.listing.metadata, listingResolverVersion:LISTING_RESOLVER_VERSION, verificationPending:false, quickCandidate:false }
           });
           if (discoveredPrice) {
             pricePingUntil.set(String(property.id), Date.now() + 500);
@@ -751,28 +769,35 @@ async function resolveUnavailableListings() {
         const property = store.getAll().find(p => p.id === snapshot.id);
         if (property) store.update(property.id, {
           listingState:'unknown', listingCheckedAt:new Date().toISOString(),
-          metadata:{ ...property.metadata, listingVerification:null, listingResolverVersion:LISTING_RESOLVER_VERSION, listingCheckedSourceUrls:listingSourceUrls(snapshot) }
+          metadata:{ ...property.metadata, enrichmentError:true, listingVerification:null, listingResolverVersion:LISTING_RESOLVER_VERSION, listingCheckedSourceUrls:listingSourceUrls(snapshot) }
         });
         recordActivity('listing-resolve-error', snapshot, { message:String(error?.message || error) });
         void reportRuntimeError(error, { source:"listing-resolver", kind:"resolve", detail:snapshot.id, recovery:"Marked listing unknown and preserved the saved card." });
       }
     };
-    // Prioritize missing-price listings and use a larger bounded pool. The server
-    // coalesces/cache-controls expensive fallbacks, so parallelism here reduces the
-    // long visible "Price unavailable" tail without creating unbounded requests.
+    // Two workers recover basic facts before photos. Selected properties lead the
+    // queue, and ordinary refreshes never fan out across every saved property.
     const worker=async()=>{while(true){
-      const snapshot=store.getAll().filter(property=>!attempted.has(property.id)&&needsListingCheck(property)).sort((a,b)=>{
+      const snapshot=store.getAll().filter(property=>!attempted.has(property.id)&&(explicitChecks.has(property.id)||needsListingCheck(property))).sort((a,b)=>{
+        const selected=Number(enrichmentPriority.has(b.id)||explicitChecks.has(b.id))-Number(enrichmentPriority.has(a.id)||explicitChecks.has(a.id));
+        if(selected)return selected;
         const aMissing=Number(!(Number(a.price)>0)), bMissing=Number(!(Number(b.price)>0));
         return (bMissing-aMissing) || (Number(Boolean(b.sourceUrl))-Number(Boolean(a.sourceUrl)));
       })[0];
-      if(!snapshot)break;attempted.add(snapshot.id);await check(snapshot);scheduleRenderList();
+      if(!snapshot || (attempted.size>=8 && !enrichmentPriority.has(snapshot.id) && !explicitChecks.has(snapshot.id)))break;
+      attempted.add(snapshot.id);await check(snapshot);scheduleRenderList();
     }};
-    await Promise.all(Array.from({length:8},worker));
+    await Promise.all(Array.from({length:2},worker));
   })();
   try { await listingChecksInFlight; } finally { listingChecksInFlight = null; }
 }
 
 async function enrichMissingImages() {
+  if(imageEnrichmentInFlight)return imageEnrichmentInFlight;
+  imageEnrichmentInFlight=enrichMissingImagesNow();
+  try{await imageEnrichmentInFlight;}finally{imageEnrichmentInFlight=null;}
+}
+async function enrichMissingImagesNow() {
   const now = Date.now();
   const candidates = store.getAll().filter(property => {
     if ([PROPERTY_STATUS.REJECTED,PROPERTY_STATUS.ARCHIVED].includes(property.status))return false;
@@ -784,7 +809,7 @@ async function enrichMissingImages() {
     const checkedAt = Date.parse(property.metadata?.imageCheckedAt || 0) || 0;
     const missingCooldown = property.metadata?.imageEnrichmentState === "missing" ? 24 * 60 * 60 * 1000 : 2 * 60 * 60 * 1000;
     return !checkedAt || now - checkedAt > missingCooldown;
-  }).slice(0, 10);
+  }).sort((a,b)=>Number(enrichmentPriority.has(b.id))-Number(enrichmentPriority.has(a.id))).slice(0, 4);
 
   const enrichOne = async property => {
     try {
@@ -851,6 +876,7 @@ function showDiscoveryStatus(message = "", detail = "", duration = 4500) {
 }
 
 async function refreshListings(trigger = "manual") {
+  const refreshMetrics=createSpeedMetrics();
   if (!isMainWorkspace) {
     showDiscoveryStatus("Scratch workspace", "Live candidates come from ChatGPT sync. Main discovery is paused here.", 4200);
     return;
@@ -864,20 +890,23 @@ async function refreshListings(trigger = "manual") {
     const { address1, ...searchPreferences } = preferences;
     discoveryTelemetry={adapters:[],count:0};
     const before=new Set(store.getAll().map(p=>canonicalAddress(p.address)||p.sourceUrl));
-    const found = await searchProviders({ ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query },{onResults:(rows,meta)=>{
+    const found = await searchProviders({ ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query, ...(trigger==="more"?{more:1}:{}) },{onResults:(rows,meta)=>{
       store.upsertMany(rows);
+      if(rows.length){speedMetrics.mark("firstCandidateBatch",{count:rows.length});
+        discoveryTelemetry.firstCandidateMs=refreshMetrics.mark("firstCandidateBatch",{count:rows.length}).ms;
+      }
       if(meta?.adapter)discoveryTelemetry.adapters.push(meta.adapter);
       if(meta)Object.assign(discoveryTelemetry,Object.fromEntries(Object.entries(meta).filter(([key])=>key!=="adapter")));
       const indicator=document.querySelector("#pull-indicator");
       if(indicator)indicator.textContent="Refreshing listings…";
       scheduleRenderList();
-      void resolveUnavailableListings().then(()=>scheduleRenderList());
+      // Render the first batch before scheduling any property enrichment.
     }});
     discoveryTelemetry.newCount=found.filter(p=>!before.has(canonicalAddress(p.address)||p.sourceUrl)).length;
     store.upsertMany(found);
     await syncSharedRookState();
-    void resolveUnavailableListings().then(() => scheduleRenderList());
-    void enrichMissingImages().then(() => scheduleRenderList());
+    void resolveUnavailableListings().then(() => {scheduleRenderList();return enrichMissingImages();}).then(()=>scheduleRenderList());
+    discoveryTelemetry.completeMs=refreshMetrics.mark("discoveryComplete").ms;
     recordActivity("provider-refresh", null, { count: found.length, trigger,discovery:discoveryTelemetry });
     const detail=discoveryTelemetry.adapters.map(a=>`${a.id}: ${a.count}${a.discovery?.degraded||!a.ok?" (limited)":""}`).join(" · ")+` · ${discoveryTelemetry.duplicates||0} duplicates · ${discoveryTelemetry.filtered||0} filtered · ${Math.round((discoveryTelemetry.elapsedMs||0)/1000)}s`;
     showDiscoveryStatus(`${found.length} listings · ${discoveryTelemetry.newCount||0} new`, detail);
@@ -1009,6 +1038,7 @@ function renderList() {
     ? `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`
     : `${visible.length} workspace properties · Scratch renderer`;
   document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("") || `<p class="empty-state">${listingChecksInFlight || refreshInFlight ? "Checking current listing links…" : "No verified listings match. Open Actions → Needs listing to review saved properties."}</p>`;
+  if(visible.length)requestAnimationFrame(()=>speedMetrics.mark("firstVisibleCard",{count:visible.length,workspace:activeWorkspace}));
   // Map exactly the same property set the user can currently see.
   // This keeps list/map completeness as a hard invariant.
   renderPropertyMap(document.querySelector("#property-map"), visible, {
@@ -1049,7 +1079,7 @@ app.innerHTML = `<main class="shell">
 <button id="more-button" class="more-button" aria-label="Open Rook actions" aria-haspopup="dialog">•••</button>
 <dialog id="actions-dialog" class="actions-dialog"><form method="dialog"><div class="dialog-heading"><div><p class="eyebrow">ROOK</p><h2>Actions</h2></div><button class="dialog-close" value="cancel" aria-label="Close">×</button></div>
 <div class="main-only-controls"><label for="property-search">Search properties</label><input id="property-search" type="search" placeholder="Address, neighborhood, property…">
-<nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Favorited</button><button type="button" data-filter="review">Needs listing</button><button type="button" data-filter="pending">Pending showings</button></nav></div><div class="action-menu"><button id="open-ignored" type="button">Ignored properties</button><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route favorites</button><button type="button" data-refresh-listings>Refresh listings</button><button id="open-settings" type="button">Search preferences</button></div>
+<nav class="filters" aria-label="Property filters"><button type="button" class="active" data-filter="all">All</button><button type="button" data-filter="rent">Rent</button><button type="button" data-filter="buy">Buy</button><button type="button" data-filter="shortlist">Favorited</button><button type="button" data-filter="review">Needs listing</button><button type="button" data-filter="pending">Pending showings</button></nav></div><div class="action-menu"><button id="open-ignored" type="button">Ignored properties</button><button id="add-listing" type="button">＋ Add listing</button><button id="route-shortlist" type="button">Route favorites</button><button type="button" data-refresh-listings>Refresh listings</button><button id="more-results" type="button" class="main-only-controls">More results</button><button id="open-settings" type="button">Search preferences</button></div>
 </form></dialog>
 
 <div id="ignore-toast" class="ignore-toast" role="status" hidden><span id="ignore-message"></span><button id="undo-ignore" type="button">Undo</button><button id="dismiss-ignore" type="button" aria-label="Dismiss">×</button></div>
@@ -1148,6 +1178,8 @@ document.querySelector("#property-map").addEventListener("rook:map-locations-res
 document.querySelector("#property-map").addEventListener("rook:map-select", event => {
   const id = String(event.detail?.id || "");
   if (!id) return;
+  enrichmentPriority.clear();enrichmentPriority.add(id);
+  if(!BROWSER_QA_MODE && !refreshInFlight)void resolveUnavailableListings().then(()=>enrichMissingImages());
   movePropertyCardUnderMap(id);
 });
 document.querySelector("#property-map").addEventListener("rook:map-clear", () => {
@@ -1169,6 +1201,8 @@ function safeListingUrl(value) { return directListingUrl(value); }
 function openPropertySummary(id) {
   const property = store.getAll().find(p => p.id === id);
   if (!property) return;
+  enrichmentPriority.clear();enrichmentPriority.add(id);
+  if(!BROWSER_QA_MODE && !refreshInFlight)void resolveUnavailableListings().then(()=>enrichMissingImages());
   const listing = listingAction(property);
   const url = listing.url;
   const price = property.price ? "$" + Number(property.price).toLocaleString() + (property.listingType === "buy" ? "" : "/mo") : "Price TBD";
@@ -1265,7 +1299,16 @@ function handlePropertyCardClick(e) {
     store.toggleSaved(p.id);
     recordActivity(p.saved ? "unfavorited" : "favorited", p);
   }
+  if (action === "retry-listing" || action === "verify-deeper") {
+    enrichmentPriority.add(p.id);
+    if(action==="verify-deeper")explicitChecks.add(p.id);
+    store.update(p.id,{listingCheckedAt:null,metadata:{...p.metadata,enrichmentError:false,listingResolverVersion:0}});
+    void resolveUnavailableListings().then(()=>enrichMissingImages()).then(()=>scheduleRenderList());
+    return;
+  }
   if (action === "map") {
+    enrichmentPriority.add(p.id);
+    if(!refreshInFlight)void resolveUnavailableListings().then(()=>enrichMissingImages());
     recordActivity("focused-map", p);
     void focusPropertyOnMap(p);
     document.querySelector(".map-shell")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1664,6 +1707,8 @@ document.addEventListener("touchend", () => {
   }
 }, { passive: true });
 
+document.querySelector("#property-map").addEventListener("rook:first-pin",event=>speedMetrics.mark("firstVisiblePin",event.detail));
+document.querySelector("#more-results").addEventListener("click",()=>{document.querySelector("#actions-dialog").close();void refreshListings("more");});
 store.subscribe(scheduleRenderList);
 void populateWorkspaceSwitcher();
 void syncSharedRookState();
