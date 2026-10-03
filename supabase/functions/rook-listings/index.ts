@@ -2547,6 +2547,44 @@ async function persistWorkspaceCoordinates(workspaceId:string,row:any,point:any)
   }
 }
 
+async function workspaceExactAddressPoint(row:any) {
+  const address = String(row?.address || "").trim();
+  if (!address) return null;
+
+  const sourceUrl = directListingUrl(row?.source_url);
+  if (sourceUrl && isAllowedListingHost(new URL(sourceUrl).hostname)) {
+    try {
+      const key = "publisher-map:v2:" + sourceUrl + "|" + canonicalAddress(address);
+      const cached = await readCache(key);
+      if (cached && Date.parse(cached.expires_at) > Date.now() && cached.payload?.point) return cached.payload.point;
+      const page = await inspectListingUrl(sourceUrl);
+      const point = page.reachable ? publisherCoordinates(page.html,address) : null;
+      await writeCache(key,{point,sourceUrl,reason:point ? null : page.reachable ? "publisher-coordinates-missing" : "publisher-unreachable"},point?86400000:60000);
+      if (point) return point;
+    } catch {}
+  }
+
+  try {
+    const endpoint = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=us&limit=1&q=" + encodeURIComponent(address);
+    const rows = await fetchJsonTimeout(endpoint, 4500, {
+      "accept-language":"en-US,en;q=0.9",
+      "user-agent":"Rook/1.0 (scratch workspace address resolver)"
+    });
+    const candidate = Array.isArray(rows) ? rows[0] : null;
+    if (candidate) {
+      const normalized = normalizePoiCandidate(candidate,address);
+      if (normalized && contextMatchesAddress(normalized.address || normalized.label,address,row.label)) return normalized;
+    }
+  } catch {}
+
+  const source = String(row?.metadata?.workspaceSource || row?.metadata?.workspaceRole || "");
+  if (source === "reference") {
+    const candidates = await searchPoiSuggestions(address || row.label,FALLBACK_LOCATION,1);
+    return candidates[0] || null;
+  }
+  return null;
+}
+
 async function resolveWorkspaceCoordinates(workspaceId:string, rows:any[]) {
   const hasCoordinate = (value:any) => value !== null && value !== undefined && String(value).trim() !== "" && Number.isFinite(Number(value));
   const missing = rows.filter((row:any)=>
@@ -2555,13 +2593,8 @@ async function resolveWorkspaceCoordinates(workspaceId:string, rows:any[]) {
   );
   if (!missing.length) return;
   await mapSettledBounded(missing, async (row:any) => {
-    const query = String(row.address || row.label || "").trim();
-    const candidates = await searchPoiSuggestions(query, FALLBACK_LOCATION, 1);
-    const candidate = candidates[0];
-    if (!candidate) return false;
-    // Exact residential queries should not silently snap to a different street.
-    if (row.address && !contextMatchesAddress(candidate.address || candidate.label, row.address, row.label)) return false;
-    return persistWorkspaceCoordinates(workspaceId,row,candidate);
+    const point = await workspaceExactAddressPoint(row);
+    return point ? persistWorkspaceCoordinates(workspaceId,row,point) : false;
   }, 6);
 }
 
