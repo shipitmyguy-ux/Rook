@@ -2548,9 +2548,10 @@ async function persistWorkspaceCoordinates(workspaceId:string,row:any,point:any)
 }
 
 async function resolveWorkspaceCoordinates(workspaceId:string, rows:any[]) {
+  const hasCoordinate = (value:any) => value !== null && value !== undefined && String(value).trim() !== "" && Number.isFinite(Number(value));
   const missing = rows.filter((row:any)=>
     row?.property_key && (row.address || row.label) &&
-    !(Number.isFinite(Number(row.lat)) && Number.isFinite(Number(row.lng)))
+    !(hasCoordinate(row.lat) && hasCoordinate(row.lng))
   );
   if (!missing.length) return;
   await mapSettledBounded(missing, async (row:any) => {
@@ -2588,8 +2589,8 @@ async function readWorkspaceRookState(workspaceId:string) {
     } catch { void background; }
     return rows.map((row:any)=>({
       ...row,
-      lat:Number.isFinite(Number(row.lat)) ? Number(row.lat) : null,
-      lng:Number.isFinite(Number(row.lng)) ? Number(row.lng) : null,
+      lat:row.lat !== null && row.lat !== undefined && String(row.lat).trim() !== "" && Number.isFinite(Number(row.lat)) ? Number(row.lat) : null,
+      lng:row.lng !== null && row.lng !== undefined && String(row.lng).trim() !== "" && Number.isFinite(Number(row.lng)) ? Number(row.lng) : null,
       saved:Boolean(row.saved),
       metadata:row?.metadata && typeof row.metadata === "object" ? row.metadata : {},
       tour:{},
