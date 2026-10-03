@@ -794,14 +794,24 @@ function applyReferenceMapTheme(map) {
       const hasText = layer.layout && layer.layout["text-field"] != null;
       if (hasText) {
         map.setLayoutProperty(layer.id, "visibility", "visible");
-        map.setLayerZoomRange(
-          layer.id,
-          Math.max(Number(layer.minzoom) || 0, kind === "park" ? 11 : 15),
-          Number.isFinite(layer.maxzoom) ? layer.maxzoom : 24
-        );
-        try { map.setPaintProperty(layer.id, "text-color", kind === "park" ? "#c8e7cf" : "#b8c8ce"); } catch {}
+        const originalMinZoom = Number(layer.minzoom) || 0;
+        const originalMaxZoom = Number.isFinite(layer.maxzoom) ? layer.maxzoom : 24;
+        const isRoadLabel = /road|street|highway|motorway|trunk|primary|secondary|tertiary|transport/.test(id);
+        const isMajorRoadLabel = /motorway|highway|trunk|primary|road[_-]?label[_-]?(?:major|large)|transportation[_-]?name[_-]?(?:motorway|trunk|primary)/.test(id);
+        const isMediumRoadLabel = /secondary|tertiary|road[_-]?label[_-]?(?:medium|minor)|transportation[_-]?name[_-]?(?:secondary|tertiary)/.test(id);
+        const desiredMinZoom =
+          kind === "park" ? 11 :
+          isMajorRoadLabel ? 7 :
+          isMediumRoadLabel ? 11 :
+          isRoadLabel ? 13 :
+          15;
+        // Keep OpenFreeMap's own lower bound when it is stricter, but never
+        // blanket-delay road labels to zoom 15. This restores a Google-like
+        // progression: highways/arterials first, then collectors, then streets.
+        map.setLayerZoomRange(layer.id, Math.max(originalMinZoom, desiredMinZoom), originalMaxZoom);
+        try { map.setPaintProperty(layer.id, "text-color", kind === "park" ? "#c8e7cf" : "#d1dde1"); } catch {}
         try { map.setPaintProperty(layer.id, "text-halo-color", "#09212a"); } catch {}
-        try { map.setPaintProperty(layer.id, "text-halo-width", kind === "park" ? 1.6 : 1.2); } catch {}
+        try { map.setPaintProperty(layer.id, "text-halo-width", isRoadLabel ? 1.6 : (kind === "park" ? 1.6 : 1.2)); } catch {}
       } else {
         map.setLayoutProperty(layer.id, "visibility", "none");
       }
