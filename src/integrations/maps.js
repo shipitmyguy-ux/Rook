@@ -741,13 +741,14 @@ function installOverviewLayers(map) {
       id: ROOK_PROPERTY_LABEL_LAYER_ID,
       type: "symbol",
       source: ROOK_SOURCE_ID,
-      minzoom: 11.5,
+      minzoom: 10,
       layout: {
         "text-field": ["get", "label"],
         "text-font": ["Noto Sans Regular"],
         "text-size": [
           "interpolate", ["linear"], ["zoom"],
-          11.5, 10,
+          10, 9.5,
+          12, 10.5,
           14, 11.5,
           16, 12.5
         ],
