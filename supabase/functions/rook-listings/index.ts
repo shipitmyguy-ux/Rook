@@ -61,6 +61,28 @@ async function fetchText(url: string) {
   } finally { clearTimeout(timeout); }
 }
 
+
+async function fetchTextFast(url: string, timeoutMs = 1800) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "accept": "text/html,application/xhtml+xml,application/rss+xml",
+        "accept-language": "en-US,en;q=0.9",
+        "user-agent": "Mozilla/5.0 (compatible; Rook/1.0; fast-discovery)"
+      }
+    });
+    if (!response.ok) return "";
+    return await response.text();
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const PROJECT_URL = Deno.env.get("SUPABASE_URL") || "https://umvmilulnqnmeqvfoxxc.supabase.co";
 const BROWSER_WORKER_URL = PROJECT_URL + "/functions/v1/rook-browser-worker";
 
@@ -1120,6 +1142,74 @@ async function searchEngineDiscoveryAdapter(location:string):Promise<AdapterResu
   return coalesce(key,async()=>{const cached=await readCache(key);if(cached&&Date.parse(cached.expires_at)>Date.now())return {...cached.payload,discovery:{...cached.payload.discovery,cacheHit:true}};
     const result=await uncachedSearchDiscovery(location);await writeCache(key,result,result.listings.length?300000:60000);return result;
   });
+}
+
+async function quickSearchDiscovery(location:string, criteria:any={}):Promise<AdapterResult> {
+  const started=Date.now();
+  const runtime=await loadDiscoveryRuntimeConfig();
+  const domains=(Array.isArray(runtime.providers?.searchDomains)&&runtime.providers.searchDomains.length
+    ? runtime.providers.searchDomains
+    : ["realtor.com","hotpads.com","zillow.com","trulia.com","redfin.com"])
+    .filter((domain:string)=>["realtor.com","hotpads.com","zillow.com","trulia.com","redfin.com","homes.com"].includes(domain))
+    .slice(0,5);
+  const locationParts=String(location||runtime.searchAreas?.defaultLocation||FALLBACK_LOCATION).split(",");
+  const city=locationParts[0]?.trim()||FALLBACK_LOCATION.split(",")[0];
+  const state=locationParts[1]?.trim()||"CO";
+  const userQuery=String(criteria.query||"").trim();
+  const intent=userQuery || (Number(criteria.minBeds)>=3 ? "3 bedroom house" : "house");
+  const queries=domains.map((domain:string)=>({
+    domain,
+    url:"https://www.bing.com/search?format=rss&count=20&q="+encodeURIComponent(`site:${domain} "${city}" ${state} ("for rent" OR rental) ${intent}`)
+  }));
+  const searches=await mapSettledBounded(queries,async ({domain,url})=>{
+    const rss=await fetchTextFast(url,1800);
+    if(!rss)return [];
+    const items=[...rss.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0,20).map(m=>m[1]);
+    const rows:Listing[]=[];
+    for(const item of items){
+      const href=item.match(/<link>\s*(https?:\/\/[^<\s]+)\s*<\/link>/i)?.[1]?.replace(/&amp;/g,"&")||"";
+      const direct=directListingUrl(normalizeSearchResultUrl(href));
+      if(!direct)continue;
+      let host="";try{host=new URL(direct).hostname}catch{continue}
+      if(!isAllowedListingHost(host))continue;
+      const title=String(item.match(/<title>([\s\S]*?)<\/title>/i)?.[1]||"").replace(/<!\[CDATA\[|\]\]>/g," ").replace(/<[^>]+>/g," ");
+      const description=String(item.match(/<description>([\s\S]*?)<\/description>/i)?.[1]||"").replace(/<!\[CDATA\[|\]\]>/g," ").replace(/<[^>]+>/g," ");
+      const context=(title+" "+description).replace(/&amp;/g,"&").replace(/\s+/g," ").trim();
+      const address=addressFromDiscoveryContext(context);
+      if(!address)continue;
+      const listing=fallbackListingFromText(context,direct,{address,label:title||address,source:domain});
+      rows.push({
+        ...listing,
+        metadata:{
+          ...(listing.metadata||{}),
+          discoveryMethod:"quick-search-index",
+          quickCandidate:true,
+          verificationPending:true,
+          discoveredAt:new Date().toISOString()
+        }
+      });
+    }
+    return rows;
+  },5);
+  const merged=new Map<string,Listing>();
+  for(const result of searches){
+    if(result.status!=="fulfilled")continue;
+    for(const row of result.value){
+      const key=keyOf(row)||row.sourceUrl;
+      if(key&&!merged.has(key))merged.set(key,row);
+    }
+  }
+  return {
+    id:"quick-search",
+    listings:[...merged.values()].slice(0,40),
+    discovery:{
+      quick:true,
+      authoritative:false,
+      queries:queries.length,
+      elapsedMs:Date.now()-started,
+      failedQueries:searches.filter((item:any)=>item.status==="rejected").length
+    }
+  };
 }
 
 async function uncachedSearchDiscovery(location: string): Promise<AdapterResult> {
