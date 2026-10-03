@@ -4,7 +4,7 @@ const build = process.argv[2];
 if (!build || !/^[a-zA-Z0-9-]+$/.test(build)) throw new Error('A build ID is required');
 await rm('_site', {recursive:true,force:true});
 await mkdir('_site');
-for (const file of ['index.html','src','assets','config']) await cp(file,path.join('_site',file),{recursive:true});
+for (const file of ['index.html','temp-rental-map.html','src','assets','config']) await cp(file,path.join('_site',file),{recursive:true});
 async function versionModules(dir) {
   for (const file of await readdir(dir,{withFileTypes:true})) {
     const target=path.join(dir,file.name);
