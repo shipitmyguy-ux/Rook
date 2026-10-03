@@ -347,3 +347,28 @@ html[data-workspace-mode="scratch"] .scratch-legend{display:flex}
 .scratch-dot--reference{background:#58eadc}
 
 .quick-result-badge{display:inline-flex;align-items:center;width:max-content;max-width:100%;margin:2px 0 1px;padding:2px 6px;border:1px solid #4ba8ff66;border-radius:999px;background:#4ba8ff18;color:#9fd3ff;font-size:.62rem;font-weight:800;letter-spacing:.03em}
+
+
+.scratch-session-controls{display:none;width:min(100%,900px);margin:0 auto 10px;padding:10px 12px;border:1px solid #2c4356;border-radius:16px;background:rgba(7,15,24,.82)}
+html[data-workspace-mode="scratch"] .scratch-session-controls{display:block}
+.scratch-session-row{display:flex;align-items:center;gap:7px;min-width:0}
+.scratch-chips{display:flex;gap:6px;align-items:center;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none}
+.scratch-chips::-webkit-scrollbar{display:none}
+.scratch-chip,.scratch-session-row>button,.scratch-command-form button{min-height:30px;padding:5px 9px;border:1px solid #426078;border-radius:999px;background:#0b1825;color:#e8f1f8;font-size:.72rem;white-space:nowrap}
+.scratch-chip{border-color:#58eadc66;background:#58eadc12}
+.scratch-chip--empty{color:#8495a5;border-style:dashed;background:transparent}
+.scratch-session-row>button{flex:0 0 auto;color:#b8c6d2}
+.scratch-session-row>button:disabled{opacity:.35;cursor:default}
+.scratch-command-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;margin-top:8px}
+.scratch-command-form input{min-width:0;height:38px;border:1px solid #344e62;border-radius:11px;background:#07111c;color:#f4f8fb;padding:0 11px;outline:none}
+.scratch-command-form input:focus{border-color:#58eadc}
+.scratch-command-form button{border-radius:11px;color:#07111b;background:#58eadc;border-color:#58eadc;font-weight:800}
+.scratch-session-status{margin:7px 1px 0;color:#91a3b2;font-size:.7rem}
+.scratch-pin-button{position:absolute;z-index:5;right:42px;top:8px;width:30px;height:30px;display:grid;place-items:center;padding:0;border:1px solid rgba(255,255,255,.2);border-radius:50%;background:rgba(7,13,23,.76);filter:grayscale(1);opacity:.72}
+.scratch-pin-button.is-pinned{filter:none;opacity:1;border-color:#ffc42999;background:#4b3709cc;box-shadow:0 0 0 2px #ffc42922}
+@media(max-width:699px){
+  .scratch-session-controls{border-radius:13px;padding:8px}
+  .scratch-session-row{align-items:flex-start}
+  .scratch-session-row>button{padding-inline:7px}
+  .scratch-command-form input{font-size:.8rem}
+}
