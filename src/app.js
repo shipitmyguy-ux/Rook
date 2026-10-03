@@ -1670,7 +1670,7 @@ void syncSharedRookState();
 // while visible so ChatGPT-added candidates appear without a manual refresh.
 window.setInterval(() => {
   if (document.visibilityState === "visible") void syncSharedRookState();
-}, isMainWorkspace ? 30000 : 5000);
+}, isMainWorkspace ? 30000 : 1000);
 window.addEventListener("focus", () => void syncSharedRookState());
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") void syncSharedRookState();
