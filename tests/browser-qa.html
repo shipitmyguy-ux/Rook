@@ -15,6 +15,25 @@ localStorage.setItem('rook.properties.v1', JSON.stringify([{
   metadata:{listingResolverVersion:5,listingVerification:{confirmed:true,version:5,url:'https://listings.example.test/qa-home'}}
 }]));
 </script>
+<script type="module">
+import {createCardRenderer} from '../src/core/card-renderer.js';
+const root=document.createElement('div');
+const render=createCardRenderer();
+const html=row=>`<article data-id="${row.id}"><span>${row.price}</span></article>`;
+const first=[{id:'a',price:1800},{id:'b',price:2000}];
+render(root,first,html);
+const a=root.children[0], b=root.children[1];
+a.dataset.distanceResolved='true';
+render(root,first,html);
+const reused=root.children[0]===a && root.children[1]===b && a.dataset.distanceResolved==='true';
+render(root,[first[1],{id:'a',price:1900}],html);
+const reordered=root.children[0]===b && root.children[1]!==a && root.children[1].textContent==='1900';
+render(root,[first[1]],html);
+const removed=root.children.length===1 && root.children[0]===b;
+render(root,[],html,'<p>Empty</p>');
+render(root,first,html);
+window.cardRendererQa=reused && reordered && removed && root.children.length===2;
+</script>
 <iframe id="rook" src="../index.html?browser-qa=1"></iframe>
 <pre id="result">waiting</pre>
 <script>
@@ -43,6 +62,7 @@ function finish(){
     const mobile=viewport<700;
     const links=[...doc.querySelectorAll('link[rel="stylesheet"]')].map(x=>x.getAttribute("href")||"");
     const checks={
+      incrementalCardRendering:window.cardRendererQa===true,
       v3:links.some(x=>x.includes("rook-ui-v3.css")),
       cardWide:selectedCard ? cardRect.width>=overview.getBoundingClientRect().width*.94 : cardRect.width>viewport*.85,
       cardHeight:mobile?cardRect.height>=120&&cardRect.height<220:cardRect.height>=105,
@@ -111,3 +131,4 @@ frame.addEventListener("load",()=>{
 },{once:true});
 setTimeout(()=>{if(!document.body.dataset.qa)finish()},6500);
 </script>
+

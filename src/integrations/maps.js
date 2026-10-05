@@ -67,6 +67,10 @@ let poiRun = 0;
 let poiMarkers = [];
 let poiFitted = false;
 let userMovedMap = false;
+let poiSignature = null;
+let poiRenderedSignature = null;
+let sourceSignature = null;
+let filterSignature = null;
 
 // Map selection is surfaced to app.js, which renders the standard Rook property card.
 function showPropertyDetails(id, pinned = false) {
@@ -83,8 +87,11 @@ function showPropertyDetails(id, pinned = false) {
 }
 
 async function updateOverviewPois() {
-  const run = ++poiRun;
   const pois = overviewState.latestOptions.pointsOfInterest || [];
+  const signature = JSON.stringify([pois, overviewState.latestOptions.location]);
+  if (signature === poiSignature) return;
+  poiSignature = signature;
+  const run = ++poiRun;
   const points = [];
   for (const poi of pois) {
     const query = poiLocationQuery(poi, overviewState.latestOptions.location);
@@ -92,7 +99,11 @@ async function updateOverviewPois() {
     if (run !== poiRun) return;
     if (point) points.push({ ...poi, ...point });
   }
-  if (run !== poiRun || !overviewState.map) return;
+  if (run !== poiRun || !overviewState.map) { if (run === poiRun) poiSignature = null; return; }
+  if (points.length < pois.length) poiSignature = null;
+  const resolvedSignature = JSON.stringify(points);
+  if (resolvedSignature === poiRenderedSignature) return;
+  poiRenderedSignature = resolvedSignature;
   poiMarkers.forEach(marker => marker.remove());
   poiMarkers = points.map((point, index) => {
     const element = document.createElement("button");
@@ -435,7 +446,11 @@ function mapFilter(options = {}) {
 function applyOverviewFilter() {
   const map = overviewState.map;
   if (!map || !overviewState.ready || !map.getLayer(ROOK_LAYER_ID)) return;
-  map.setFilter(ROOK_LAYER_ID, mapFilter(overviewState.latestOptions));
+  const filter = mapFilter(overviewState.latestOptions);
+  const signature = JSON.stringify(filter);
+  if (signature === filterSignature) return;
+  map.setFilter(ROOK_LAYER_ID, filter);
+  filterSignature = signature;
 }
 
 function setFeatureStateSafe(id, state) {
@@ -485,7 +500,9 @@ function updateOverviewSource({ fit = false } = {}) {
     center,overviewState.latestOptions.radiusMiles
   ) !== false);
   const source = map.getSource(ROOK_SOURCE_ID);
-  source?.setData(data);
+  const signature = JSON.stringify(data);
+  const sourceChanged = signature !== sourceSignature;
+  if (source && sourceChanged) { source.setData(data); sourceSignature = signature; }
   if(data.features.length && !overviewState.container?.dataset.pinMeasurementPending && !overviewState.container?.dataset.firstPinMeasured && typeof map.on === "function" && typeof map.off === "function") {
     overviewState.container.dataset.pinMeasurementPending="true";
     const measured=()=>{
@@ -503,8 +520,7 @@ function updateOverviewSource({ fit = false } = {}) {
   }
   applyOverviewFilter();
 
-  if (overviewState.selectedId) selectFeature(overviewState.selectedId);
-  if (detailId) showPropertyDetails(detailId, pinnedDetails);
+  if (sourceChanged && overviewState.selectedId) selectFeature(overviewState.selectedId);
 
   if (fit && !overviewState.fittedOnce && data.features.length) {
     const coords = data.features.map(feature => feature.geometry.coordinates);
@@ -547,7 +563,7 @@ async function geocodeMissingOverviewProperties() {
   // Both Main and temp maps use the same parallel server resolver and caches.
   const missing = properties.filter(property => !cachedCoordinates(property, fallbackLocation));
   if (!missing.length) {
-    updateOverviewSource({ fit: !overviewState.fittedOnce });
+    if (!overviewState.fittedOnce) scheduleOverviewSourceUpdate({ fit:true });
     return;
   }
 
@@ -931,6 +947,7 @@ async function ensureOverviewMap(container) {
   overviewState.fittedOnce = false;
 
   const hydrateStyle = () => {
+    sourceSignature = null; filterSignature = null; poiSignature = null; poiRenderedSignature = null;
     applyReferenceMapTheme(map);
     overviewState.ready = true;
     installOverviewLayers(map);

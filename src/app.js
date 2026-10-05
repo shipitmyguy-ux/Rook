@@ -1,3 +1,5 @@
+import { createCardRenderer } from "./core/card-renderer.js";
+const renderPropertyCards = createCardRenderer();
 import { searchMainMap } from "./integrations/map-search.js";
 import {createSpeedMetrics} from "./core/speed-metrics.js";
 const speedMetrics=createSpeedMetrics({startAt:0,persist:samples=>{
@@ -1041,8 +1043,11 @@ function scheduleRenderList() {
     renderQueued = false;
     renderList();
   };
-  if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
-  else queueMicrotask(run);
+  // Merge bursts of sync/enrichment changes instead of rebuilding at 60 Hz.
+  window.setTimeout(() => {
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+    else run();
+  }, 120);
 }
 
 function renderScratchSession(visible = []) {
@@ -1116,7 +1121,7 @@ function renderList() {
     ? `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`
     : `${visible.length} visible · ${store.getAll().length} discovered · Scratch session`;
   if (!isMainWorkspace) renderScratchSession(visible);
-  document.querySelector("#property-list").innerHTML = visible.map(propertyCard).join("") || `<p class="empty-state">${listingChecksInFlight || refreshInFlight ? "Checking current listing links…" : "No verified listings match. Open Actions → Needs listing to review saved properties."}</p>`;
+  renderPropertyCards(document.querySelector("#property-list"), visible, propertyCard, `<p class="empty-state">${listingChecksInFlight || refreshInFlight ? "Checking current listing links…" : "No verified listings match. Open Actions → Needs listing to review saved properties."}</p>`);
   if(visible.length)requestAnimationFrame(()=>speedMetrics.mark("firstVisibleCard",{count:visible.length,workspace:activeWorkspace}));
   // Map exactly the same property set the user can currently see.
   // This keeps list/map completeness as a hard invariant.
