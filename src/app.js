@@ -25,7 +25,9 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults, canonicalAddress } from "./integrations/providers.js?v=listing-sources-v1";
-import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting, isPropertyWithinSearchRadius } from "./integrations/maps.js?v=listing-sources-v1";
+import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting, isPropertyWithinSearchRadius, cachedCoordinates, resolvePropertyCoordinates } from "./integrations/maps.js?v=listing-sources-v1";
+import { loadWorkspaceFilter, matchesWorkspaceFilter, matchesWorkspacePreferences, qualifyWorkspaceListings } from "./core/workspace-filters.js";
+import { runWorkspaceCommand } from "./core/workspace-commands.js";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState, fetchRookWorkspaces, applySharedRookStateRow } from "./integrations/sync.js?v=shared-state-v3";
@@ -40,6 +42,7 @@ const app = document.querySelector("#app");
 const workspaceParam = typeof location !== "undefined" ? new URLSearchParams(location.search).get("workspace") : null;
 const activeWorkspace = (String(workspaceParam || "main").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "main");
 const isMainWorkspace = activeWorkspace === "main";
+const workspaceFilter = isMainWorkspace ? null : await loadWorkspaceFilter(activeWorkspace);
 document.documentElement.dataset.workspaceMode = isMainWorkspace ? "main" : "scratch";
 const runtimeSeeds = runtimeSeedProperties();
 const initialSeeds = isMainWorkspace ? (runtimeSeeds.length ? runtimeSeeds : fallbackSeedProperties) : [];
@@ -50,7 +53,28 @@ const housingEvidence = isMainWorkspace ? (runtimeHousingEvidence().length ? run
 let activeFilter = "all";
 let query = "";
 const preferenceDefaults = runtimePreferenceDefaults();
-let preferences = loadPreferences(preferenceDefaults);
+let preferences = loadPreferences(preferenceDefaults, { inheritMain:Boolean(workspaceFilter) });
+let workspaceCommandMessage = "";
+
+function workspaceSearchPreferences() {
+  const filters = scratchSession?.getState().filters || {};
+  return workspaceFilter ? { ...preferences, maxPrice:filters.maxPrice ?? preferences.maxPrice, minBeds:filters.minBeds ?? preferences.minBeds } : preferences;
+}
+
+async function applyWorkspaceCommand(value) {
+  workspaceCommandMessage = "Applying command…";
+  renderList();
+  try {
+    workspaceCommandMessage = await runWorkspaceCommand(value, {
+      store, session:scratchSession,
+      resolve:property => resolveMissingListing(property, { location:workspaceFilter?.properties?.location || preferences.location, deep:true }),
+      qualify:rows => workspaceFilter ? qualifyWorkspaceListings(rows, workspaceFilter, resolvePropertyCoordinates) : Promise.resolve(rows),
+      search:() => refreshListings("prompt")
+    });
+  } catch { workspaceCommandMessage = "The listing service did not respond. Try again; existing listings were kept."; }
+  renderList();
+  return workspaceCommandMessage;
+}
 document.documentElement.dataset.theme = preferences.visualTheme || "default";
 let refreshInFlight = false;
 let discoveryTelemetry=null;
@@ -191,6 +215,21 @@ async function syncSharedRookStateNow() {
     let applied = 0;
     const remoteKeys = new Set();
     for (const rawRow of rows) {
+      // Connected ChatGPT sessions can change workspace preferences through
+      // the existing shared-state table, without introducing another backend.
+      if (!isMainWorkspace && rawRow.property_key === "__workspace_settings__") {
+        const settings = rawRow.metadata?.workspacePreferences;
+        if (settings && typeof settings === "object" && rawRow.updated_at && preferences.sharedWorkspaceSettingsAt !== rawRow.updated_at) {
+          const patch = {};
+          if (Object.hasOwn(settings, "maxPrice")) patch.maxPrice = Number(settings.maxPrice) > 0 ? Number(settings.maxPrice) : null;
+          if (Object.hasOwn(settings, "minBeds")) patch.minBeds = Math.max(0, Number(settings.minBeds) || 0);
+          preferences = { ...preferences, ...patch, sharedWorkspaceSettingsAt:rawRow.updated_at };
+          savePreferences(preferences, preferenceDefaults);
+          scratchSession.setFilters(patch);
+          applied += 1;
+        }
+        continue;
+      }
       const row = {
         ...rawRow,
         metadata:{
@@ -230,7 +269,7 @@ async function syncSharedRookStateNow() {
       if (row.updated_at && property.metadata?.sharedSyncUpdatedAt === row.updated_at) continue;
       let next = normalizeRuntimeCommunityProperty(applySharedRookStateRow(property, row, preferences));
       if (!isMainWorkspace) next = { ...next, saved:Boolean(row.saved) };
-      store.upsert(next);
+      store.update(property.id, next);
       applied += 1;
     }
     if (!isMainWorkspace) {
@@ -272,7 +311,11 @@ async function populateWorkspaceSwitcher() {
     else url.searchParams.set("workspace", next);
     location.assign(url.toString());
   });
-  if (status) status.textContent = isMainWorkspace ? "Main workspace" : "Scratch workspace · ChatGPT sync";
+  if (status) status.innerHTML = workspaceFilter
+    ? `${esc(workspaceFilter.properties?.label || activeWorkspace)} data filter · ${esc(workspaceFilter.properties?.boundaryNote || "")}`
+      + ` <a href="${esc(workspaceFilter.properties?.boundarySource || "#")}" target="_blank" rel="noopener noreferrer">District boundary map</a>`
+      + ` · <a href="${esc(workspaceFilter.properties?.addressLocator || "#")}" target="_blank" rel="noopener noreferrer">Check an address</a>`
+    : isMainWorkspace ? "Main workspace" : "Scratch workspace · ChatGPT sync";
 }
 
 async function createNewTempMap() {
@@ -702,13 +745,18 @@ function visibleProperties() {
   if (!isMainWorkspace) {
     filtered = allProperties.filter(property => ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(property.status));
     filtered = scratchSession ? scratchSession.apply(filtered) : filtered;
+    if (workspaceFilter) filtered = filtered.filter(property => matchesWorkspacePreferences(property, workspaceSearchPreferences()) && matchesWorkspaceFilter(
+      property,
+      cachedCoordinates(property, workspaceFilter.properties?.location || "Fort Collins, CO"),
+      workspaceFilter
+    ));
   } else {
     const restricted = filterProperties(allProperties, activeFilter)
       .filter(property => ["review","pending"].includes(activeFilter) || (activeFilter === "all" && ["soon","upcoming"].includes(tourState(tourForProperty(property, preferences)))) || matchesSearchDefaults(property, preferences));
     const withinRadius = restricted.filter(property => isPropertyWithinSearchRadius(property, preferences));
     filtered = searchProperties(withinRadius, query);
   }
-  if (promotedTourPropertyId && !filtered.some(property => String(property.id) === promotedTourPropertyId)) {
+  if (!workspaceFilter && promotedTourPropertyId && !filtered.some(property => String(property.id) === promotedTourPropertyId)) {
     const promoted = allProperties.find(property => String(property.id) === promotedTourPropertyId);
     if (promoted && ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(promoted.status)) {
       filtered = [promoted, ...filtered];
@@ -913,10 +961,19 @@ async function refreshListings(trigger = "manual") {
   buttons.forEach(button => { button.disabled = true; button.classList.add("is-refreshing"); button.setAttribute("aria-label","Refreshing listings"); button.title="Refreshing listings"; });
   document.querySelector("#pull-indicator")?.classList.add("refreshing");
   try {
-    const { address1, ...searchPreferences } = preferences;
+    const { address1, ...searchPreferences } = workspaceSearchPreferences();
+    const filterCriteria = workspaceFilter?.properties || {};
+    const discoveryCriteria = workspaceFilter
+      ? { ...searchPreferences, location:filterCriteria.location || "Fort Collins, CO", radiusMiles:filterCriteria.radiusMiles || 15, propertyTypes:filterCriteria.propertyTypes || [], listingType:filterCriteria.listingType || "rent", query, ...(trigger==="more"?{more:1}:{}) }
+      : { ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query, ...(trigger==="more"?{more:1}:{}) };
     discoveryTelemetry={adapters:[],count:0};
     const before=new Set(store.getAll().map(p=>canonicalAddress(p.address)||p.sourceUrl));
-    const found = await searchMainMap(store, { ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query, ...(trigger==="more"?{more:1}:{}) },{onResults:(rows,meta)=>{
+    const found = await searchMainMap(store, discoveryCriteria, {
+      transformResults:workspaceFilter ? rows => qualifyWorkspaceListings(rows, workspaceFilter, resolvePropertyCoordinates, property => {
+        store.upsert(property);
+        scheduleRenderList();
+      }) : undefined,
+      onResults:(rows,meta)=>{
       if(rows.length){speedMetrics.mark("firstCandidateBatch",{count:rows.length});
         discoveryTelemetry.firstCandidateMs=refreshMetrics.mark("firstCandidateBatch",{count:rows.length}).ms;
       }
@@ -1057,7 +1114,7 @@ function renderScratchSession(visible = []) {
   const state = scratchSession.getState();
   const chipTarget = document.querySelector("#scratch-chips");
   if (chipTarget) {
-    const chips = scratchChips(state);
+    const chips = scratchChips(workspaceFilter ? { ...state, filters:{ ...state.filters, ...{ minBeds:workspaceSearchPreferences().minBeds, maxPrice:workspaceSearchPreferences().maxPrice } } } : state);
     chipTarget.innerHTML = chips.length
       ? chips.map(chip => '<button type="button" class="scratch-chip" data-scratch-remove-filter="' + esc(chip.key) + '">' + esc(chip.label) + ' <span aria-hidden="true">×</span></button>').join("")
       : '<span class="scratch-chip scratch-chip--empty">No temporary filters</span>';
@@ -1067,7 +1124,7 @@ function renderScratchSession(visible = []) {
     const total = store.getAll().filter(property => ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(property.status)).length;
     const pinned = state.pinnedIds.length;
     const enriching = store.getAll().filter(property => property.metadata?.verificationPending || property.metadata?.quickCandidate).length;
-    status.textContent = visible.length + " visible · " + total + " discovered · " + enriching + " enriching" + (pinned ? " · " + pinned + " pinned" : "");
+    status.textContent = (workspaceCommandMessage ? workspaceCommandMessage + " " : "") + visible.length + " visible · " + total + " discovered · " + enriching + " enriching" + (pinned ? " · " + pinned + " pinned" : "");
   }
   const undo = document.querySelector("#scratch-undo");
   if (undo) undo.disabled = !state.history.length;
@@ -1080,7 +1137,7 @@ function installScratchSessionControls() {
     const input = document.querySelector("#scratch-command");
     const value = input?.value.trim() || "";
     if (!value) return;
-    scratchSession.command(value);
+    void applyWorkspaceCommand(value);
     input.value = "";
     renderList();
   });
@@ -1088,6 +1145,10 @@ function installScratchSessionControls() {
     const key = event.target.closest("[data-scratch-remove-filter]")?.dataset.scratchRemoveFilter;
     if (!key) return;
     scratchSession.removeFilter(key);
+    if (workspaceFilter && ["minBeds","maxPrice"].includes(key)) {
+      preferences = { ...preferences, [key]:key === "minBeds" ? 0 : null };
+      savePreferences(preferences, preferenceDefaults);
+    }
     renderList();
   });
   document.querySelector("#scratch-undo")?.addEventListener("click", () => { scratchSession.undo(); renderList(); });
@@ -1096,11 +1157,12 @@ function installScratchSessionControls() {
   globalThis.rookScratchSession = {
     workspace:activeWorkspace,
     getState:() => scratchSession.getState(),
-    command:text => scratchSession.command(text),
+    command:text => applyWorkspaceCommand(text),
     setFilters:patch => scratchSession.setFilters(patch),
     pin:id => { if (!scratchSession.isPinned(id)) scratchSession.togglePin(id); return scratchSession.getState(); },
     unpin:id => { if (scratchSession.isPinned(id)) scratchSession.togglePin(id); return scratchSession.getState(); },
     hide:id => scratchSession.exclude(id),
+    restore:id => scratchSession.restore(id),
     undo:() => scratchSession.undo(),
     clear:() => scratchSession.clear()
   };
@@ -1117,17 +1179,19 @@ function renderList() {
     visible:visible.some(v => v.id === p.id),matchesPreferences:isMainWorkspace ? matchesSearchDefaults(p,preferences) : true,withinRadius:isMainWorkspace ? isPropertyWithinSearchRadius(p,preferences) : true
   })));
   else delete mapDiagnostics.dataset.searchMatches;
-  document.querySelector("#property-count").textContent = isMainWorkspace
-    ? `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`
-    : `${visible.length} visible · ${store.getAll().length} discovered · Scratch session`;
+  document.querySelector("#property-count").textContent = workspaceFilter
+    ? `${visible.length} ${esc(workspaceFilter.properties?.label || "filtered rentals")}`
+    : isMainWorkspace ? `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`
+      : `${visible.length} visible · ${store.getAll().length} discovered · Scratch session`;
   if (!isMainWorkspace) renderScratchSession(visible);
-  renderPropertyCards(document.querySelector("#property-list"), visible, propertyCard, `<p class="empty-state">${listingChecksInFlight || refreshInFlight ? "Checking current listing links…" : "No verified listings match. Open Actions → Needs listing to review saved properties."}</p>`);
+  renderPropertyCards(document.querySelector("#property-list"), visible, propertyCard, `<p class="empty-state">${listingChecksInFlight || refreshInFlight ? "Checking current listing links…" : workspaceFilter ? "No rentals meet this boundary and your filters. Change price or bedrooms, restore a hidden listing, or add a rental address or URL." : "No verified listings match. Open Actions → Needs listing to review saved properties."}</p>`);
   if(visible.length)requestAnimationFrame(()=>speedMetrics.mark("firstVisibleCard",{count:visible.length,workspace:activeWorkspace}));
   // Map exactly the same property set the user can currently see.
   // This keeps list/map completeness as a hard invariant.
   renderPropertyMap(document.querySelector("#property-map"), visible, {
     activeFilter,
     dataAlreadyFiltered: true,
+    workspaceBoundary:workspaceFilter,
     radiusMiles: preferences.radiusMiles,
     location: preferences.location || config.search.location,
     pointsOfInterest: cardPointsOfInterest(),
@@ -1154,7 +1218,7 @@ function renderList() {
 app.innerHTML = `<main class="shell">
 <header class="topbar"><div><p class="eyebrow">HOUSE HUNTING</p><h1>ROOK</h1></div><div class="topbar-actions"><label class="workspace-picker"><span>Map</span><select id="workspace-select" aria-label="Rook map workspace"><option value="main">Main</option></select></label><button type="button" id="new-temp-map" class="icon-button" aria-label="Create new temporary map" title="New temp map">＋</button><button type="button" class="desktop-refresh-button" data-refresh-listings aria-label="Refresh listings" title="Refresh listings"><span aria-hidden="true">↻</span></button><button id="settings-button" class="icon-button" aria-label="Settings">⚙</button></div></header>
 <div id="pull-indicator" class="pull-indicator" aria-live="polite">Pull to refresh</div><p id="workspace-status" class="workspace-status muted" aria-live="polite"></p><div class="scratch-legend" aria-label="Scratch map source colors"><span><i class="scratch-dot scratch-dot--manual"></i>Added set</span><span><i class="scratch-dot scratch-dot--web"></i>Web search</span><span><i class="scratch-dot scratch-dot--rook"></i>From Rook</span><span><i class="scratch-dot scratch-dot--reference"></i>Reference</span></div><p id="discovery-summary" class="muted" aria-live="polite"></p>
-<section id="scratch-session-controls" class="scratch-session-controls" aria-label="Scratch session controls" hidden><div class="scratch-session-row"><div id="scratch-chips" class="scratch-chips"></div><button id="scratch-undo" type="button">Undo</button><button id="scratch-clear" type="button">Start over</button></div><form id="scratch-command-form" class="scratch-command-form"><input id="scratch-command" type="text" autocomplete="off" placeholder="Modify Scratch: under $2300, remove apartments, 2+ beds…"><button type="submit">Apply</button></form><p id="scratch-session-status" class="scratch-session-status" aria-live="polite"></p></section>
+<section id="scratch-session-controls" class="scratch-session-controls" aria-label="Scratch session controls" hidden><div class="scratch-session-row"><div id="scratch-chips" class="scratch-chips"></div><button id="scratch-undo" type="button">Undo</button><button id="scratch-clear" type="button">Start over</button></div><form id="scratch-command-form" class="scratch-command-form"><input id="scratch-command" type="text" autocomplete="off" placeholder="Under $2800, 2+ beds; hide [address]; add [URL]"><button type="submit">Apply</button></form><p id="scratch-session-status" class="scratch-session-status" aria-live="polite"></p></section>
 <section class="map-shell overview-map" aria-label="Property map and page scroll gutters"><div class="map-scroll-gutter map-scroll-gutter--left" aria-hidden="true"></div><div class="map-panel"><div id="property-map" class="property-map" role="region" aria-label="Interactive property map"></div></div><div class="map-scroll-gutter map-scroll-gutter--right" aria-hidden="true"></div></section>
 <section id="map-details" class="map-details" aria-label="Property details" aria-live="polite" hidden></section>
 <section id="upcoming-tours" class="upcoming-tours" aria-live="polite" hidden></section>
@@ -1633,8 +1697,8 @@ function openSettings() {
   renderPoiStyleSettings();
   document.querySelector("#pref-location").value = preferences.location || config.search.location;
   document.querySelector("#pref-radius").value = preferences.radiusMiles ?? 15;
-  document.querySelector("#pref-min-beds").value = preferences.minBeds ?? 2;
-  document.querySelector("#pref-max-price").value = preferences.maxPrice ?? "";
+  document.querySelector("#pref-min-beds").value = workspaceSearchPreferences().minBeds ?? 2;
+  document.querySelector("#pref-max-price").value = workspaceSearchPreferences().maxPrice ?? "";
   const types = preferences.propertyTypes || ["apartment","townhome","house"];
   document.querySelector("#pref-type-apartment").checked = types.includes("apartment");
   document.querySelector("#pref-type-townhome").checked = types.includes("townhome");
@@ -1750,6 +1814,7 @@ document.querySelector("#save-settings").addEventListener("click", e => {
   };
   savePreferences(preferences, preferenceDefaults);
   document.documentElement.dataset.theme = preferences.visualTheme || "default";
+  if (workspaceFilter) scratchSession.setFilters({minBeds:preferences.minBeds, maxPrice:preferences.maxPrice});
   recordActivity("preferences-updated", null);
   document.querySelector("#settings-dialog").close();
   renderList();
@@ -1828,11 +1893,11 @@ void syncSharedRookState();
 // while visible so ChatGPT-added candidates appear without a manual refresh.
 window.setInterval(() => {
   if (document.visibilityState === "visible") void syncSharedRookState();
-}, isMainWorkspace ? 30000 : 1000);
+}, isMainWorkspace || workspaceFilter ? 30000 : 1000);
 window.addEventListener("focus", () => void syncSharedRookState());
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") void syncSharedRookState();
 });
 renderList();
-if (!BROWSER_QA_MODE && isMainWorkspace) queueMicrotask(() => refreshListings("startup"));
+if (!BROWSER_QA_MODE && (isMainWorkspace || workspaceFilter)) queueMicrotask(() => refreshListings("startup"));
 

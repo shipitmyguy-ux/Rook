@@ -254,7 +254,7 @@ function validCoordinates(point, fallbackLocation = "") {
   return { lat, lng };
 }
 
-function cachedCoordinates(property, fallbackLocation = config.search.location) {
+export function cachedCoordinates(property, fallbackLocation = config.search.location) {
   const direct = validCoordinates(property, fallbackLocation);
   if (direct) return direct;
   const cache = readGeocodeCache();
@@ -341,6 +341,10 @@ async function geocodeProperty(property, fallbackLocation = config.search.locati
     writeGeocodeCache(cache);
   }
   return point;
+}
+
+export function resolvePropertyCoordinates(property, fallbackLocation = config.search.location) {
+  return geocodeProperty(property, fallbackLocation);
 }
 
 function mapTourLabel(property) {
@@ -488,6 +492,12 @@ function selectFeature(id) {
 function updateOverviewSource({ fit = false } = {}) {
   const map = overviewState.map;
   if (!map || !overviewState.ready) return;
+  const boundary = overviewState.latestOptions.workspaceBoundary;
+  if (boundary && !map.getSource("rook-workspace-boundary")) {
+    map.addSource("rook-workspace-boundary", {type:"geojson",data:boundary});
+    map.addLayer({id:"rook-workspace-boundary-fill",type:"fill",source:"rook-workspace-boundary",paint:{"fill-color":"#20c9b5","fill-opacity":0.08}}, ROOK_LAYER_ID);
+    map.addLayer({id:"rook-workspace-boundary-line",type:"line",source:"rook-workspace-boundary",paint:{"line-color":"#20c9b5","line-width":2}}, ROOK_LAYER_ID);
+  }
   if (overviewState.interacting) {
     overviewState.pendingSourceUpdate = true;
     return;

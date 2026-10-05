@@ -134,6 +134,12 @@ export function createScratchSession(workspace, options = {}) {
         return next;
       });
     },
+    restore(idValue) {
+      return mutate(next => {
+        next.excludedIds = next.excludedIds.filter(id => id !== String(idValue));
+        return next;
+      });
+    },
     setFilters(patch = {}) {
       return mutate(next => {
         next.filters = normalizeState({ filters:{ ...next.filters, ...patch } }).filters;

@@ -1,5 +1,6 @@
 import { propertySquareFeet, squareFootageFromText } from "../../../src/core/property-size.js";
 import {signedCoordinate,publisherCoordinates} from "../../../src/core/coordinates.js";
+import {censusAddressPoint} from "../../../src/core/address-geocoding.js";
 import { directListingUrl } from "../../../src/core/listing.js";
 import { verifyDirectListing } from "./verification.js";
 import {readCache,writeCache,coalesce,claimLease,releaseLease} from "./cache.ts";
@@ -2776,6 +2777,11 @@ async function mapExactAddressPoint(row:any) {
       if (point) return await remember(point);
     } catch {}
   }
+
+  try {
+    const point = await censusAddressPoint(address, FALLBACK_LOCATION, (url:URL)=>fetchJsonTimeout(url,3500));
+    if (point) return await remember(point);
+  } catch {}
 
   const source = String(row?.metadata?.workspaceSource || row?.metadata?.workspaceRole || "");
   if (source === "reference") {

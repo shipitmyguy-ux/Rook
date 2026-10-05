@@ -362,6 +362,7 @@ html[data-workspace-mode="scratch"] .scratch-session-controls{display:block}
 .scratch-command-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;margin-top:8px}
 .scratch-command-form input{min-width:0;height:38px;border:1px solid #344e62;border-radius:11px;background:#07111c;color:#f4f8fb;padding:0 11px;outline:none}
 .scratch-command-form input:focus{border-color:#58eadc}
+#workspace-status a{color:#58eadc}
 .scratch-command-form button{border-radius:11px;color:#07111b;background:#58eadc;border-color:#58eadc;font-weight:800}
 .scratch-session-status{margin:7px 1px 0;color:#91a3b2;font-size:.7rem}
 .scratch-pin-button{position:absolute;z-index:5;right:42px;top:8px;width:30px;height:30px;display:grid;place-items:center;padding:0;border:1px solid rgba(255,255,255,.2);border-radius:50%;background:rgba(7,13,23,.76);filter:grayscale(1);opacity:.72}

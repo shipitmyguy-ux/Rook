@@ -49,8 +49,8 @@ export function normalizePreferences(value = {}, overrides = {}) {
     pointsOfInterest,
     location: String(value.location || defaults.location).trim(),
     radiusMiles: Math.max(1, Number(value.radiusMiles) || defaults.radiusMiles),
-    minBeds: Math.max(0, Number(value.minBeds) || 0),
-    maxPrice: Number(value.maxPrice) > 0 ? Number(value.maxPrice) : null,
+    minBeds: value.minBeds === undefined ? defaults.minBeds : Math.max(0, Number(value.minBeds) || 0),
+    maxPrice: value.maxPrice === undefined ? defaults.maxPrice : Number(value.maxPrice) > 0 ? Number(value.maxPrice) : null,
     propertyTypes: Array.isArray(value.propertyTypes) ? [...new Set(types)] : [...defaults.propertyTypes],
     excludeIncomeRestricted: value.excludeIncomeRestricted !== false,
     excludeMobileHomes: value.excludeMobileHomes !== false,
@@ -67,9 +67,18 @@ export function normalizePreferences(value = {}, overrides = {}) {
     removedPointIds
   };
 }
-export function loadPreferences(overrides = {}) {
+export function loadPreferences(overrides = {}, { inheritMain = false } = {}) {
   const defaults = { ...defaultPreferences, ...(overrides || {}) };
-  try { return normalizePreferences(JSON.parse(localStorage.getItem(preferenceStorageKey()) || "{}"), defaults); }
+  try {
+    const key = preferenceStorageKey();
+    let raw = localStorage.getItem(key);
+    if (!raw && inheritMain && key !== KEY) {
+      const main = JSON.parse(localStorage.getItem(KEY) || "{}");
+      raw = JSON.stringify({ minBeds:main.minBeds ?? defaults.minBeds, maxPrice:main.maxPrice === undefined ? defaults.maxPrice : main.maxPrice });
+      localStorage.setItem(key, raw);
+    }
+    return normalizePreferences(JSON.parse(raw || "{}"), defaults);
+  }
   catch { return { ...defaults, propertyTypes:[...(defaults.propertyTypes || defaultPreferences.propertyTypes)] }; }
 }
 
