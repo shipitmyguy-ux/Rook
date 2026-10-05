@@ -25,13 +25,14 @@ import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults, canonicalAddress } from "./integrations/providers.js?v=listing-sources-v1";
-import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting, isPropertyWithinSearchRadius } from "./integrations/maps.js?v=listing-sources-v1";
+import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting, isPropertyWithinSearchRadius, cachedCoordinates, resolvePropertyCoordinates } from "./integrations/maps.js?v=listing-sources-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
 import { scanHousingEmail, reconcileTourCalendar, fetchSharedRookState, fetchRookWorkspaces, applySharedRookStateRow } from "./integrations/sync.js?v=shared-state-v3";
 import { config } from "./config.js";
 import { loadRuntimeConfig, runtimePointsOfInterest, runtimeSeedProperties, runtimePreferenceDefaults, runtimeHousingEvidence, normalizeRuntimeCommunityProperty } from "./runtime-config.js";
 import { installRuntimeErrorHooks, reportRuntimeError } from "./runtime-errors.js";
+import { LAUREL_BOUNDARY_SOURCE, LAUREL_LOCATOR_URL, isLaurelRental } from "./core/school-zones.js";
 
 installRuntimeErrorHooks();
 await loadRuntimeConfig();
@@ -40,6 +41,7 @@ const app = document.querySelector("#app");
 const workspaceParam = typeof location !== "undefined" ? new URLSearchParams(location.search).get("workspace") : null;
 const activeWorkspace = (String(workspaceParam || "main").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "main");
 const isMainWorkspace = activeWorkspace === "main";
+const isLaurelWorkspace = activeWorkspace === "laurel-rentals";
 document.documentElement.dataset.workspaceMode = isMainWorkspace ? "main" : "scratch";
 const runtimeSeeds = runtimeSeedProperties();
 const initialSeeds = isMainWorkspace ? (runtimeSeeds.length ? runtimeSeeds : fallbackSeedProperties) : [];
@@ -272,7 +274,9 @@ async function populateWorkspaceSwitcher() {
     else url.searchParams.set("workspace", next);
     location.assign(url.toString());
   });
-  if (status) status.textContent = isMainWorkspace ? "Main workspace" : "Scratch workspace · ChatGPT sync";
+  if (status) status.innerHTML = isLaurelWorkspace
+    ? `Persistent rental map · approximate Laurel Elementary area traced from the <a href="${LAUREL_BOUNDARY_SOURCE}" target="_blank" rel="noopener noreferrer">current PSD elementary boundary map</a>. <a href="${LAUREL_LOCATOR_URL}" target="_blank" rel="noopener noreferrer">Check an address with PSD</a>.`
+    : isMainWorkspace ? "Main workspace" : "Scratch workspace · ChatGPT sync";
 }
 
 async function createNewTempMap() {
@@ -699,16 +703,19 @@ function visibleProperties() {
   // ignore Main search defaults, radius, property-type, price, bedroom, text
   // query, and status filters. Only explicitly ignored/archived rows stay hidden.
   let filtered;
-  if (!isMainWorkspace) {
+  if (!isMainWorkspace && !isLaurelWorkspace) {
     filtered = allProperties.filter(property => ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(property.status));
     filtered = scratchSession ? scratchSession.apply(filtered) : filtered;
   } else {
     const restricted = filterProperties(allProperties, activeFilter)
       .filter(property => ["review","pending"].includes(activeFilter) || (activeFilter === "all" && ["soon","upcoming"].includes(tourState(tourForProperty(property, preferences)))) || matchesSearchDefaults(property, preferences));
-    const withinRadius = restricted.filter(property => isPropertyWithinSearchRadius(property, preferences));
+    const rentalsOnly = isLaurelWorkspace ? restricted.filter(property => property.listingType === "rent") : restricted;
+    const withinRadius = rentalsOnly.filter(property => isLaurelWorkspace
+      ? isLaurelRental(property, cachedCoordinates(property, "Fort Collins, CO"))
+      : isPropertyWithinSearchRadius(property, preferences));
     filtered = searchProperties(withinRadius, query);
   }
-  if (promotedTourPropertyId && !filtered.some(property => String(property.id) === promotedTourPropertyId)) {
+  if (!isLaurelWorkspace && promotedTourPropertyId && !filtered.some(property => String(property.id) === promotedTourPropertyId)) {
     const promoted = allProperties.find(property => String(property.id) === promotedTourPropertyId);
     if (promoted && ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(promoted.status)) {
       filtered = [promoted, ...filtered];
@@ -907,6 +914,10 @@ function showDiscoveryStatus(message = "", detail = "", duration = 4500) {
 
 async function refreshListings(trigger = "manual") {
   const refreshMetrics=createSpeedMetrics();
+  if (!isMainWorkspace && !isLaurelWorkspace) {
+    showDiscoveryStatus("Scratch workspace", "Live candidates come from ChatGPT sync. Main discovery is paused here.", 4200);
+    return;
+  }
   if (refreshInFlight) return;
   refreshInFlight = true;
   const buttons = document.querySelectorAll("[data-refresh-listings]");
@@ -914,19 +925,49 @@ async function refreshListings(trigger = "manual") {
   document.querySelector("#pull-indicator")?.classList.add("refreshing");
   try {
     const { address1, ...searchPreferences } = preferences;
+    const discoveryCriteria = isLaurelWorkspace
+      ? { ...searchPreferences, location:"Fort Collins, CO", propertyTypes:["apartment","townhome","house"], listingType:"rent", radiusMiles:15, query, ...(trigger==="more"?{more:1}:{}) }
+      : { ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query, ...(trigger==="more"?{more:1}:{}) };
+    const qualifyLaurelRows = async rows => {
+      const checked = await Promise.all((Array.isArray(rows) ? rows : []).map(async property => {
+        if (!property || property.listingType !== "rent") return null;
+        let point = cachedCoordinates(property, "Fort Collins, CO");
+        if (!point) point = await resolvePropertyCoordinates(property, "Fort Collins, CO");
+        if (!point || !isLaurelRental(property, point)) return null;
+        return {
+          ...property,
+          metadata:{ ...(property.metadata || {}), workspaceId:activeWorkspace, mapPoint:{ lat:point.lat, lng:point.lng }, schoolZone:"laurel-elementary-approx-2026-27" }
+        };
+      }));
+      return checked.filter(Boolean);
+    };
+    const zoneChecks = [];
     discoveryTelemetry={adapters:[],count:0};
     const before=new Set(store.getAll().map(p=>canonicalAddress(p.address)||p.sourceUrl));
-    const found = await searchMainMap(store, { ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query, ...(trigger==="more"?{more:1}:{}) },{onResults:(rows,meta)=>{
+    const found = await searchMainMap(store, discoveryCriteria, {
+      transformResults: isLaurelWorkspace ? qualifyLaurelRows : undefined,
+      onResults:(rows,meta)=>{
       if(rows.length){speedMetrics.mark("firstCandidateBatch",{count:rows.length});
-        discoveryTelemetry.firstCandidateMs=refreshMetrics.mark("firstCandidateBatch",{count:rows.length}).ms;
+        discoveryTelemetry.firstCandidateMs ||= refreshMetrics.mark("firstCandidateBatch",{count:rows.length}).ms;
       }
       if(meta?.adapter)discoveryTelemetry.adapters.push(meta.adapter);
       if(meta)Object.assign(discoveryTelemetry,Object.fromEntries(Object.entries(meta).filter(([key])=>key!=="adapter")));
       const indicator=document.querySelector("#pull-indicator");
       if(indicator)indicator.textContent="Refreshing listings…";
-      scheduleRenderList();
-      // Render the first batch before scheduling any property enrichment.
+      if (isLaurelWorkspace) {
+        const check = Promise.resolve(rows).then(qualified => {
+          scheduleRenderList();
+          return qualified;
+        });
+        zoneChecks.push(check);
+      } else {
+        scheduleRenderList();
+      }
+      // Laurel candidates enter the shared list/map after coordinate checks.
     }});
+    if (isLaurelWorkspace) {
+      await Promise.all(zoneChecks);
+    }
     discoveryTelemetry.newCount=found.filter(p=>!before.has(canonicalAddress(p.address)||p.sourceUrl)).length;
     await syncSharedRookState();
     void resolveUnavailableListings().then(() => {scheduleRenderList();return enrichMissingImages();}).then(()=>scheduleRenderList());
@@ -1119,8 +1160,9 @@ function renderList() {
   else delete mapDiagnostics.dataset.searchMatches;
   document.querySelector("#property-count").textContent = isMainWorkspace
     ? `${visible.length} shown · ${preferences.location || config.search.location} · ${preferences.radiusMiles || 15} mi`
-    : `${visible.length} visible · ${store.getAll().length} discovered · Scratch session`;
-  if (!isMainWorkspace) renderScratchSession(visible);
+    : isLaurelWorkspace ? `${visible.length} Laurel-area rentals · approximate PSD boundary`
+      : `${visible.length} visible · ${store.getAll().length} discovered · Scratch session`;
+  if (!isMainWorkspace && !isLaurelWorkspace) renderScratchSession(visible);
   renderPropertyCards(document.querySelector("#property-list"), visible, propertyCard, `<p class="empty-state">${listingChecksInFlight || refreshInFlight ? "Checking current listing links…" : "No verified listings match. Open Actions → Needs listing to review saved properties."}</p>`);
   if(visible.length)requestAnimationFrame(()=>speedMetrics.mark("firstVisibleCard",{count:visible.length,workspace:activeWorkspace}));
   // Map exactly the same property set the user can currently see.
@@ -1828,7 +1870,7 @@ void syncSharedRookState();
 // while visible so ChatGPT-added candidates appear without a manual refresh.
 window.setInterval(() => {
   if (document.visibilityState === "visible") void syncSharedRookState();
-}, isMainWorkspace ? 30000 : 1000);
+}, isMainWorkspace || isLaurelWorkspace ? 30000 : 1000);
 window.addEventListener("focus", () => void syncSharedRookState());
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") void syncSharedRookState();
@@ -1836,3 +1878,4 @@ document.addEventListener("visibilitychange", () => {
 renderList();
 if (!BROWSER_QA_MODE && isMainWorkspace) queueMicrotask(() => refreshListings("startup"));
 
+if (!BROWSER_QA_MODE && (isMainWorkspace || isLaurelWorkspace)) queueMicrotask(() => refreshListings("startup"));

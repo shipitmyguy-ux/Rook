@@ -15,9 +15,9 @@ test("Main and scratch maps share the parallel coordinate resolver", async () =>
   assert.doesNotMatch(source, /if \(property\?\.metadata\?\.workspaceId\) return false;/);
 });
 
-test("scratch workspaces poll shared state every second", async () => {
+test("ordinary scratch workspaces poll every second while Main and Laurel use the regular cadence", async () => {
   const source = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
-  assert.match(source, /isMainWorkspace \? 30000 : 1000/);
+  assert.match(source, /isMainWorkspace \|\| isLaurelWorkspace \? 30000 : 1000/);
 });
 
 test("workspace sync does not coerce null coordinates to zero", async () => {

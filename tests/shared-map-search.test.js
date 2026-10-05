@@ -31,6 +31,20 @@ test('quick results display before refinement; existing Main history and temp is
   assert.equal(main.getAll().length,2);
 });
 
+test('shared search transforms streamed and final candidates before saving them', async () => {
+  const workspace=createPropertyStore([],{namespace:'laurel-rentals-test'});
+  const search=async(criteria,{onResults})=>{
+    onResults([{id:'inside',listingType:'rent'},{id:'outside',listingType:'buy'}],{stage:'quick'});
+    return [{id:'inside',listingType:'rent'},{id:'outside',listingType:'buy'}];
+  };
+  const found=await searchMainMap(workspace,{}, {
+    search,
+    transformResults:async rows=>rows.filter(row=>row.listingType==='rent'),
+  });
+  assert.deepEqual(found.map(row=>row.id),['inside']);
+  assert.deepEqual(workspace.getAll().map(row=>row.id),['inside']);
+});
+
 test('coordinate resolver starts four lookups in parallel, coalesces repeats and caches results',async()=>{
   let active=0,max=0,calls=0;const releases=[];
   const resolve=createMapPointResolver({endpoint:'https://example.com/resolve',fetchImpl:async()=>{

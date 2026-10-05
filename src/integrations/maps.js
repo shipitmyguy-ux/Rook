@@ -254,7 +254,7 @@ function validCoordinates(point, fallbackLocation = "") {
   return { lat, lng };
 }
 
-function cachedCoordinates(property, fallbackLocation = config.search.location) {
+export function cachedCoordinates(property, fallbackLocation = config.search.location) {
   const direct = validCoordinates(property, fallbackLocation);
   if (direct) return direct;
   const cache = readGeocodeCache();
@@ -341,6 +341,12 @@ async function geocodeProperty(property, fallbackLocation = config.search.locati
     writeGeocodeCache(cache);
   }
   return point;
+}
+
+// Shared with workspace-level geographic filters so discovery and map display
+// use the same cached publisher/geocoder resolution path.
+export async function resolvePropertyCoordinates(property, fallbackLocation = config.search.location) {
+  return geocodeProperty(property, fallbackLocation, { priority:true });
 }
 
 function mapTourLabel(property) {
