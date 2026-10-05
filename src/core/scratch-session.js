@@ -1,3 +1,4 @@
+import { classifyPropertyKind } from "./property.js";
 const VERSION = 1;
 
 function cleanWorkspace(value = "") {
@@ -16,6 +17,7 @@ function normalizeState(input = {}) {
       maxPrice: Number(filters.maxPrice) > 0 ? Number(filters.maxPrice) : null,
       minBeds: Number(filters.minBeds) > 0 ? Number(filters.minBeds) : null,
       types: Array.isArray(filters.types) ? [...new Set(filters.types.map(v => String(v).toLowerCase()).filter(Boolean))] : [],
+      excludedTypes: Array.isArray(filters.excludedTypes) ? [...new Set(filters.excludedTypes.map(String))] : [],
       playground: Boolean(filters.playground),
       directions: Array.isArray(filters.directions) ? [...new Set(filters.directions.map(v => String(v).toLowerCase()).filter(Boolean))] : []
     },
@@ -27,11 +29,7 @@ function normalizeState(input = {}) {
 }
 
 function kindOf(property = {}) {
-  const text = String(property.type || property.propertyType || "").toLowerCase();
-  if (text.includes("town")) return "townhome";
-  if (text.includes("apart") || text.includes("condo") || text.includes("unit")) return "apartment";
-  if (text.includes("house") || text.includes("home") || text.includes("single")) return "house";
-  return "property";
+  return classifyPropertyKind({ ...property, type:property.type || property.propertyType });
 }
 
 function playgroundHint(property = {}) {
@@ -108,6 +106,7 @@ export function createScratchSession(workspace, options = {}) {
       return properties.filter(property => {
         const id = String(property.id);
         if (excludes.has(id)) return false;
+        if (state.filters.excludedTypes.includes(kindOf(property))) return false;
         if (pins.has(id)) return true;
         return matchesFilters(property, state.filters);
       });
@@ -151,6 +150,7 @@ export function createScratchSession(workspace, options = {}) {
         if (name === "maxPrice") next.filters.maxPrice = null;
         if (name === "minBeds") next.filters.minBeds = null;
         if (name === "types") next.filters.types = [];
+        if (name === "excludedTypes") next.filters.excludedTypes = [];
         if (name === "playground") next.filters.playground = false;
         if (name === "directions") next.filters.directions = [];
         return next;
@@ -183,21 +183,19 @@ export function createScratchSession(workspace, options = {}) {
         const beds = lower.match(/([1-9])\s*\+?\s*(?:bed|beds|bedroom|bedrooms)/);
         if (beds) next.filters.minBeds = Number(beds[1]);
 
-        if (/remove apartments|no apartments|exclude apartments/.test(lower)) {
-          next.filters.types = (next.filters.types.length ? next.filters.types : ["apartment","townhome","house"]).filter(v => v !== "apartment");
+        for (const [kind, noun] of [["apartment","apartments?"],["townhome","townhomes?"],["house","houses?"]]) {
+          if (new RegExp("\\b(?:hide|remove|no|exclude)\\s+(?:all\\s+)?" + noun + "\\b").test(lower)) {
+            next.filters.excludedTypes = [...new Set([...next.filters.excludedTypes, kind])];
+          }
+          if (new RegExp("\\b(?:also|include|add|restore|show(?: again)?)\\s+(?:all\\s+)?" + noun + "\\b").test(lower)) {
+            next.filters.excludedTypes = next.filters.excludedTypes.filter(value => value !== kind);
+            if (next.filters.types.length) next.filters.types = [...new Set([...next.filters.types, kind])];
+          }
+          if (new RegExp("\\bonly\\s+" + noun + "\\b").test(lower)) {
+            next.filters.types = [kind];
+            next.filters.excludedTypes = next.filters.excludedTypes.filter(value => value !== kind);
+          }
         }
-        if (/remove townhomes|no townhomes|exclude townhomes/.test(lower)) {
-          next.filters.types = (next.filters.types.length ? next.filters.types : ["apartment","townhome","house"]).filter(v => v !== "townhome");
-        }
-        if (/remove houses|no houses|exclude houses/.test(lower)) {
-          next.filters.types = (next.filters.types.length ? next.filters.types : ["apartment","townhome","house"]).filter(v => v !== "house");
-        }
-        if (/also apartments|include apartments|add apartments/.test(lower)) next.filters.types = [...new Set([...next.filters.types, "apartment"])];
-        if (/also townhomes|include townhomes|add townhomes/.test(lower)) next.filters.types = [...new Set([...next.filters.types, "townhome"])];
-        if (/also houses|include houses|add houses/.test(lower)) next.filters.types = [...new Set([...next.filters.types, "house"])];
-        if (/only houses/.test(lower)) next.filters.types = ["house"];
-        if (/only townhomes/.test(lower)) next.filters.types = ["townhome"];
-        if (/only apartments/.test(lower)) next.filters.types = ["apartment"];
 
         if (/near (?:a )?playground|near playgrounds|with playground/.test(lower)) next.filters.playground = true;
         if (/remove playground|don'?t care about playground|no playground filter/.test(lower)) next.filters.playground = false;
@@ -217,6 +215,7 @@ export function scratchChips(state = {}) {
   if (filters.maxPrice) chips.push({ key:"maxPrice", label:"≤ $" + Number(filters.maxPrice).toLocaleString() });
   if (filters.minBeds) chips.push({ key:"minBeds", label:filters.minBeds + "+ beds" });
   if (Array.isArray(filters.types) && filters.types.length) chips.push({ key:"types", label:filters.types.map(v => v[0].toUpperCase() + v.slice(1)).join(" + ") });
+  if (filters.excludedTypes?.length) chips.push({ key:"excludedTypes", label:"No " + filters.excludedTypes.map(v => v + "s").join(" / ") });
   if (filters.playground) chips.push({ key:"playground", label:"Near playground" });
   if (Array.isArray(filters.directions) && filters.directions.length) chips.push({ key:"directions", label:filters.directions.map(v => v[0].toUpperCase() + v.slice(1)).join(" / ") });
   return chips;

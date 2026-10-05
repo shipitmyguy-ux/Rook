@@ -6,6 +6,26 @@ import { normalizePreferences, loadPreferences } from "../src/core/preferences.j
 import { matchesWorkspacePreferences } from "../src/core/workspace-filters.js";
 
 const memory = () => { const data = new Map(); return {getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)}; };
+test("hide apartments applies to existing, pinned and newly discovered apartments and persists", async () => {
+  const storage=memory();
+  const rows=[{id:'a',type:'Apartment'}, {id:'label-apt',type:'Property',label:'Example Apartments'},
+    {id:'town',type:'Townhome'}, {id:'house',type:'House'}, {id:'unknown',type:'Property'}];
+  const session=createScratchSession('hide-types',{storage});
+  session.togglePin('a');
+  const options={session,store:{getAll:()=>rows}};
+  await runWorkspaceCommand('hide apartments',options);
+  assert.deepEqual(session.apply(rows).map(p=>p.id),['town','house','unknown']);
+  const reloaded=createScratchSession('hide-types',{storage});
+  assert.equal(reloaded.apply([{id:'new',type:'Condo'}]).length,0);
+  await runWorkspaceCommand('restore apartments',{...options,session:reloaded});
+  assert.equal(reloaded.apply(rows).length,5);
+  await runWorkspaceCommand('undo',{...options,session:reloaded});
+  assert.equal(reloaded.apply(rows).length,3);
+  reloaded.removeFilter('excludedTypes');
+  assert.equal(reloaded.apply(rows).length,5);
+  await runWorkspaceCommand('hide all apartments from the map',options);
+  assert.equal(session.apply(rows).length,3);
+});
 test("workspace filters require known matching price and bedrooms, even for pins", () => {
   const prefs = {maxPrice:2800,minBeds:2};
   assert.equal(matchesWorkspacePreferences({price:2800,beds:2},prefs),true);

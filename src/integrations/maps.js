@@ -744,7 +744,8 @@ function installOverviewLayers(map) {
         ],
         "icon-size": 0.62,
         "icon-allow-overlap": true,
-        "icon-ignore-placement": true,
+        "icon-ignore-placement": false,
+        "icon-padding": 5,
         "icon-anchor": "center"
       },
       paint: {
@@ -775,8 +776,8 @@ function installOverviewLayers(map) {
           16, 12.5
         ],
         "text-variable-anchor": ["top","bottom","left","right"],
-        "text-radial-offset": 1.15,
-        "text-padding": 3,
+        "text-radial-offset": 2,
+        "text-padding": 5,
         "text-max-width": 14,
         "text-allow-overlap": false,
         "text-ignore-placement": false,
@@ -801,7 +802,7 @@ function installOverviewLayers(map) {
         "text-font": ["Noto Sans Regular"],
         "text-size": 10.5,
         "text-variable-anchor": ["top","bottom","left","right"],
-        "text-radial-offset": 1.35,
+        "text-radial-offset": 2.2,
         "text-padding": 4,
         "text-max-width": 14,
         "text-allow-overlap": false,

@@ -3,7 +3,7 @@ export async function runWorkspaceCommand(text, { store, session, resolve, quali
   const raw = String(text || "").trim();
   if (!raw) return "Enter a map command.";
   const action = raw.match(/^(add|hide|remove|restore|show again)\s+(.+)$/i);
-  if (action && !/^(apartments?|townhomes?|houses?)$/i.test(action[2])) {
+  if (action && !/^(?:all\s+)?(?:apartments?|townhomes?|houses?)(?:\s+(?:from|to)\s+(?:this |the )?map)?$/i.test(action[2])) {
     const verb = action[1].toLowerCase();
     const target = action[2].replace(/\s+(?:from|to)\s+(?:this |the )?map$/i, "").trim();
     const matches = store.getAll().filter(p => [p.id, p.address, p.label, p.sourceUrl].some(value => String(value || "").toLowerCase().includes(target.toLowerCase())));
@@ -29,7 +29,7 @@ export async function runWorkspaceCommand(text, { store, session, resolve, quali
     session.restore(accepted[0].id);
     return "Rental added. It appears when its price and bedrooms meet your filters.";
   }
-  if (!/under|below|max|\d\s*\+?\s*bed|apartments|townhomes|houses|playground|^(undo|undo that|clear|reset|start over|clear scratch)$/.test(raw.toLowerCase())) return "Try: under $2800, 2+ bedrooms; hide [address]; restore [address]; add [listing URL]; or undo.";
+  if (!/under|below|max|\d\s*\+?\s*bed|apartments?|townhomes?|houses?|playground|^(undo|undo that|clear|reset|start over|clear scratch)$/.test(raw.toLowerCase())) return "Try: under $2800, 2+ bedrooms; hide apartments; hide [address]; restore [address]; add [listing URL]; or undo.";
   session.command(raw);
   await search?.();
   return "Map filters updated.";
