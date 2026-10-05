@@ -31,6 +31,11 @@ export function confirmedClosed(property) {
   return property?.listingState === 'closed' && property?.metadata?.listingClosedEvidence?.confirmed === true;
 }
 
+// Keep closed records for history and future rechecks, but never render them on a map.
+export function mapListings(properties = []) {
+  return properties.filter(property => !confirmedClosed(property));
+}
+
 export function hasVerifiedListing(property, now = Date.now()) {
   const url = directListingUrl(property?.sourceUrl);
   const evidence = property?.metadata?.listingVerification;

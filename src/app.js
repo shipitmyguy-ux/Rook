@@ -10,7 +10,7 @@ import { squareFootageLabel } from "./core/property-size.js";
 import { listingSourceUrls } from "./core/listing-sources.js";
 import { personalCalendarAvailability } from "./integrations/showing-availability.js";
 import { showingRequestMessage, showingRequestPatch, isShowingPending } from "./core/showing-request.js";
-import { directListingUrl, listingAction, needsListingCheck, LISTING_RESOLVER_VERSION } from "./core/listing.js?v=listing-sources-v1";
+import { directListingUrl, listingAction, needsListingCheck, mapListings, LISTING_RESOLVER_VERSION } from "./core/listing.js?v=listing-sources-v1";
 import { properties as fallbackSeedProperties } from "./data/properties.js";
 import { createPropertyStore } from "./core/store.js?v=listing-sources-v1";
 import { createScratchSession, scratchChips } from "./core/scratch-session.js";
@@ -650,7 +650,8 @@ function propertyCard(property) {
   const scratchPinned = Boolean(scratchSession?.isPinned(property.id));
   return `<article class="property-card visual-card type-${kind}${tourVisual.className}" data-id="${esc(property.id)}" tabindex="0" aria-label="View summary for ${esc(property.label)}" aria-haspopup="dialog" style="--score:${score}">
       ${tourVisual.html}
-      ${!isMainWorkspace ? `<button class="scratch-pin-button ${scratchPinned ? "is-pinned" : ""}" data-action="scratch-pin" aria-pressed="${scratchPinned}" aria-label="${scratchPinned ? "Unpin" : "Pin"} ${esc(property.label)}" title="${scratchPinned ? "Pinned in Scratch" : "Keep through Scratch filters"}">📌</button>` : `<button class="quick-ignore-button" data-action="reject" aria-label="Ignore ${esc(property.label)}" title="Ignore property">×</button>`}
+      ${!isMainWorkspace ? `<button class="scratch-pin-button ${scratchPinned ? "is-pinned" : ""}" data-action="scratch-pin" aria-pressed="${scratchPinned}" aria-label="${scratchPinned ? "Unpin" : "Pin"} ${esc(property.label)}" title="${scratchPinned ? "Pinned in Scratch" : "Keep through Scratch filters"}">📌</button>` : ""}
+      <button class="quick-ignore-button" data-action="reject" aria-label="Ignore ${esc(property.label)}" title="Ignore property">×</button>
       <button class="save-button ${saved ? "is-saved" : ""}" aria-pressed="${saved}" data-action="save" aria-label="Save ${esc(property.label)}">${icon("star")}</button>
     <section class="property-card__media" aria-label="Listing image">
       <div class="property-visual ${image ? "" : "property-visual--fallback"}" ${image ? `style="--property-image:url(\'${esc(image)}\')"` : ""} aria-hidden="true">${!image ? `<span class="property-placeholder-icon">${icon(kind === "apartment" ? "building" : kind === "townhome" ? "townhome" : "house")}</span>` : ""}</div>
@@ -737,10 +738,10 @@ function prioritizedPoiDistance(property, point) {
 }
 
 function visibleProperties() {
-  const allProperties = store.getAll();
+  const allProperties = mapListings(store.getAll());
   // Scratch workspaces are render-only ideation canvases. They intentionally
   // ignore Main search defaults, radius, property-type, price, bedroom, text
-  // query, and status filters. Only explicitly ignored/archived rows stay hidden.
+  // query, and status filters. Closed and explicitly ignored/archived rows stay hidden.
   let filtered;
   if (!isMainWorkspace) {
     filtered = allProperties.filter(property => ![PROPERTY_STATUS.REJECTED, PROPERTY_STATUS.ARCHIVED].includes(property.status));

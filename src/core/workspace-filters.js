@@ -1,7 +1,8 @@
+import { confirmedClosed } from "./listing.js";
 const FILTER_DIRECTORY = new URL("../../config/workspace-filters/", import.meta.url);
 
 export function mainInventoryCandidates(rows = []) {
-  return rows.filter(property => property.listingType === "rent"
+  return rows.filter(property => property.listingType === "rent" && !confirmedClosed(property)
     && !["rejected", "archived"].includes(property.status)).map(property => {
     const metadata = structuredClone(property.metadata || {});
     for (const key of ["tour", "evidence", "workspaceId", "workspacePropertyKey", "sharedSyncUpdatedAt", "workspacePreferences"]) delete metadata[key];
