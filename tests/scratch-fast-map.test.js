@@ -9,9 +9,10 @@ test("overview map exposes property names as a dedicated label layer", async () 
   assert.match(source, /minzoom: 10/);
 });
 
-test("scratch maps never enter the legacy serial browser geocoder", async () => {
+test("Main and scratch maps share the parallel coordinate resolver", async () => {
   const source = await fs.readFile(new URL("../src/integrations/maps.js", import.meta.url), "utf8");
-  assert.match(source, /if \(property\?\.metadata\?\.workspaceId\) return false;/);
+  assert.match(source, /createMapPointResolver/);
+  assert.doesNotMatch(source, /if \(property\?\.metadata\?\.workspaceId\) return false;/);
 });
 
 test("scratch workspaces poll shared state every second", async () => {
@@ -24,3 +25,4 @@ test("workspace sync does not coerce null coordinates to zero", async () => {
   assert.match(syncSource, /row\.lat !== null/);
   assert.match(syncSource, /row\.lng !== null/);
 });
+

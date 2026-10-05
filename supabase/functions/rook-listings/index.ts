@@ -2733,7 +2733,7 @@ async function persistWorkspaceCoordinates(workspaceId:string,row:any,point:any)
   }
 }
 
-async function workspaceExactAddressPoint(row:any) {
+async function mapExactAddressPoint(row:any) {
   const address = String(row?.address || "").trim();
   if (!address) return null;
   const geocodeKey="workspace-geocode:v1:"+canonicalAddress(address);
@@ -2753,7 +2753,7 @@ async function workspaceExactAddressPoint(row:any) {
     const endpoint = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=us&limit=1&q=" + encodeURIComponent(address);
     const rows = await fetchJsonTimeout(endpoint, 2800, {
       "accept-language":"en-US,en;q=0.9",
-      "user-agent":"Rook/1.0 (scratch workspace address resolver)"
+      "user-agent":"Rook/1.0 (shared map address resolver)"
     });
     const candidate = Array.isArray(rows) ? rows[0] : null;
     if (candidate) {
@@ -2793,7 +2793,7 @@ async function resolveWorkspaceCoordinates(workspaceId:string, rows:any[]) {
   );
   if (!missing.length) return;
   await mapSettledBounded(missing, async (row:any) => {
-    const point = await workspaceExactAddressPoint(row);
+    const point = await mapExactAddressPoint(row);
     return point ? persistWorkspaceCoordinates(workspaceId,row,point) : false;
   }, 4);
 }
@@ -2880,6 +2880,14 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method !== "GET") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
 
+  if (url.searchParams.get("mapPoint") === "1") {
+    const address = String(url.searchParams.get("address") || "").trim().slice(0,300);
+    const label = String(url.searchParams.get("label") || "").trim().slice(0,200);
+    const source_url = String(url.searchParams.get("sourceUrl") || "").slice(0,2000);
+    if (!address) return new Response(JSON.stringify({point:null,error:"address required"}),{status:400,headers:corsHeaders});
+    const point = await coalesce("map-point:"+canonicalAddress(address),()=>mapExactAddressPoint({address,label,source_url}));
+    return new Response(JSON.stringify({point}),{headers:corsHeaders});
+  }
   if (url.searchParams.get("map") === "1") {
     const sourceUrl = directListingUrl(url.searchParams.get("sourceUrl"));
     const address = url.searchParams.get("address") || "";
@@ -3074,3 +3082,4 @@ Deno.serve(async (req: Request) => {
   const listings=needsRefinement?selectListings(await refine()).slice(0,target):quickListings;
   return new Response(JSON.stringify({listings,meta:{...meta(),count:listings.length,elapsedMs:Date.now()-discoveryStarted}}),{headers:corsHeaders});
 });
+

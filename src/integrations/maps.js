@@ -1,3 +1,4 @@
+import { createMapPointResolver } from "./map-points.js";
 import { pointWithinSearchRadius } from "../core/search-radius.js";
 import { listingSourceUrls } from "../core/listing-sources.js";
 import { classifyPropertyKind } from "../core/property.js";
@@ -317,19 +318,18 @@ async function publisherPropertyPoint(property, fallbackLocation, {priority=fals
   return task;
 }
 
-async function geocodeProperty(property, fallbackLocation = config.search.location, options = {}) {
-  const direct = validCoordinates(property, fallbackLocation);
-  if (direct) return direct;
-  const publisherPoint = await publisherPropertyPoint(property, fallbackLocation, options);
-  if (publisherPoint) return publisherPoint;
-  const configured = validCoordinates(property?.metadata?.mapPoint, fallbackLocation);
-  if (configured) return configured;
-  for (const q of mapLocationQueries(property, fallbackLocation)) {
-    const point = await geocode(q, fallbackLocation);
-    const valid = validCoordinates(point, fallbackLocation);
-    if (valid) return valid;
+const resolveMapPoint = createMapPointResolver({ endpoint:config.listings?.endpoint });
+
+async function geocodeProperty(property, fallbackLocation = config.search.location) {
+  const existing = cachedCoordinates(property, fallbackLocation);
+  if (existing) return existing;
+  const point = validCoordinates(await resolveMapPoint(property), fallbackLocation);
+  if (point) {
+    const cache = readGeocodeCache();
+    for (const query of mapLocationQueries(property, fallbackLocation)) cache[query] = point;
+    writeGeocodeCache(cache);
   }
-  return null;
+  return point;
 }
 
 function mapTourLabel(property) {
@@ -544,29 +544,15 @@ function scheduleOverviewSourceUpdate({fit = false} = {}) {
 async function geocodeMissingOverviewProperties() {
   const fallbackLocation = overviewState.latestOptions.location || config.search.location;
   const properties = [...overviewState.latestProperties];
-  const cache = readGeocodeCache();
-  const missing = properties.filter(property => {
-    if (validCoordinates(property,fallbackLocation)) return false;
-    // Scratch workspace coordinates are resolved server-side in parallel and
-    // synced back into the row. Never send them through the legacy serial
-    // browser geocoder/publisher path.
-    if (property?.metadata?.workspaceId) return false;
-    const urls = listingSourceUrls(property).slice(0,3);
-    if (urls.some(sourceUrl => validCoordinates(cache["publisher:" + sourceUrl + "|" + property.address],fallbackLocation))) return false;
-    if (!cachedCoordinates(property, fallbackLocation)) return true;
-    // Upgrade old address-geocoder positions with publisher locations as well.
-    return listingSourceUrls(property).slice(0,3).some(sourceUrl => {
-      const entry = cache["publisher:" + sourceUrl + "|" + property.address];
-      return !validCoordinates(entry,fallbackLocation) && !(entry?.missedAt && Date.now()-entry.missedAt<60000);
-    });
-  });
+  // Both Main and temp maps use the same parallel server resolver and caches.
+  const missing = properties.filter(property => !cachedCoordinates(property, fallbackLocation));
   if (!missing.length) {
     updateOverviewSource({ fit: !overviewState.fittedOnce });
     return;
   }
 
   // Never cancel an older geocode pass just because store/UI state re-rendered.
-  // geocode() already deduplicates and serializes requests; each resolved property
+  // The shared resolver coalesces requests with bounded parallelism; each property
   // is published immediately so late-list properties cannot starve forever.
   await Promise.all(missing.map(async property => {
     const priorPoint = cachedCoordinates(property,fallbackLocation);
@@ -1541,5 +1527,6 @@ export function openDirections(property) {
   const url = googleMapsDirectionsUrl(property);
   if (url) window.open(url, "_blank", "noopener,noreferrer");
 }
+
 
 

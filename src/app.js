@@ -1,3 +1,4 @@
+import { searchMainMap } from "./integrations/map-search.js";
 import {createSpeedMetrics} from "./core/speed-metrics.js";
 const speedMetrics=createSpeedMetrics({startAt:0,persist:samples=>{
   document.documentElement.dataset.rookSpeed=JSON.stringify(samples);
@@ -21,7 +22,7 @@ import { rankProperties, rankProperty } from "./core/ranking.js";
 import { recordActivity, getActivity } from "./core/activity.js";
 import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
-import { searchProviders, registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults, canonicalAddress } from "./integrations/providers.js?v=listing-sources-v1";
+import { registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults, canonicalAddress } from "./integrations/providers.js?v=listing-sources-v1";
 import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting, isPropertyWithinSearchRadius } from "./integrations/maps.js?v=listing-sources-v1";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
@@ -904,10 +905,6 @@ function showDiscoveryStatus(message = "", detail = "", duration = 4500) {
 
 async function refreshListings(trigger = "manual") {
   const refreshMetrics=createSpeedMetrics();
-  if (!isMainWorkspace) {
-    showDiscoveryStatus("Scratch workspace", "Live candidates come from ChatGPT sync. Main discovery is paused here.", 4200);
-    return;
-  }
   if (refreshInFlight) return;
   refreshInFlight = true;
   const buttons = document.querySelectorAll("[data-refresh-listings]");
@@ -917,8 +914,7 @@ async function refreshListings(trigger = "manual") {
     const { address1, ...searchPreferences } = preferences;
     discoveryTelemetry={adapters:[],count:0};
     const before=new Set(store.getAll().map(p=>canonicalAddress(p.address)||p.sourceUrl));
-    const found = await searchProviders({ ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query, ...(trigger==="more"?{more:1}:{}) },{onResults:(rows,meta)=>{
-      store.upsertMany(rows);
+    const found = await searchMainMap(store, { ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query, ...(trigger==="more"?{more:1}:{}) },{onResults:(rows,meta)=>{
       if(rows.length){speedMetrics.mark("firstCandidateBatch",{count:rows.length});
         discoveryTelemetry.firstCandidateMs=refreshMetrics.mark("firstCandidateBatch",{count:rows.length}).ms;
       }
@@ -930,7 +926,6 @@ async function refreshListings(trigger = "manual") {
       // Render the first batch before scheduling any property enrichment.
     }});
     discoveryTelemetry.newCount=found.filter(p=>!before.has(canonicalAddress(p.address)||p.sourceUrl)).length;
-    store.upsertMany(found);
     await syncSharedRookState();
     void resolveUnavailableListings().then(() => {scheduleRenderList();return enrichMissingImages();}).then(()=>scheduleRenderList());
     discoveryTelemetry.completeMs=refreshMetrics.mark("discoveryComplete").ms;
@@ -1835,3 +1830,4 @@ document.addEventListener("visibilitychange", () => {
 });
 renderList();
 if (!BROWSER_QA_MODE && isMainWorkspace) queueMicrotask(() => refreshListings("startup"));
+
