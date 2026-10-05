@@ -817,6 +817,9 @@ function installOverviewLayers(map) {
     });
   }
 
+  // MapLibre places symbol layers in reverse drawing order. Reserve every
+  // marker's collision box before fitting the optional address/tour labels.
+  if (typeof map.moveLayer === "function") map.moveLayer(ROOK_LAYER_ID);
   if (overviewState.container) overviewState.container.dataset.mapMarkerMode = "property-icons";
 
   map.on("mouseenter", ROOK_LAYER_ID, event => {
