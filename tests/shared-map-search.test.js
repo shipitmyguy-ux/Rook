@@ -25,10 +25,22 @@ test('filtered workspace considers full Main inventory and preserves independent
   const copied=temp.getAll()[0];
   assert.equal(copied.saved,false);assert.equal(copied.note,'');assert.equal(copied.showingAt,null);
   assert.equal(copied.metadata.tour,undefined);assert.equal(copied.metadata.workspacePropertyKey,undefined);
+  assert.equal(copied.metadata.quickCandidate,true);assert.equal(copied.metadata.verificationPending,true);
   temp.update(copied.id,{status:'rejected'});
   assert.equal(main.getAll()[183].status,'showing-scheduled');
   assert.equal(main.getAll()[183].saved,true);
   assert.equal(mainInventoryCandidates([{listingType:'rent',status:'rejected'},{listingType:'buy'}]).length,0);
+});
+
+test('fresh discovery updates cached Main facts through the shared search', async () => {
+  globalThis.localStorage=storage();
+  const temp=createPropertyStore([],{namespace:'fresh-facts'});
+  const cached={id:'cached',address:'452 Example Way',listingType:'rent',price:2400,beds:2,listingCheckedAt:'2026-10-01T00:00:00Z'};
+  const fresh={...cached,price:2483,listingCheckedAt:'2026-10-05T00:00:00Z',metadata:{quickCandidate:false,verificationPending:false}};
+  await searchMainMap(temp,{}, {initialResults:mainInventoryCandidates([cached]),search:async()=>[fresh],transformResults:async rows=>rows});
+  assert.equal(temp.getAll().length,1);
+  assert.equal(temp.getAll()[0].price,2483);
+  assert.equal(temp.getAll()[0].metadata.quickCandidate,false);
 });
 
 test('quick results display before refinement; existing Main history and temp isolation survive', async () => {

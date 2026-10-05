@@ -6,7 +6,9 @@ export function mainInventoryCandidates(rows = []) {
     const metadata = structuredClone(property.metadata || {});
     for (const key of ["tour", "evidence", "workspaceId", "workspacePropertyKey", "sharedSyncUpdatedAt", "workspacePreferences"]) delete metadata[key];
     return { ...property, status:"new", saved:false, note:"", contactedAt:null,
-      contactOutcome:null, showingAt:null, metadata:{ ...metadata, workspaceSource:"rook" } };
+      contactOutcome:null, showingAt:null, metadata:{ ...metadata, workspaceSource:"rook",
+        quickCandidate:true, verificationPending:true, cacheUpdatedAt:property.listingCheckedAt || property.updatedAt,
+        discoveryMethod:"main-inventory-cache" } };
   });
 }
 
