@@ -1,5 +1,15 @@
 const FILTER_DIRECTORY = new URL("../../config/workspace-filters/", import.meta.url);
 
+export function mainInventoryCandidates(rows = []) {
+  return rows.filter(property => property.listingType === "rent"
+    && !["rejected", "archived"].includes(property.status)).map(property => {
+    const metadata = structuredClone(property.metadata || {});
+    for (const key of ["tour", "evidence", "workspaceId", "workspacePropertyKey", "sharedSyncUpdatedAt", "workspacePreferences"]) delete metadata[key];
+    return { ...property, status:"new", saved:false, note:"", contactedAt:null,
+      contactOutcome:null, showingAt:null, metadata:{ ...metadata, workspaceSource:"rook" } };
+  });
+}
+
 export async function loadWorkspaceFilter(workspaceId, fetchImpl = fetch) {
   const id = String(workspaceId || "").trim().toLowerCase();
   if (!/^[a-z0-9_-]+$/.test(id)) return null;

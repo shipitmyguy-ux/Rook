@@ -3,8 +3,33 @@ import assert from 'node:assert/strict';
 import { searchMainMap } from '../src/integrations/map-search.js';
 import { createMapPointResolver } from '../src/integrations/map-points.js';
 import { createPropertyStore } from '../src/core/store.js';
+import { mainInventoryCandidates } from '../src/core/workspace-filters.js';
 
 const storage = () => {const data=new Map();return {getItem:key=>data.get(key)||null,setItem:(key,value)=>data.set(key,value)};};
+
+test('filtered workspace considers full Main inventory and preserves independent lifecycle state', async () => {
+  globalThis.localStorage=storage();
+  const rows=Array.from({length:184},(_,i)=>({id:`main-${i}`,address:`${i} Example St`,listingType:'rent',price:2000,beds:2,
+    saved:true,note:'Main note',status:'showing-scheduled',showingAt:'2026-10-10T19:00:00Z',
+    metadata:{tour:{startsAt:'2026-10-10T19:00:00Z'},workspacePropertyKey:`key-${i}`,mapPoint:{lat:40,lng:-105}}}));
+  const main=createPropertyStore(rows);
+  const temp=createPropertyStore([],{namespace:'full-inventory'});
+  const qualified=[];
+  await searchMainMap(temp,{}, {initialResults:mainInventoryCandidates(main.getAll()),
+    search:async()=>[],transformResults:async candidates=>{
+      qualified.push(...candidates.map(p=>p.id));
+      return candidates.filter(p=>p.id==='main-183');
+    }});
+  assert.equal(qualified.length,184);
+  assert.deepEqual(temp.getAll().map(p=>p.id),['main-183']);
+  const copied=temp.getAll()[0];
+  assert.equal(copied.saved,false);assert.equal(copied.note,'');assert.equal(copied.showingAt,null);
+  assert.equal(copied.metadata.tour,undefined);assert.equal(copied.metadata.workspacePropertyKey,undefined);
+  temp.update(copied.id,{status:'rejected'});
+  assert.equal(main.getAll()[183].status,'showing-scheduled');
+  assert.equal(main.getAll()[183].saved,true);
+  assert.equal(mainInventoryCandidates([{listingType:'rent',status:'rejected'},{listingType:'buy'}]).length,0);
+});
 
 test('quick results display before refinement; existing Main history and temp isolation survive', async () => {
   globalThis.localStorage=storage();

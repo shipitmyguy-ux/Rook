@@ -26,7 +26,7 @@ import { nextFollowUp, markShowingRequested } from "./core/followup.js";
 import { exportRookData, parseRookBackup } from "./core/export.js";
 import { registerConfiguredProviders, firstImageUrl, resolveMissingListing, resolveMissingImage, matchesSearchDefaults, canonicalAddress } from "./integrations/providers.js?v=listing-sources-v1";
 import { openDirections, renderPropertyMap, updateCardDistances, getCachedPropertyDistances, focusPropertyOnMap, searchPoiCandidates, pingMapProperty, isPropertyMapInteracting, isPropertyWithinSearchRadius, cachedCoordinates, resolvePropertyCoordinates } from "./integrations/maps.js?v=listing-sources-v1";
-import { loadWorkspaceFilter, matchesWorkspaceFilter, matchesWorkspacePreferences, qualifyWorkspaceListings } from "./core/workspace-filters.js";
+import { loadWorkspaceFilter, matchesWorkspaceFilter, matchesWorkspacePreferences, qualifyWorkspaceListings, mainInventoryCandidates } from "./core/workspace-filters.js";
 import { runWorkspaceCommand } from "./core/workspace-commands.js";
 import { googleCalendarShowingUrl } from "./integrations/calendar.js?v=tours-v1";
 import { applyTour, tourForProperty, tourState, tourLabel, upcomingTours } from "./core/tours.js";
@@ -964,11 +964,14 @@ async function refreshListings(trigger = "manual") {
     const { address1, ...searchPreferences } = workspaceSearchPreferences();
     const filterCriteria = workspaceFilter?.properties || {};
     const discoveryCriteria = workspaceFilter
-      ? { ...searchPreferences, location:filterCriteria.location || "Fort Collins, CO", radiusMiles:filterCriteria.radiusMiles || 15, propertyTypes:filterCriteria.propertyTypes || [], listingType:filterCriteria.listingType || "rent", query, ...(trigger==="more"?{more:1}:{}) }
+      // A polygon can retain only a small fraction of a citywide batch. Use
+      // the shared broader discovery path before applying its spatial filter.
+      ? { ...searchPreferences, location:filterCriteria.location || "Fort Collins, CO", radiusMiles:filterCriteria.radiusMiles || 15, propertyTypes:filterCriteria.propertyTypes || [], listingType:filterCriteria.listingType || "rent", query, more:1 }
       : { ...searchPreferences, location: preferences.location || config.search.location, radiusMiles: preferences.radiusMiles, query, ...(trigger==="more"?{more:1}:{}) };
     discoveryTelemetry={adapters:[],count:0};
     const before=new Set(store.getAll().map(p=>canonicalAddress(p.address)||p.sourceUrl));
     const found = await searchMainMap(store, discoveryCriteria, {
+      initialResults:workspaceFilter ? mainInventoryCandidates(createPropertyStore(runtimeSeeds.length ? runtimeSeeds : fallbackSeedProperties).getAll()) : [],
       transformResults:workspaceFilter ? rows => qualifyWorkspaceListings(rows, workspaceFilter, resolvePropertyCoordinates, property => {
         store.upsert(property);
         scheduleRenderList();

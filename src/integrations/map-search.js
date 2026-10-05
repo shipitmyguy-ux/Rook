@@ -22,6 +22,9 @@ export async function searchMainMap(store, criteria = {}, options = {}) {
     pending.push(task);
     return task;
   };
+  // Existing Main inventory participates in the same qualification path as
+  // streamed discovery; a smaller fresh batch must not discard those matches.
+  if (options.initialResults?.length) publish(options.initialResults, { stage:"main-inventory" });
   const rows = await search(criteria, { onResults:publish });
   await Promise.all(pending);
   const filtered = options.transformResults ? await options.transformResults(rows) : rows;
