@@ -14,7 +14,7 @@ test('every configured provider refreshes despite adequate saved coverage',async
 });
 test('public JSON reads hydration and community-only listings without inventing unit prices',()=>{
  const code=source.slice(source.indexOf('function discoveryJsonListings('),source.indexOf('async function structuredDiscovery'));
- const ctx={URL,JSON,num:v=>{const m=String(v??'').replace(/,/g,'').match(/\d+(?:\.\d+)?/);return m?Number(m[0]):null},absolute:(v,b)=>v?new URL(v,b).href:null,directListingUrl,isAllowedListingHost:()=>true,propertySquareFeet:()=>null,jsonLdListings:()=>[]};
+ const ctx={URL,JSON,num:v=>{const m=String(v??'').replace(/,/g,'').match(/\d+(?:\.\d+)?/);return m?Number(m[0]):null},absolute:(v,b)=>v?new URL(v,b).href:null,directListingUrl,isAllowedListingHost:()=>true,propertySquareFeet:()=>null,jsonLdListings:()=>[],keyOf:r=>r.sourceUrl};
  vm.createContext(ctx);vm.runInContext(stripTypeScriptTypes(code),ctx);
  const fixtures=[
  ['zillow','https://www.zillow.com/fort-collins-co/rentals/',{detailUrl:'https://www.zillow.com/homedetails/123-Test-Dr-Fort-Collins-CO-80524/123_zpid/',addressStreet:'123 Test Dr',addressCity:'Fort Collins',unformattedPrice:2400,beds:3}],
