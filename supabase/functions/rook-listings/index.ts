@@ -1394,13 +1394,13 @@ async function structuredDiscovery(url:string,source:string){
   return {listings,pages:1+pages.filter(p=>p.status==="fulfilled").length,nextUrl:nextPageUrl(current,links),failedPages:pages.filter(p=>p.status==="rejected").length};
 }
 
-async function sourceAdapter(id: string, source: string, url: string, browserDiscovery = false): Promise<AdapterResult> {
+async function sourceAdapter(id: string, source: string, url: string, browserDiscovery = false, forceFresh = false): Promise<AdapterResult> {
   return coalesce("source:"+url,async()=>{
     const started=Date.now(),cacheKey="source:v3:"+url;
     const cached=await readCache(cacheKey);
-    if(cached&&Date.parse(cached.expires_at)>started)return {...cached.payload.result,discovery:{...cached.payload.result.discovery,cacheHit:true}};
+    if(!forceFresh&&cached&&Date.parse(cached.expires_at)>started)return {...cached.payload.result,discovery:{...cached.payload.result.discovery,cacheHit:true}};
     const prior=cached&&started-Date.parse(cached.updated_at)<86400000?cached.payload:null;
-    const scanUrl=prior?.nextUrl&&Number(prior.round||0)%4!==3?prior.nextUrl:url;
+    const scanUrl=!forceFresh&&prior?.nextUrl&&Number(prior.round||0)%4!==3?prior.nextUrl:url;
     const results=await Promise.allSettled([
       structuredDiscovery(scanUrl,source),
       browserDiscovery ? browserDiscoverySnapshot(scanUrl) : Promise.resolve(null)
@@ -3025,6 +3025,7 @@ Deno.serve(async (req: Request) => {
   const quickListings=selectListings(quick.listings).slice(0,25);
   const target=more ? 100 : 25;
   let jobState="paused";
+  let hotpadsRefresh:any=null;
   const refine=()=>coalesce("refinement:"+snapshotKey,async()=>{
     const leaseKey="lease:"+snapshotKey,token=await claimLease(leaseKey);
     if(!token){
@@ -3041,8 +3042,17 @@ Deno.serve(async (req: Request) => {
     }
     jobState="running";
     try{
+      // Always query current primary-city house inventory before count-based stopping.
+      const hotpadsSlug=primaryCity.toLowerCase().replace(/[^a-z0-9]+/g,"-");
+      const hotpads=await sourceAdapter("hotpads-refresh","HotPads",`https://hotpads.com/${hotpadsSlug}-co/houses-for-rent`,false,true);
+      hotpadsRefresh={id:hotpads.id,count:hotpads.listings.length,error:hotpads.error||null,...hotpads.discovery};
+      const freshCandidates=mergeAdapterListings([hotpads,{id:"saved",listings:quick.listings}]);
       const tasks=buildAdapterTasks();
-      const wrapped=tasks.map((task:any,index:number)=>async()=>{
+      const cursorKey="discovery-cursor:v1:"+snapshotKey;
+      const cursor=await readCache(cursorKey);
+      const startIndex=Number(cursor?.payload?.next || 0)%Math.max(1,tasks.length);
+      const ordered=tasks.map((_:any,offset:number)=>{const index=(startIndex+offset)%tasks.length;return {task:tasks[index],index}});
+      const wrapped=ordered.map(({task,index}:any)=>async()=>{
         const cooldownKey="provider-backoff:v1:"+snapshotKey+":"+index;
         const [globalBackoff,sourceBackoff]=await Promise.all([readCache("provider-backoff:v1"),readCache(cooldownKey)]);
         if(!task.essential && [globalBackoff,sourceBackoff].some(row=>row && Date.parse(row.expires_at)>Date.now()))return {id:"provider-backoff",listings:[],error:"Provider cooling down",discovery:{backoff:true}};
@@ -3054,17 +3064,18 @@ Deno.serve(async (req: Request) => {
         }
         return adapter;
       });
-      const result=await boundedDiscovery(wrapped,{initial:quick.listings,identity:keyOf,select:selectListings,target,maxTasks:more?24:8,concurrency:2,
+      const result=await boundedDiscovery(wrapped,{initial:[...freshCandidates.values()],identity:keyOf,select:selectListings,target,minTasks:0,maxTasks:more?24:8,concurrency:2,
         onBatch:async(rows:any[])=>{if(rows.length)await writeCache(snapshotKey,{listings:rows.slice(0,600),partial:true},5*60000)}
       });
-      if(result.listings.length)await writeCache(snapshotKey,{listings:result.listings.slice(0,600),partial:result.paused,attempted:result.attempted},5*60000);
+      if(result.attempted)await writeCache(cursorKey,{next:(startIndex+result.attempted)%Math.max(1,tasks.length)},7*86400000);
+      if(result.listings.length && (result.attempted || hotpads.discovery?.freshCount>0))await writeCache(snapshotKey,{listings:result.listings.slice(0,600),partial:result.paused,attempted:result.attempted},5*60000);
       jobState=result.paused ? "paused" : "complete";
       return result.listings;
     }finally{await releaseLease(leaseKey,token)}
   });
-  const needsRefinement=quickListings.length<target;
+  const needsRefinement=true;
   const meta=()=>({...quick.discovery,adapters:[{id:quick.id,count:quickListings.length,ok:quickListings.length>0,discovery:quick.discovery}],stage:"quick",count:quickListings.length,firstCandidateMs:quickListings.length?Date.now()-discoveryStarted:null,
-    backgroundRefinement:needsRefinement,refinement:jobState,paused:!needsRefinement,generatedAt:new Date().toISOString()});
+    hotpadsRefresh,backgroundRefinement:needsRefinement,refinement:jobState,paused:!needsRefinement,generatedAt:new Date().toISOString()});
   if(url.searchParams.get("fast")==="1"){
     if(needsRefinement)keepBackground(refine());
     return new Response(JSON.stringify({listings:quickListings,meta:meta()}),{headers:{...corsHeaders,"Cache-Control":"no-store"}});
@@ -3077,15 +3088,15 @@ Deno.serve(async (req: Request) => {
         try{
           emit({listings:quickListings,meta:meta()});
           if(needsRefinement){
-            const refined=selectListings(await refine()).slice(0,target);
-            emit({listings:refined,meta:{done:true,authoritative:true,count:refined.length,refinement:jobState,paused:jobState==="paused",elapsedMs:Date.now()-discoveryStarted}});
+            const refined=selectListings(await refine());
+            emit({listings:refined,meta:{done:true,authoritative:true,count:refined.length,hotpadsRefresh,refinement:jobState,paused:jobState==="paused",elapsedMs:Date.now()-discoveryStarted}});
           }else emit({listings:quickListings,meta:{done:true,authoritative:true,count:quickListings.length,paused:true,elapsedMs:Date.now()-discoveryStarted}});
         }catch(error){emit({error:String(error)})}finally{if(!cancelled)controller.close()}
       },cancel(){cancelled=true}
     });
     return new Response(stream,{headers:{...corsHeaders,"Content-Type":"application/x-ndjson","Cache-Control":"no-store"}});
   }
-  const listings=needsRefinement?selectListings(await refine()).slice(0,target):quickListings;
+  const listings=needsRefinement?selectListings(await refine()):quickListings;
   return new Response(JSON.stringify({listings,meta:{...meta(),count:listings.length,elapsedMs:Date.now()-discoveryStarted}}),{headers:corsHeaders});
 });
 
