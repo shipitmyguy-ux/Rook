@@ -22,26 +22,26 @@ export function sourcePriority(url = '') {
 }
 
 // Tasks are lazy: once coverage is adequate no additional provider is started.
-export async function boundedDiscovery(tasks, { target = 25, concurrency = 2, maxTasks = 8,
+export async function boundedDiscovery(tasks, { target = 25, concurrency = 2, maxTasks = 8, minTasks = 0,
   initial = [], identity = row => row.sourceUrl || row.address, select = rows => rows,
   now = Date.now, deadlineMs = 12000, onBatch = () => {} } = {}) {
   const started = now(), rows = new Map(initial.map(row => [identity(row), row]));
-  const adapters = []; let next = 0;
+  const adapters = []; const freshKeys = new Set(); let next = 0;
   const worker = async () => {
     while (next < Math.min(tasks.length, maxTasks) && now() - started < deadlineMs
-      && select([...rows.values()]).length < target) {
+      && (next < minTasks || select([...rows.values()]).length < target)) {
       const task = tasks[next++];
       let result;
       try { result = await task(); } catch (error) { result = {id:'provider', listings:[], error:String(error)}; }
       adapters.push(result);
       for (const row of result.listings || []) {
-        const key = identity(row); if (key) rows.set(key, row);
+        const key = identity(row); if (key) { rows.set(key, row); freshKeys.add(key); }
       }
-      await onBatch([...rows.values()], result);
+      await onBatch([...freshKeys].map(key => rows.get(key)).concat([...rows].filter(([key]) => !freshKeys.has(key)).map(([,row]) => row)), result);
     }
   };
   await Promise.all(Array.from({length:concurrency}, worker));
-  return {listings:[...rows.values()], adapters, attempted:next, paused:next < tasks.length};
+  return {listings:[...freshKeys].map(key => rows.get(key)).concat([...rows].filter(([key]) => !freshKeys.has(key)).map(([,row]) => row)), adapters, attempted:next, paused:next < tasks.length};
 }
 
 export function backoffMilliseconds(error = '') {
