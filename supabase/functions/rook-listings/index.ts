@@ -1380,7 +1380,7 @@ function discoveryJsonListings(payloads:any[],source:string,pageUrl:string):List
     const exactRange=(value:any)=>value&&typeof value==="object" ? (value.min===value.max?num(value.min):null) : num(value);
     const beds=exactRange(item.numberOfBedrooms??item.bedrooms??item.beds);
     rows.push({id:url,label:item.name||address,address,type:item["@type"]||item.propertyType||"Property",listingType:"rent",source,sourceUrl:url,price,beds,sqft:propertySquareFeet(item),baths:num(item.numberOfBathroomsTotal??item.bathrooms??item.baths),
-      metadata:{description:item.description||null,tags:item.tags||item.fullTags||item.listCardRecommendation?.flexFieldRecommendations||null,discoveryMethod:"public-page-json"}});
+      metadata:{description:item.description||null,tags:item.tags||item.fullTags||item.listCardRecommendation?.flexFieldRecommendations||null,discoveryMethod:"rendered-json"}});
   }
   return rows;
 }
@@ -1392,7 +1392,9 @@ function publicPageListings(html:string,source:string,pageUrl:string):Listing[]{
     if(!/application\/(?:ld\+)?json|__NEXT_DATA__/i.test(match[1]))continue;
     try{payloads.push(JSON.parse(match[2]))}catch{}
   }
-  return [...jsonLdListings(html,source,pageUrl),...discoveryJsonListings(payloads,source,pageUrl)];
+  const merged=new Map<string,Listing>();
+  for(const row of [...jsonLdListings(html,source,pageUrl),...discoveryJsonListings(payloads,source,pageUrl)]){const key=keyOf(row);if(key&&!merged.has(key))merged.set(key,{...row,metadata:{...row.metadata,discoveryMethod:"public-page-json"}})}
+  return [...merged.values()];
 }
 
 async function structuredDiscovery(url:string,source:string){
