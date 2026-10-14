@@ -860,10 +860,14 @@ async function resolveUnavailableListings() {
       const snapshot=store.getAll().filter(property=>!attempted.has(property.id)&&(explicitChecks.has(property.id)||needsListingCheck(property))).sort((a,b)=>{
         const selected=Number(enrichmentPriority.has(b.id)||explicitChecks.has(b.id))-Number(enrichmentPriority.has(a.id)||explicitChecks.has(a.id));
         if(selected)return selected;
+        // Recheck stale prices that currently hide freshly rediscovered homes.
+        const stalePrice=(p)=>Number(Boolean(p.metadata?.verificationPending && preferences.maxPrice && Number(p.price)>Number(preferences.maxPrice)));
+        const pricePriority=stalePrice(b)-stalePrice(a);
+        if(pricePriority)return pricePriority;
         const aMissing=Number(!(Number(a.price)>0)), bMissing=Number(!(Number(b.price)>0));
         return (bMissing-aMissing) || (Number(Boolean(b.sourceUrl))-Number(Boolean(a.sourceUrl)));
       })[0];
-      if(!snapshot || (attempted.size>=8 && !enrichmentPriority.has(snapshot.id) && !explicitChecks.has(snapshot.id)))break;
+      if(!snapshot || (attempted.size>=8 && !snapshot.metadata?.verificationPending && !enrichmentPriority.has(snapshot.id) && !explicitChecks.has(snapshot.id)))break;
       attempted.add(snapshot.id);await check(snapshot);scheduleRenderList();
     }};
     await Promise.all(Array.from({length:2},worker));
