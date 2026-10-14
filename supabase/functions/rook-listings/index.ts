@@ -1368,29 +1368,40 @@ function discoveryJsonListings(payloads:any[],source:string,pageUrl:string):List
     const item=stack.pop();if(!item||typeof item!=="object")continue;
     if(Array.isArray(item)){stack.push(...item.slice(0,500));continue}
     for(const value of Object.values(item))if(value&&typeof value==="object")stack.push(value);
-    const addr=item.address||item.location?.address||item.addressInfo;
+    const addr=item.addressStreet ? {streetAddress:item.addressStreet,city:item.addressCity,state:item.addressState,zip:item.addressZipcode} : item.address||item.location?.address||item.addressInfo||item.location;
     const address=typeof addr==="string"?addr:[addr?.streetAddress||addr?.street||item.streetAddress,addr?.addressLocality||addr?.city||item.city,addr?.addressRegion||addr?.state||item.state,addr?.postalCode||addr?.zip||item.zipcode].filter(Boolean).join(", ");
     const url=directListingUrl(absolute(item.detailUrl||item.hdpUrl||item.url||item.listingUrl||item.offers?.url,pageUrl));
-    if(!address||!url||!isAllowedListingHost(new URL(url).hostname))continue;
+    if((!address&&!item.name)||!url||!isAllowedListingHost(new URL(url).hostname))continue;
     const local=String(addr?.addressLocality||addr?.city||item.city||address);
-    if(/fort-collins/i.test(pageUrl)&&!(/fort\s+collins/i.test(local)||/^\d+\s/.test(address)&&!addr?.city&&!item.city))continue;
+    if(/fort-collins/i.test(pageUrl)&&!(/fort\s+collins/i.test(local)||/^\d+\s/.test(address)&&!addr?.city&&!item.city||!address&&/fort-collins/i.test(url)))continue;
     const offer=Array.isArray(item.offers)?item.offers[0]:item.offers;
-    const price=num(offer?.price||item.price||item.unformattedPrice||item.rent||item.minRent);
-    const beds=num(item.numberOfBedrooms??item.bedrooms??item.beds??item.maxBeds);
+    const rawPrice=offer?.price||item.unformattedPrice||item.price||item.rent;
+    const price=rawPrice&&typeof rawPrice==="object" ? (rawPrice.min===rawPrice.max?num(rawPrice.min):null) : num(rawPrice);
+    const exactRange=(value:any)=>value&&typeof value==="object" ? (value.min===value.max?num(value.min):null) : num(value);
+    const beds=exactRange(item.numberOfBedrooms??item.bedrooms??item.beds);
     rows.push({id:url,label:item.name||address,address,type:item["@type"]||item.propertyType||"Property",listingType:"rent",source,sourceUrl:url,price,beds,sqft:propertySquareFeet(item),baths:num(item.numberOfBathroomsTotal??item.bathrooms??item.baths),
-      metadata:{description:item.description||null,discoveryMethod:"rendered-json"}});
+      metadata:{description:item.description||null,tags:item.tags||item.fullTags||item.listCardRecommendation?.flexFieldRecommendations||null,discoveryMethod:"public-page-json"}});
   }
   return rows;
 }
 
+
+function publicPageListings(html:string,source:string,pageUrl:string):Listing[]{
+  const payloads:any[]=[];
+  for(const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)){
+    if(!/application\/(?:ld\+)?json|__NEXT_DATA__/i.test(match[1]))continue;
+    try{payloads.push(JSON.parse(match[2]))}catch{}
+  }
+  return [...jsonLdListings(html,source,pageUrl),...discoveryJsonListings(payloads,source,pageUrl)];
+}
 
 async function structuredDiscovery(url:string,source:string){
   const html=await fetchText(url);
   const links=[...html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)].map(m=>({href:absolute(m[1].replace(/&amp;/g,"&"),url),text:m[2].replace(/<[^>]*>/g,"").trim()}));
   const targets:string[]=[];let current=url;
   for(let i=0;i<3;i++){const next=nextPageUrl(current,links);if(!next)break;targets.push(next);current=next;}
-  const pages=await Promise.allSettled(targets.map(page=>fetchText(page).then(html=>jsonLdListings(html,source,page))));
-  const listings=[...jsonLdListings(html,source,url),...pages.flatMap(p=>p.status==="fulfilled"?p.value:[])];
+  const pages=await Promise.allSettled(targets.map(page=>fetchText(page).then(html=>publicPageListings(html,source,page))));
+  const listings=[...publicPageListings(html,source,url),...pages.flatMap(p=>p.status==="fulfilled"?p.value:[])];
   return {listings,pages:1+pages.filter(p=>p.status==="fulfilled").length,nextUrl:nextPageUrl(current,links),failedPages:pages.filter(p=>p.status==="rejected").length};
 }
 
@@ -1419,11 +1430,13 @@ async function sourceAdapter(id: string, source: string, url: string, browserDis
     const listings=[...merged.values()].slice(0,500);
     const reason=snapshot?.discovery?.reason;
     const freshCount=new Set(fresh.map(keyOf)).size;
+    const previousKeys=new Set((cached?.payload?.result?.listings||[]).map(keyOf));
+    const newCount=new Set(fresh.filter(row=>!previousKeys.has(keyOf(row))).map(keyOf)).size;
     const expected=Number(prior?.result?.listings?.length||0);
     const degraded=!listings.length||reason==="challenge"||!!errors.length||!!structuredResult?.failedPages||(!snapshot?.discovery?.uniqueLinks&&structuredResult?.pages===1)||(scanUrl===url&&expected>=20&&freshCount<expected*0.15);
     const result={id,listings,error:errors.length?errors.join("; "):undefined,
       discovery:{...snapshot?.discovery,elapsedMs:Date.now()-started,structuredCount:structured.length,structuredPages:structuredResult?.pages||0,browserCount:rendered.length,
-        degraded,cacheHit:false,freshCount,continued:scanUrl!==url,previousCount:expected}};
+        degraded,cacheHit:false,freshCount,newCount,checkedAt:new Date().toISOString(),continued:scanUrl!==url,previousCount:expected}};
     let nextUrl=null;try{const next=new URL(structuredResult?.nextUrl||snapshot?.discovery?.nextUrl);if(next.origin===new URL(url).origin)nextUrl=next.href}catch{}
     if(listings.length||snapshot)await writeCache(cacheKey,{result,nextUrl,round:Number(prior?.round||0)+1},degraded?60000:300000);
     return result;
@@ -3026,6 +3039,7 @@ Deno.serve(async (req: Request) => {
   const target=more ? 100 : 25;
   let jobState="paused";
   let hotpadsRefresh:any=null;
+  const sourceRefreshes:any[]=[];
   const refine=()=>coalesce("refinement:"+snapshotKey,async()=>{
     const leaseKey="lease:"+snapshotKey,token=await claimLease(leaseKey);
     if(!token){
@@ -3042,11 +3056,35 @@ Deno.serve(async (req: Request) => {
     }
     jobState="running";
     try{
-      // Always query current primary-city house inventory before count-based stopping.
-      const hotpadsSlug=primaryCity.toLowerCase().replace(/[^a-z0-9]+/g,"-");
-      const hotpads=await sourceAdapter("hotpads-refresh","HotPads",`https://hotpads.com/${hotpadsSlug}-co/houses-for-rent`,false,true);
-      hotpadsRefresh={id:hotpads.id,count:hotpads.listings.length,error:hotpads.error||null,...hotpads.discovery};
-      const freshCandidates=mergeAdapterListings([hotpads,{id:"saved",listings:quick.listings}]);
+      // Each configured source gets a fresh primary search regardless of saved count.
+      const providers=(runtimeDiscovery.providers?.providers||[]).filter((provider:any)=>provider?.id&&provider?.cityFeed);
+      const primaryFeeds=providers.map((provider:any)=>({provider,url:renderFeedTemplate(provider.cityFeed,primaryCity,"CO")}));
+      const hotpadsProvider=providers.find((provider:any)=>provider.id==="hotpads");
+      const houses=hotpadsProvider?.primaryCategoryFeeds?.find((feed:any)=>feed.id==="houses");
+      if(houses)primaryFeeds.push({provider:{...hotpadsProvider,id:"hotpads-houses"},url:renderFeedTemplate(houses.url,primaryCity,"CO")});
+      const primaryAdapters=await Promise.all([...primaryFeeds.map(async({provider,url}:any)=>{
+        const adapter=await sourceAdapter(provider.id+"-refresh",provider.label||provider.id,url,false,true);
+        sourceRefreshes.push({id:adapter.id,count:adapter.listings.length,error:adapter.error||null,...adapter.discovery});
+        return adapter;
+      }), (async()=>{
+        const adapter=await uncachedSearchDiscovery(primaryCity+", CO");
+        sourceRefreshes.push({id:adapter.id,count:adapter.listings.length,error:adapter.error||null,...adapter.discovery,freshCount:adapter.listings.length,cacheHit:false});
+        return adapter;
+      })()]);
+      const missing=primaryFeeds.filter(({provider}:any)=>{const status=sourceRefreshes.find((source:any)=>source.id===provider.id+"-refresh");return provider.browserDiscovery!==false && (!status?.freshCount || status.count>status.freshCount*2)});
+      const recoveryKey="rendered-refresh-cursor:v1:"+snapshotKey;
+      const recoveryCursor=await readCache(recoveryKey);
+      const recoveryStart=Number(recoveryCursor?.payload?.next||0)%Math.max(1,missing.length);
+      const recoveries=missing.slice(recoveryStart).concat(missing.slice(0,recoveryStart)).slice(0,2);
+      await Promise.all(recoveries.map(async({provider,url}:any)=>{
+        const adapter=await sourceAdapter(provider.id+"-refresh",provider.label||provider.id,url,true,true);
+        primaryAdapters.push(adapter);
+        const index=sourceRefreshes.findIndex((source:any)=>source.id===adapter.id);
+        sourceRefreshes[index]={id:adapter.id,count:adapter.listings.length,error:adapter.error||null,...adapter.discovery,renderedRecovery:true};
+      }));
+      if(recoveries.length)await writeCache(recoveryKey,{next:(recoveryStart+recoveries.length)%Math.max(1,missing.length)},7*86400000);
+      hotpadsRefresh=sourceRefreshes.find((source:any)=>source.id==="hotpads-houses-refresh")||null;
+      const freshCandidates=mergeAdapterListings([...primaryAdapters,{id:"saved",listings:quick.listings}]);
       const tasks=buildAdapterTasks();
       const cursorKey="discovery-cursor:v1:"+snapshotKey;
       const cursor=await readCache(cursorKey);
@@ -3068,14 +3106,14 @@ Deno.serve(async (req: Request) => {
         onBatch:async(rows:any[])=>{if(rows.length)await writeCache(snapshotKey,{listings:rows.slice(0,600),partial:true},5*60000)}
       });
       if(result.attempted)await writeCache(cursorKey,{next:(startIndex+result.attempted)%Math.max(1,tasks.length)},7*86400000);
-      if(result.listings.length && (result.attempted || hotpads.discovery?.freshCount>0))await writeCache(snapshotKey,{listings:result.listings.slice(0,600),partial:result.paused,attempted:result.attempted},5*60000);
+      if(result.listings.length && (result.attempted || sourceRefreshes.some((source:any)=>source.freshCount>0)))await writeCache(snapshotKey,{listings:result.listings.slice(0,600),partial:result.paused,attempted:result.attempted},5*60000);
       jobState=result.paused ? "paused" : "complete";
       return result.listings;
     }finally{await releaseLease(leaseKey,token)}
   });
   const needsRefinement=true;
-  const meta=()=>({...quick.discovery,adapters:[{id:quick.id,count:quickListings.length,ok:quickListings.length>0,discovery:quick.discovery}],stage:"quick",count:quickListings.length,firstCandidateMs:quickListings.length?Date.now()-discoveryStarted:null,
-    hotpadsRefresh,backgroundRefinement:needsRefinement,refinement:jobState,paused:!needsRefinement,generatedAt:new Date().toISOString()});
+  const meta=()=>({...quick.discovery,adapters:sourceRefreshes.length ? sourceRefreshes.map((source:any)=>({id:source.id,count:source.count,ok:source.freshCount>0,error:source.error,discovery:source})) : [{id:quick.id,count:quickListings.length,ok:quickListings.length>0,discovery:quick.discovery}],stage:"quick",count:quickListings.length,firstCandidateMs:quickListings.length?Date.now()-discoveryStarted:null,
+    hotpadsRefresh,sourceRefreshes,backgroundRefinement:needsRefinement,refinement:jobState,paused:!needsRefinement,generatedAt:new Date().toISOString()});
   if(url.searchParams.get("fast")==="1"){
     if(needsRefinement)keepBackground(refine());
     return new Response(JSON.stringify({listings:quickListings,meta:meta()}),{headers:{...corsHeaders,"Cache-Control":"no-store"}});
@@ -3089,7 +3127,7 @@ Deno.serve(async (req: Request) => {
           emit({listings:quickListings,meta:meta()});
           if(needsRefinement){
             const refined=selectListings(await refine());
-            emit({listings:refined,meta:{done:true,authoritative:true,count:refined.length,hotpadsRefresh,refinement:jobState,paused:jobState==="paused",elapsedMs:Date.now()-discoveryStarted}});
+            emit({listings:refined,meta:{done:true,authoritative:true,count:refined.length,adapters:sourceRefreshes.map((source:any)=>({id:source.id,count:source.count,ok:source.freshCount>0,error:source.error,discovery:source})),hotpadsRefresh,sourceRefreshes,refinement:jobState,paused:jobState==="paused",elapsedMs:Date.now()-discoveryStarted}});
           }else emit({listings:quickListings,meta:{done:true,authoritative:true,count:quickListings.length,paused:true,elapsedMs:Date.now()-discoveryStarted}});
         }catch(error){emit({error:String(error)})}finally{if(!cancelled)controller.close()}
       },cancel(){cancelled=true}
