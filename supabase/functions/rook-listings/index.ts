@@ -1430,14 +1430,14 @@ async function sourceAdapter(id: string, source: string, url: string, browserDis
     }
     const errors=results.filter(r=>r.status==="rejected").map((r:any)=>String(r.reason?.message||r.reason));
     const listings=[...merged.values()].slice(0,500);
-    const reason=snapshot?.discovery?.reason;
+    const reason=!fresh.length&&errors.some(error=>/\b(?:403|429)\b/.test(error))?"challenge":snapshot?.discovery?.reason;
     const freshCount=new Set(fresh.map(keyOf)).size;
     const previousKeys=new Set((cached?.payload?.result?.listings||[]).map(keyOf));
     const newCount=new Set(fresh.filter(row=>!previousKeys.has(keyOf(row))).map(keyOf)).size;
     const expected=Number(prior?.result?.listings?.length||0);
     const degraded=!listings.length||reason==="challenge"||!!errors.length||!!structuredResult?.failedPages||(!snapshot?.discovery?.uniqueLinks&&structuredResult?.pages===1)||(scanUrl===url&&expected>=20&&freshCount<expected*0.15);
     const result={id,listings,error:errors.length?errors.join("; "):undefined,
-      discovery:{...snapshot?.discovery,elapsedMs:Date.now()-started,structuredCount:structured.length,structuredPages:structuredResult?.pages||0,browserCount:rendered.length,
+      discovery:{...snapshot?.discovery,reason,blocked:reason==="challenge",elapsedMs:Date.now()-started,structuredCount:structured.length,structuredPages:structuredResult?.pages||0,browserCount:rendered.length,
         degraded,cacheHit:false,freshCount,newCount,checkedAt:new Date().toISOString(),continued:scanUrl!==url,previousCount:expected}};
     let nextUrl=null;try{const next=new URL(structuredResult?.nextUrl||snapshot?.discovery?.nextUrl);if(next.origin===new URL(url).origin)nextUrl=next.href}catch{}
     if(listings.length||snapshot)await writeCache(cacheKey,{result,nextUrl,round:Number(prior?.round||0)+1},degraded?60000:300000);
