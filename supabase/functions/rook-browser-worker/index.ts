@@ -111,7 +111,7 @@ async function discover(b:any){
       })()`);}catch{reason="deadline";break}
       if((last.links?.length||0)<10&&String(last.text||"").length<400&&Date.now()-started<9000){await new Promise(r=>setTimeout(r,600));continue}
       last.next=last.next||nextPageUrl(last.url,last.links);last.hasNext=last.hasNext||!!last.next;
-      if(/captcha|verify you are human|access denied|unusual traffic/i.test(last.text||"")){reason="challenge";break}
+      if(/captcha|verify you are human|access denied|unusual traffic|taking longer than usual|too many requests/i.test(last.text||"")){reason="challenge";break}
       for(const raw of last.jsonData||[])if(jsonData.length<32){try{jsonData.push(JSON.parse(raw))}catch{}}
       const before=links.size;
       for(const link of last.links||[]){
