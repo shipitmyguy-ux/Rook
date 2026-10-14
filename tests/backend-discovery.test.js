@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {stripTypeScriptTypes} from 'node:module';
 
-test('edge instances share an atomic lease, old owners cannot release a new lease, and warm searches skip crawlers',async()=>{
-  const table=new Map();let handler, external=0;
+test('edge instances share an atomic lease, old owners cannot release a new lease, and warm searches refresh configured providers',async()=>{
+  const table=new Map();let handler, external=0,visited=[];
   const previousFetch=globalThis.fetch;
   globalThis.Deno={env:{get:key=>key==='SUPABASE_SERVICE_ROLE_KEY'?'test-service-key':undefined},serve:fn=>{handler=fn;}};
   globalThis.fetch=async(input,init={})=>{
@@ -25,7 +25,7 @@ test('edge instances share an atomic lease, old owners cannot release a new leas
       return Response.json(table.has(key)?[table.get(key)]:[]);
     }
     if(url.pathname.includes('/config/'))return Response.json(JSON.parse(await fs.readFile(new URL('../config/'+url.pathname.split('/').pop(),import.meta.url),'utf8')));
-    external++;throw Error('An adequate cached result must not contact providers');
+    external++;visited.push(url.hostname);throw Error('Mock provider unavailable');
   };
   const cachePath=new URL('../supabase/functions/rook-listings/.speed-cache.mjs',import.meta.url);
   const indexPath=new URL('../supabase/functions/rook-listings/.speed-index.mjs',import.meta.url);
@@ -46,7 +46,7 @@ test('edge instances share an atomic lease, old owners cannot release a new leas
     const response=await handler(new Request('https://api.test/?stream=1&location=Fort%20Collins%2C%20CO'));
     const batches=(await response.text()).trim().split('\n').map(JSON.parse);
     assert.equal(batches[0].listings.length,25);assert.equal(batches[0].meta.source,'area-snapshot');assert.equal(batches.at(-1).meta.done,true);assert.equal(batches.at(-1).meta.paused,true);
-    assert.equal(external,0);assert.equal(table.get('area:v1:fortcollinsco').payload.listings.length,30);
+    assert.ok(external>=7);for(const host of ['www.realtor.com','www.rent.com','www.apartmentlist.com','www.apartments.com','hotpads.com','www.trulia.com','www.zillow.com'])assert.ok(visited.includes(host),host);assert.ok(batches.at(-1).meta.sourceRefreshes.length>=7);assert.equal(table.get('area:v1:fortcollinsco').payload.listings.length,30);
   } finally {
     globalThis.fetch=previousFetch;delete globalThis.Deno;
     await fs.rm(cachePath,{force:true});await fs.rm(indexPath,{force:true});
